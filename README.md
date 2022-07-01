@@ -1,4 +1,16 @@
-### Hi there 👋
+### Hi there 
+
+I'm a student from China
+
+I stand with Ukrine
+
+Liberty shall win
+
+我是一个中国学生
+
+我支持乌克兰
+
+自由必胜
 
 <!--
 **hasbai/hasbai** is a ✨ _special_ ✨ repository because its `README.md` (this file) appears on your GitHub profile.
