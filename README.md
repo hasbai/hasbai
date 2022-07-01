@@ -2,7 +2,7 @@
 
 I'm a student from China
 
-I stand with Ukrine
+I stand with Ukraine
 
 Liberty shall win
 
