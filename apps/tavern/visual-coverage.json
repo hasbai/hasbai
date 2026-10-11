@@ -16,7 +16,8 @@
       "scenarios": [
         "library",
         "states",
-        "page-states"
+        "page-states",
+        "character-generation"
       ]
     },
     {
@@ -321,6 +322,26 @@
           ],
           "snapshots": [
             "chat-composer-expanded.png"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "character-generation",
+      "kind": "screenshot",
+      "evidence": [
+        {
+          "spec": "e2e/tavern.spec.ts",
+          "test": "character creation generates from input then edits and saves with recoverable failures",
+          "projects": [
+            "iphone",
+            "desktop"
+          ],
+          "snapshots": [
+            "character-generating.png",
+            "character-generation-error.png",
+            "character-generated.png",
+            "character-create-dark.png"
           ]
         }
       ]
