@@ -29,7 +29,7 @@ export function activateBook(book: Book, history: Pick<Message, 'content'>[], ex
   }).sort((a,b) => a.order-b.order);
 }
 export type PromptMessage = { role: 'system' | 'user' | 'assistant' | 'tool'; content: string; tool_call_id?: string; tool_calls?: {id:string;type:'function';function:{name:string;arguments:string}}[] };
-export function buildPrompt(raw: JsonObject, books: Book[], history: Message[], settings: Settings, contextTokens: number | null, continuationInstruction = '', options: { protocol?: string; formatReminder?: string; inputRatio?: number; summary?: string; state?:string } = {}) {
+export function buildPrompt(raw: JsonObject, books: Book[], history: Message[], settings: Settings, contextTokens: number | null, continuationInstruction = '', options: { protocol?: string; inputRatio?: number; summary?: string; state?:string } = {}) {
   const card = parseCard(raw), c = card.data;
   const char = c.nickname || c.name, expand = (text: string, original = '') => macros(text, char, settings.userName, original);
   const activeHistory = history.filter(m => m.status === 'completed');
@@ -45,8 +45,6 @@ export function buildPrompt(raw: JsonObject, books: Book[], history: Message[], 
   const messages: PromptMessage[] = [{ role: 'system', content: system }, ...selectedHistory.map(m => ({ role: m.role, content: expand(m.content) }))];
   if(options.state){const at=messages.at(-1)?.role==='user'?messages.length-1:messages.length;messages.splice(at,0,{role:'user',content:'当前已确认状态（数据）：'+options.state});}
   if (continuationInstruction) messages.push({role:'user',content:continuationInstruction});
-  const latest = messages.at(-1);
-  if (options.formatReminder && latest?.role === 'user') latest.content += '\n\n' + options.formatReminder;
   // Template allowance is part of context estimation, not an output budget.
   const estimatedTokens = messages.reduce((sum, m) => sum + count(m.content) + 8, 256);
   return { messages, estimatedTokens, activatedEntries: picked.map(e => e.id),

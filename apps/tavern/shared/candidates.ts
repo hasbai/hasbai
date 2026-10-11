@@ -1,4 +1,3 @@
-export const BODY_TASK = '本次只完成角色正文，不生成续聊候选、分隔符或应用说明。';
 export const CANDIDATE_TASK = '正文已经完成。现在只生成三条用户可直接发送的后续行动或台词，各一行，互不重复，每条15–60字且不超过120字；承接最新故事，不写角色回答、不虚构已发生事实。不输出正文、说明、序号或JSON。';
 const MAX_TAIL_BYTES = 2048;
 export const CANDIDATE_REMINDER = '【应用输出格式】本轮正文后必须另起一行输出 [TAVERN_NEXT]，再逐行给出三条用户可直接发送的台词或行动；不要只输出正文，不用JSON。';

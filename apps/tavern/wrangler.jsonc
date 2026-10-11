@@ -22,6 +22,7 @@
       "/health"
     ]
   },
+  "secrets": { "required": ["AIG_RP_RUN_TOKEN"] },
   "vars": {
     "AUTH0_DOMAIN": "auth.hasbai.xyz",
     "AUTH0_AUDIENCE": "https://financial.hasbai.xyz/api",

@@ -45,12 +45,12 @@ export class ConversationContext {
  private wireProjection:ReturnType<typeof buildPrompt>|null=null;
  private storyFragments=new WeakSet<PromptMessage>();
  constructor(readonly history: Message[], readonly card: JsonObject, readonly books: Book[], readonly settings: Settings,
-  public contextTokens: number | null, readonly options: { protocol: string; formatReminder: string; inputRatio: number; state?:string },
+  public contextTokens: number | null, readonly options: { protocol: string; inputRatio: number; state?:string },
   readonly infer: (messages: PromptMessage[]) => Promise<string>) {}
  async restore(raw?: string | null) { this.summary = await validSummary(raw, this.history); }
  storyFragment(content:string):PromptMessage{const m:PromptMessage={role:'assistant',content};this.storyFragments.add(m);return m;}
  useProjection(messages:PromptMessage[]){this.wireProjection=this.extend({...this.prompt(),messages:messages.map(m=>structuredClone(m))},[]);}
- prompt(continuation = '', projection: { protocol: string; formatReminder: string } = this.options, suffix: PromptMessage[] = []) {
+ prompt(continuation = '', projection: { protocol: string } = this.options, suffix: PromptMessage[] = []) {
   if(this.wireProjection)return this.extend(this.wireProjection,suffix);
   const hasTools=suffix.some(m=>m.role==='tool');
   const projectedHistory=this.history.slice(this.summary?.covered.length ?? 0).filter(m=>!hasTools||m.id!==this.generatedId);
@@ -74,7 +74,7 @@ export class ConversationContext {
   this.generatedId = message.id;
  }
  resume(id: string) { const last=this.history.at(-1); if(last?.role==='assistant'){last.id=id;this.generatedId=id;} }
- async fit(continuation = '', projection: { protocol: string; formatReminder: string } = this.options, suffix: PromptMessage[] = []) {
+ async fit(continuation = '', projection: { protocol: string } = this.options, suffix: PromptMessage[] = []) {
   let prompt = this.prompt(continuation, projection, suffix);
   while (prompt.needsCompression) { const before=prompt.estimatedTokens;await this.compressProjection(suffix); prompt = this.prompt(continuation, projection, suffix);if(prompt.estimatedTokens>=before)throw new Error('会话压缩未缩短输入'); }
   return prompt;
