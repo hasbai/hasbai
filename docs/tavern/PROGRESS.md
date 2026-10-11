@@ -18,7 +18,9 @@
 
 用户决定日志暂不改：Gateway 当前保存完整聚合响应及 streamed_data；公开日志设置没有仅去掉分段的开关，日志 PATCH 也不支持替换 response。浏览器实时出字和现有日志保留。
 
-本节为根因与直接上游重放证据；本次应用部署及持久化验收待补，不将直接上游成功视作生产应用已发布。
+本次本地 231 项单测、类型检查、隔离 D1 八项迁移、真实 workerd/SQLite 会话测试、生产构建与视觉清单通过。[PR #67](https://github.com/hasbai/hasbai/pull/67) 八项必需状态全部通过，squash 为 `9a7fb4a4d80dfcfd17bb5c6f7e3bab8ff42fb79b`。自动 Build `26c9d330-4089-4d9c-9a5f-b572a8a9a844` 成功，提交 SHA 一致；生产版本 `2718a301-e413-420f-abf9-103a05abbb18` 流量 100%，health 200 且版本一致。
+
+本人真实 JWT/API 已验证普通对话、候选原文发送、重生成、停止和续写；成功正文/三候选、刷新及原 UUID 回放一致，全局设置未改，临时角色与会话已删除。四个成功回合各正文与 Director 共两次请求，逐 eventId 核对八条日志全部为 `custom-pc/qwen3.8-27b`，无 Gemma 回退；正文前缀、tools 恒等，末尾任务为 user，聚合文本与 SSE 拼接和保存结果一致。Director 的真实 cached tokens 分别为 657、748、715、814，仅代表这组请求的命中，不外推到全部会话。验收证据保留在应用忽略目录 `.local-visual/director-diagnosis`；真实工具调用、超限压缩的上游行为不由本次短会话验证推断。
 
 ## 已实现
 
