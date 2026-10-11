@@ -6,7 +6,7 @@
 
 | 页面 | 可执行功能 |
 | --- | --- |
-| 角色库 | 搜索已安装角色、导入 JSON/PNG/CHARX、创建/编辑角色、查看设定与来源、导出原卡、删除、选择开场白开始对话 |
+| 角色库 | 搜索已安装角色、导入 JSON/PNG/CHARX、表单创建与 AI 补全角色、编辑角色、查看设定与来源、导出原卡、删除、选择开场白开始对话 |
 | 发现 | 输入关键词、选择公开来源、按热度/近期热门/发布或更新时间/评分排序、分类与自定义标签、分页、查看作者/源页面、安装角色；安装相同内容去重，不自动覆盖本地编辑 |
 | 世界书 | 独立 JSON 导入/导出、查看编辑原文、条目数量、启用/停用，给会话选择世界书；内嵌角色书自动生效 |
 | 对话 | 会话列表、角色与用户 persona、右侧用户气泡、无气泡角色正文、单行自动伸展输入、圆形发送/停止、回答末尾操作、持久化历史、重试、重新生成、编辑历史并派生新会话、导出 JSONL、删除会话 |
@@ -38,6 +38,10 @@ D1 公共 source_catalog/source_releases 保存固定版本目录，只有完整
 
 ## 角色卡与世界书
 
+创建角色使用分组表单，按基本信息、人物设定、开场与对白填写，高级作者信息及提示词折叠。用户可手写后直接保存，也可填写部分内容或生成要求后点击 AI 生成。生成结果回填同一表单，支持修改及撤销本次生成；点击保存才通过既有角色导入接口入库。已有导入角色继续使用原始 JSON 编辑，保留 V1/V2/V3、世界书及未知扩展。
+
+`POST /api/characters/generate` 验证本人 JWT 与账户 username，复用固定 Gateway `dynamic/rp`，metadata task 为 `character-generation`。输入为 `{brief,draft}`，输出为 `{card}`，不写 D1/R2。使用 strict CCv2 JSON Schema（固定版本、完整字段、禁止额外属性），可靠 stop 后再次严格校验并经 `parseCard` 检查。拒绝、工具调用、截断、非法结构或上游错误明确失败，不补模板、不重试。姓名及作者/版本/备注/高级指令保留用户填写值，不虚构署名。生成期间锁定表单，关闭取消请求并丢弃迟到回填；生成或保存失败保留输入。
+
 `system_prompt` 与 `post_history_instructions` 的 `{{original}}` 合并默认值；`{{char}}`/`{{user}}`/`<char>`/`<user>` 支持，V3 nickname 优先。creator_notes、标签、来源不进入 Prompt。
 
 支持 V2/V3 book 与 SillyTavern entries 对象导入；每个条目只插入一次。禁用不触发、constant 常驻、主关键词与 selective 副关键词逻辑、scan_depth、case_sensitive、priority、insertion_order、before/after_char，递归扫描有迭代上限。公开语料的散文世界书转换为常驻条目，不推断原数据未定义的关键词。正则与复杂 ST 扩展保留但不执行，解析输出能力状态。输入估算、容量发现、超限压缩和缓存以[Agent 上下文契约](AGENT.md#上下文与摘要)为准。
@@ -59,6 +63,7 @@ D1 公共 source_catalog/source_releases 保存固定版本目录，只有完整
 ## API 清单
 
 - GET /health：service 与 Worker version，不含配置或密钥。
+- POST /api/characters/generate {brief,draft}：生成可编辑 CCv2 草稿；
 - GET/POST /api/characters；GET/PATCH/DELETE /api/characters/:id；GET /api/characters/:id/export；GET /api/characters/:id/avatar。
 - GET /api/discover?q=&source=&page=&sort=&tags=；POST /api/install {source,id}；固定适配器，不提供任意 URL 代理。
 - GET/POST /api/worldbooks；PATCH/DELETE /api/worldbooks/:id；GET /api/worldbooks/:id/export。

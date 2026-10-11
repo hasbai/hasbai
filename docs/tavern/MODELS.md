@@ -4,6 +4,12 @@
 
 当前实现和最新真实验收缺口见[PROGRESS](PROGRESS.md)。
 
+## 角色卡生成
+
+角色创建独立于会话及 Director，复用 `dynamic/rp` 固定 HTTP Gateway，不接受客户端模型、URL 或凭据。`worker/character-generation.ts` 使用首位 system 创作规则和 user 草稿数据，关闭思考，发送 `shared/character-draft.ts` 的 `response_format:json_schema`。生成请求使用独立 UUID、完整 payload 日志与 `app=tavern/task=character-generation/username` attribution。
+
+输入和输出严格字段校验，模型输出只在可靠 stop 后回填完整 CCv2。不增加字段、输入输出长度或数组数量限制；异常返回可重试错误，保留用户草稿；没有持久会话、占用、候选或自动续写。此流程的真实 schema 支持须独立验收，不由 Director 夹具外推。
+
 ## 设置、默认值与模型边界
 
 | 设置 | 应用默认值 | 校验 / 请求行为 |

@@ -7,6 +7,7 @@ export { TavernSession } from './session-object';
 import { character, installCard, jsonFile, ownedBooks, session, settings, userSettings, worldbook, type BookRow, type CharacterRow } from './store';
 import { MAX_FILE_BYTES, object, parseBook, parseCard, string } from '../shared/cards';
 import { macros } from '../shared/prompt';
+import { generateCharacter } from './character-generation';
 export default {
  async fetch(request:Request,env:Env,ctx:Pick<ExecutionContext,'waitUntil'>):Promise<Response> {
   const url=new URL(request.url),p=url.pathname,method=request.method;
@@ -39,6 +40,7 @@ export default {
      return json(await installCard(env,owner,bytes,filename),201);
     }
    }
+   if(p==='/api/characters/generate'&&method==='POST')return json({card:await generateCharacter(request,env,authenticatedUsername(user))});
    const char=p.match(/^\/api\/characters\/([^/]+)(?:\/(export|avatar))?$/);
    if(char){
     const row=await env.DB.prepare('SELECT * FROM characters WHERE owner=? AND id=?').bind(owner,char[1]).first<CharacterRow>();if(!row)throw new HttpError(404,'角色不存在');
