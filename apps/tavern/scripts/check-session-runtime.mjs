@@ -40,7 +40,7 @@ export class TestSession extends TavernSession {
   const removed=JSON.parse(await this.invoke(owner,id,'remove',{}));if(!removed.ok)throw Error('active generation retained deletion');
   let wire='';for(;;){const next=await reader.read();if(next.done)break;wire+=decoder.decode(next.value);}return {wire,storage:await this.inspectStorage()};
  }
- constructor(ctx,env){super(ctx,{...env,AI:{run:async(model,query,options)=>{if(model!=='dynamic/rp'||options.returnRawResponse!==true)throw Error('native binding contract missing');const request={query};
+ constructor(ctx,env){super(ctx,{...env,AIG_RP_RUN_TOKEN:'fixture-only'});globalThis.fetch=async(url,options)=>{if(!String(url).includes('/compat/chat/completions'))throw Error('fixture unexpected fetch');const request={provider:'compat',endpoint:'chat/completions',query:JSON.parse(options.body)};if(request.query.model!=='dynamic/rp'||request.provider!=='compat'||request.endpoint!=='chat/completions')throw Error('gateway binding contract missing');
  const director=!!request.query.response_format;const synopsis=request.query.messages[0].content.startsWith('总结已发生剧情');const input=request.query.messages.at(-1).content;
  if(request.query.messages.some(m=>!m.content.isWellFormed()))throw new Error('split Unicode in model projection');
  if(!director&&!synopsis&&!request.query.messages[0].content.startsWith('压缩会话记忆')&&request.query.messages.some(m=>m.role==='user'&&m.content.includes('同次长正文工具'))){
@@ -53,10 +53,10 @@ export class TestSession extends TavernSession {
   const hits=results.map(m=>JSON.parse(m.content)[0]);if(hits[0].source.messageId!==hits[1].source.messageId||!hits[0].text.includes('北门钥匙在南塔')||!hits[0].text.isWellFormed()||hits[0].text.includes('银怀表')||!hits[1].text.includes('银怀表藏在南塔'))throw new Error('memory fragment provenance missing');
  }
  if(!director&&input.includes('工具抵达北港')&&request.query.messages.at(-1).role!=='tool')return new Response([{tool_calls:[{index:1,id:'state-call',type:'function',function:{name:'update_state',arguments:''}}]},{tool_calls:[{index:1,id:null,type:null,function:null}]},{tool_calls:[{index:1,id:null,type:'function',function:{name:null,arguments:'{"patch":{"scene":"北港"}}'}}]}].map((delta,i)=>'data: '+JSON.stringify({choices:[{delta,finish_reason:i===2?'tool_calls':null}]})+'\\n\\n').join('')+'data: [DONE]\\n\\n',{headers:{'Content-Type':'text/event-stream'}});
- if(director){if(request.query.tools||request.query.tool_choice||request.query.messages.length!==2||request.query.messages.some(m=>m.role==='tool'))throw new Error('Director context polluted');const data=JSON.parse(input);if(!data.state||data.recentStory.length>4)throw new Error('Director data missing');}
+ if(director){if(!request.query.tools||request.query.tool_choice!=='none'||request.query.messages.at(-1).role!=='system')throw new Error('Director prefix missing');if(!input.includes('当前已确认状态'))throw new Error('Director state missing');}
  if(!director&&input.includes('等待'))return new Response(new ReadableStream(),{headers:{'Content-Type':'text/event-stream'}});
  return new Response('data: '+JSON.stringify({choices:[{delta:{tool_calls:null,content:director?JSON.stringify({choices:['我坐下。','我问问。','我看窗外。']}):synopsis?'旧事':'你好。'},finish_reason:'stop'}]})+'\\n\\ndata: [DONE]\\n\\n',{headers:{'Content-Type':'text/event-stream'}});
- }}});}
+ };}
 }
 export default {async fetch(request,env){const d=await request.json();const stub=env.SESSIONS.getByName(JSON.stringify([d.owner,d.id]));
  if(d.method==='recovery')return Response.json(await stub.checkRecovery(d.owner,d.id,d.data.mode));

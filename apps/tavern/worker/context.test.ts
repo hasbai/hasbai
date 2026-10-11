@@ -4,7 +4,8 @@ import { DEFAULT_SETTINGS, type Message } from '../shared/types';
 import type {PromptMessage} from '../shared/prompt';
 const card={name:'岚',description:'旅店主人'};
 const message=(id:string,role:Message['role'],content:string):Message=>({id,role,content,status:'completed',ordinal:0,requestId:null,createdAt:0});
-const options={protocol:'',formatReminder:'',inputRatio:1.2};
+vi.mock('./gateway',async(original)=>({...await original<typeof import('./gateway')>(),runRoleplay:async(env:Env,username:string,requestId:string,input:Record<string,unknown>,signal:AbortSignal)=>env.AI.gateway('default').run({provider:'compat',endpoint:'chat/completions',headers:{},query:input},{gateway:{id:'default',skipCache:true,collectLog:true,eventId:requestId,retries:{maxAttempts:1},metadata:{app:'tavern',task:'roleplay',username}},signal})}));
+const options={protocol:'',inputRatio:1.2};
 it('requires reduction for compression but accepts a nonempty expanded overview of short sources',async()=>{
  const history=[message('short','assistant','雨')],infer=vi.fn(async()=> '岚与旅人在雨夜相遇。');
  await expect(summarizeStory('',history,{contextTokens:null,inputRatio:1.2,infer})).rejects.toThrow('有效摘要');
@@ -54,7 +55,7 @@ it('keeps a previous checkpoint intact when summarization fails',async()=>{
  const c=new ConversationContext([message('u','user','中'.repeat(2000)),message('a','assistant','答'.repeat(2000)),message('n','user','后来')],card,[],DEFAULT_SETTINGS,4096,options,async()=>{throw new Error('failed');});const original=JSON.stringify(c.history);await expect(c.fit()).rejects.toThrow('failed');expect(c.summary).toBeNull();expect(JSON.stringify(c.history)).toBe(original);
 });
 it('propagates upstream capacity and length to the summary compressor and cancels on stop',async()=>{
- const run=vi.fn();const env={AI:{run},AIG_GATEWAY_ID:'default'} as unknown as Env;const signal=new AbortController();
+ const run=vi.fn();const env={AI:{gateway:()=>({run})},AIG_GATEWAY_ID:'default'} as unknown as Env;const signal=new AbortController();
  run.mockResolvedValueOnce(Response.json({error:{message:'maximum context length is 2048 tokens'}},{status:400}));await expect(summarizeWithModel(env,'用户名','request',DEFAULT_SETTINGS,[],signal.signal)).rejects.toMatchObject({contextTokens:2048});
  run.mockResolvedValueOnce(new Response('data: {"choices":[{"delta":{"content":"摘要"},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n',{headers:{'Content-Type':'text/event-stream'}}));await expect(summarizeWithModel(env,'用户名','request',DEFAULT_SETTINGS,[],signal.signal)).rejects.toBeInstanceOf(SummaryRetry);
  const cancel=vi.fn();run.mockResolvedValueOnce(new Response(new ReadableStream({cancel}),{headers:{'Content-Type':'text/event-stream'}}));const pending=summarizeWithModel(env,'用户名','request',DEFAULT_SETTINGS,[],signal.signal);await Promise.resolve();signal.abort();await expect(pending).rejects.toThrow();expect(cancel).toHaveBeenCalled();
@@ -73,6 +74,6 @@ it('presents assistant history as source data in a user message instead of conti
 });
 
 it('estimates temporary candidate suffixes while excluding them from summary facts',async()=>{
- const sources:string[]=[];const c=new ConversationContext([message('old','user','旧问题'.repeat(1200)),message('reply','assistant','旧事实'.repeat(1200)),message('current','user','现在')],card,[],DEFAULT_SETTINGS,16384,{protocol:'',formatReminder:'只写正文',inputRatio:1.2},async messages=>{sources.push(JSON.stringify(messages));return '旧事';});
- const first=await c.fit();const before=JSON.stringify(first.messages);c.appendOutput(message('body','assistant',''),'正文已经完成。',false);const suffix=[{role:'user' as const,content:'给候选'},{role:'assistant' as const,content:'将来我乘船离开。'},{role:'user' as const,content:'接着给候选'}];const frozen=c.extend(first,[{role:'assistant',content:'正文已经完成。'},...suffix]);expect(JSON.stringify(first.messages)).toBe(before);expect(frozen.messages.slice(0,first.messages.length)).toEqual(first.messages);c.contextTokens=4096;const fitted=await c.fit('',{protocol:'',formatReminder:''},suffix);expect(fitted.needsCompression).toBe(false);expect(fitted.messages.slice(-3)).toEqual(suffix);expect(sources.length).toBeGreaterThan(0);expect(sources.join('')).not.toContain('将来我乘船离开');expect(c.history.at(-1)?.content).toBe('正文已经完成。');
+ const sources:string[]=[];const c=new ConversationContext([message('old','user','旧问题'.repeat(1200)),message('reply','assistant','旧事实'.repeat(1200)),message('current','user','现在')],card,[],DEFAULT_SETTINGS,16384,{protocol:'',inputRatio:1.2},async messages=>{sources.push(JSON.stringify(messages));return '旧事';});
+ const first=await c.fit();const before=JSON.stringify(first.messages);c.appendOutput(message('body','assistant',''),'正文已经完成。',false);const suffix=[{role:'user' as const,content:'给候选'},{role:'assistant' as const,content:'将来我乘船离开。'},{role:'user' as const,content:'接着给候选'}];const frozen=c.extend(first,[{role:'assistant',content:'正文已经完成。'},...suffix]);expect(JSON.stringify(first.messages)).toBe(before);expect(frozen.messages.slice(0,first.messages.length)).toEqual(first.messages);c.contextTokens=4096;const fitted=await c.fit('',{protocol:''},suffix);expect(fitted.needsCompression).toBe(false);expect(fitted.messages.slice(-3)).toEqual(suffix);expect(sources.length).toBeGreaterThan(0);expect(sources.join('')).not.toContain('将来我乘船离开');expect(c.history.at(-1)?.content).toBe('正文已经完成。');
 });

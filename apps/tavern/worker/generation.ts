@@ -1,7 +1,7 @@
 import { capabilities, modelInput, recordFeedback, type Capability } from './models';
-import { candidateDelimiter, BODY_TASK, CandidateStream } from '../shared/candidates';
+import { candidateDelimiter, CandidateStream } from '../shared/candidates';
 import { runRoleplay } from './gateway';
-import { DirectorAgent, DirectorContextError, DIRECTOR_RESPONSE_FORMAT, prepareSynopsis } from './director';
+import { DirectorAgent, DirectorContextError, DIRECTOR_RESPONSE_FORMAT, directorTask } from './director';
 import { InferenceMetrics } from './metrics';
 import { parseBook, parseCard } from '../shared/cards';
 import {LoreIndex,embeddings} from './lore';
@@ -47,8 +47,8 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
   const books=await ownedBooks(env,owner,JSON.parse(row.book_ids_json));
   const embedded=parseCard(JSON.parse(row.character_json)).data.character_book;
   lore=new LoreIndex(store.storage.sql,[...(embedded?[{id:'character',book:parseBook(embedded)}]:[]),...books.filter(b=>b.enabled).map(b=>({id:b.id,book:parseBook(JSON.parse(b.book_json),b.name)}))],(texts,signal)=>embeddings(env,texts,username,requestId,signal),abort.signal);
-  projectionContext={character:JSON.parse(row.character_json),books:books.map(b=>[b.id,b.enabled,b.book_json]),settings:JSON.parse(row.settings_json),tools:AGENT_TOOLS,rule:AGENT_RULE};
-  conversation=new ConversationContext([...base,...(regenerate||continuing?[]:[userMessage])],JSON.parse(row.character_json),books.filter(b=>b.enabled).map(b=>parseBook(JSON.parse(b.book_json),b.name)),settings(JSON.parse(row.settings_json)),capability.contextTokens,{protocol:AGENT_RULE,formatReminder:BODY_TASK,inputRatio:capability.inputRatio,state:stableJson(before)},messages=>summarizeWithModel(env,username,requestId,settings(JSON.parse(row.settings_json)),messages,abort.signal));
+  projectionContext={character:JSON.parse(row.character_json),books:books.map(b=>[b.id,b.enabled,b.book_json]),settings:JSON.parse(row.settings_json),tools:AGENT_TOOLS,rule:AGENT_RULE,promptVersion:2};
+  conversation=new ConversationContext([...base,...(regenerate||continuing?[]:[userMessage])],JSON.parse(row.character_json),books.filter(b=>b.enabled).map(b=>parseBook(JSON.parse(b.book_json),b.name)),settings(JSON.parse(row.settings_json)),capability.contextTokens,{protocol:AGENT_RULE,inputRatio:capability.inputRatio,state:stableJson(before)},messages=>summarizeWithModel(env,username,requestId,settings(JSON.parse(row.settings_json)),messages,abort.signal));
   await conversation.restore(row.summary_json);if(continuing)conversation.resume(assistantId);
   prompt=conversation.prompt(continuing?'继续上一条回复，从中断处接着写，不要重复已有内容。':'');
   if(!continuing){const previous=base.at(-1),saved=previous?store.projection(previous.id):null;
@@ -141,17 +141,26 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
      await owns();synopsisRequests++;modelRequests++;synopsisGatewayLogId=null;const started=Date.now(),observations=new InferenceMetrics();
      try{const result=await summarizeWithModel(env,username,requestId,opts,messages,abort.signal,(event,logId)=>{observations.observe(event);synopsisGatewayLogId=logId;const value=event as {model?:unknown};if(typeof value.model==='string')synopsisModel=value.model;});await owns();return result;}finally{synopsisElapsedMs+=Date.now()-started;synopsisMetrics=observations.snapshot();}
     }};
-    const overview=await prepareSynopsis(committedHistory,store.synopsis(),conversation.summary?JSON.stringify(conversation.summary):null,synopsisOptions);
-    synopsisSource=overview.source;synopsisCovered=overview.summary?.covered.length??0;
-    if(overview.summary){await owns();if(!store.saveSynopsis(assistantId,overview.summary))throw Error('生成已停止');}
-    director=new DirectorAgent(JSON.parse(row.character_json),opts,agent.state,committedHistory,synopsisOptions.contextTokens,capability.inputRatio,overview.summary?.text??'');
+    // Preserve the body prefix, including tool transcript and any existing checkpoint.
+    synopsisSource='body-prefix';synopsisCovered=conversation.summary?.covered.length??0;
+    director=new DirectorAgent(prompt.messages,requestOutput,agent.state,conversation.contextTokens,capability.inputRatio);
+    let fallback:ConversationContext|undefined;
+    const rebuild=async(limit:number)=>{
+     if(!fallback){
+      fallback=new ConversationContext(structuredClone(committedHistory),conversation.card,conversation.books,opts,limit,{...conversation.options,state:stableJson(agent.state)},synopsisOptions.infer);
+      await fallback.restore(conversation.summary?JSON.stringify(conversation.summary):null);fallback.resume(assistantId);
+     }
+     fallback.contextTokens=limit;await fallback.compress();
+     const rebuilt=await fallback.fit();synopsisOptions.contextTokens=fallback.contextTokens;director!.contextTokens=fallback.contextTokens;
+     return [...rebuilt.messages,directorTask(agent.state)];
+    };
     directorStartedAt=Date.now();candidates=await director.run(async messages=>{
      modelRequests++;
-     const response=await runRoleplay(env,username,requestId,{messages,response_format:DIRECTOR_RESPONSE_FORMAT,stream:true,...modelInput({...opts,thinkingEnabled:false})},abort.signal);
+     const response=await runRoleplay(env,username,requestId,{messages,tools:AGENT_TOOLS,tool_choice:'none',response_format:DIRECTOR_RESPONSE_FORMAT,stream:true,...modelInput({...opts,thinkingEnabled:false})},abort.signal);
      if(!(response instanceof Response))throw Error('Director非响应');director!.gatewayLogId=response.headers.get('cf-aig-log-id');
      if(!response.ok){const limit=await inspectLimit(response,env,capability);if(limit)throw new DirectorContextError(limit);throw Error('Director上游错误');}
      return response;
-    },abort.signal,owns,synopsisOptions);
+    },abort.signal,owns,rebuild);
     candidateOutcome=director.outcome;candidateFirstAt=director.firstAt;model=director.model||model;gatewayLogId=director.gatewayLogId;metrics=director.metrics;
    }catch(error){if(abort.signal.aborted)throw error;candidateOutcome='error';}
    candidateFinishedAt=Date.now();
