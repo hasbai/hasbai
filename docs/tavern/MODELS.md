@@ -37,7 +37,7 @@
 
 ## 续聊候选内容与 UI
 
-roleplay先正文，后独立 Director。正文正常结束并保存后，Director 复用最后一次正文请求的实际上下文前缀，追加本次新正文与末尾的 Director system 指令。候选只有在该回复正常完成、协议与内容校验通过后可点击；停止、失败和不可靠终态均丢弃候选。成功续写或重新生成也使用同一协议。现有开场白和旧历史不补发模型请求。
+roleplay先正文，后独立 Director。正文正常结束并保存后，Director 复用最后一次正文请求的实际上下文前缀，追加本次新正文与末尾的 Director user 任务。候选只有在该回复正常完成、协议与内容校验通过后可点击；停止、失败和不可靠终态均丢弃候选。成功续写或重新生成也使用同一协议。现有开场白和旧历史不补发模型请求。
 
 候选必须是**用户视角的完整可发送文本**，承接最新故事、用户 persona 和角色设定，语义有区分、不替用户预设选择、不虚构已发生事件。不生成角色自己的回复，不返回抽象标签如“继续探索”。依据上下文区分方向，不固定每轮相同模板。每条建议 15–60 个字符，服务端硬上限 120 个 Unicode 字符；候选可以是用户行动或台词。生成示例只放测试夹具，不作为生产兜底。
 
@@ -51,7 +51,7 @@ roleplay先正文，后独立 Director。正文正常结束并保存后，Direct
 
 沿用 `POST /api/sessions/:id/generate`、UUID、生成占用和停止信号。正文正常 stop 后先保存完整正文并发送 `candidates_pending`，随后由独立 TypeScript `DirectorAgent` 生成候选；不新增接口、用户设置、路由或调度器。
 
-Director 不替换正文的首条 system、不改动用户输入，也不重建角色与故事 JSON。逐字段保留正文实际 messages、工具定义和已完成工具结果，追加最后一次正文请求的新输出（length/工具续轮不重复累计正文），再追加独立的 Director system 任务与最新已确认状态。候选协议与角色故事约束通过末尾任务区分；Director 的工具选择固定 none，禁止新调用，服务端也不执行候选阶段工具。
+Director 不替换正文的首条 system、不改动用户输入，也不重建角色与故事 JSON。逐字段保留正文实际 messages、工具定义和已完成工具结果，追加最后一次正文请求的新输出（length/工具续轮不重复累计正文），再追加独立的 Director user 任务与最新已确认状态。候选协议与角色故事约束通过末尾任务区分；Director 的工具选择固定 none，禁止新调用，服务端也不执行候选阶段工具。
 
 不再为最近四条消息之外的剧情每轮生成独立梗概。正文已有 checkpoint 随原前缀复用，未压缩的原历史完整保留。旧 DO `director_synopsis` 派生表为兼容保留，不再读取或写入；原始剧情与正文 checkpoint 不改写。
 
@@ -92,7 +92,7 @@ Director 不替换正文的首条 system、不改动用户输入，也不重建�
 - [Cloudflare动态路由](https://developers.cloudflare.com/ai-gateway/features/dynamic-routing/usage/)：当前代码通过固定 default Gateway 的 `/compat/chat/completions` HTTP 入口调用，model 为 `dynamic/rp`。RP白名单和完整输入保持，HTTP错误与日志头由每次Response读取，不依赖绑定实例的可变日志ID。当前调用入口的真实验收限制见[PROGRESS](PROGRESS.md)；专用推理 Secret 不进入浏览器，不直连@cf模型、不删参数重试。
 - [llama.cpp服务契约](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md)：`/props`运行容量及`chat_template_kwargs`；当前模板实际使用enable_thinking，关闭时预填充空think，开启时等待思考内容。reasoning_format:none不是关闭思考。
 
-正文原 system 保留；Director 的本次任务另作为末尾 system 追加。通知复用共享`@hasbai/ui/notice`；项目原则见[AGENTS](../../AGENTS.md#全局约束)，证据见[PROGRESS](PROGRESS.md)。
+正文原 system 保留；Director 的本次任务另作为末尾 user 追加；本地 Qwen 模板只允许 system 位于开头，避免触发模板错误和 Gateway 备用节点。此任务不写入用户剧情或正文投影。通知复用共享`@hasbai/ui/notice`；项目原则见[AGENTS](../../AGENTS.md#全局约束)，证据见[PROGRESS](PROGRESS.md)。
 
 ## 对话与默认提示词
 
