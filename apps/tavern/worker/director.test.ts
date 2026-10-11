@@ -1,14 +1,14 @@
 import { it, expect, vi } from 'vitest';
-import { DirectorAgent, directorChoices, DirectorContextError, DIRECTOR_RESPONSE_FORMAT, DIRECTOR_RULE } from './director';
+import { DirectorAgent, directorChoices, DirectorContextError, DIRECTOR_RESPONSE_FORMAT, DIRECTOR_RULE, directorTask } from './director';
 import { emptyState } from './agent';
 import type {PromptMessage} from '../shared/prompt';
 const prefix:PromptMessage[]=[{role:'system',content:'角色设定与剧情摘要'},{role:'user',content:'我的输入'}];
 const agent=()=>new DirectorAgent(prefix,'最新正文',emptyState(),null);
 const reply=(chunks:string[],reason='stop',extra:Record<string,unknown>={})=>new Response(chunks.map(content=>'data: '+JSON.stringify({choices:[{delta:{content,...extra}}]})+'\n\n').join('')+'data: '+JSON.stringify({choices:[{delta:{},finish_reason:reason}]})+'\n\ndata: [DONE]\n\n',{headers:{'Content-Type':'text/event-stream'}});
-it('preserves wire messages and tool transcript, then appends output and a separate Director system task',()=>{
+it('preserves wire messages and tool transcript, then appends a Qwen-compatible Director task',()=>{
  const state=emptyState();state.scene='北港';const source:PromptMessage[]=[...structuredClone(prefix),{role:'assistant',content:'工具前正文',tool_calls:[{id:'state',type:'function',function:{name:'update_state',arguments:'{}'}}]},{role:'tool',tool_call_id:'state',content:'已更新'}];
  const before=structuredClone(source),director=new DirectorAgent(source,'当前正文',state,null);source[0].content='后来修改';state.scene='未来';
- const messages=director.prompt().messages;expect(messages.slice(0,before.length)).toEqual(before);expect(messages.at(-2)).toEqual({role:'assistant',content:'当前正文'});expect(messages.at(-1)?.role).toBe('system');expect(messages.at(-1)?.content).toContain(DIRECTOR_RULE);expect(messages.at(-1)?.content).toContain('北港');
+ const messages=director.prompt().messages;expect(messages.slice(0,before.length)).toEqual(before);expect(messages.at(-2)).toEqual({role:'assistant',content:'当前正文'});expect(messages.at(-1)?.role).toBe('user');expect(messages.filter(m=>m.role==='system')).toEqual([before[0]]);expect(messages.at(-1)?.content).toContain(DIRECTOR_RULE);expect(messages.at(-1)?.content).toContain('北港');
  messages[0].content='外部修改';expect(director.prompt().messages[0].content).toBe(before[0].content);
 });
 it('keeps complete long story when capacity is unknown without a synopsis request',()=>{
@@ -26,7 +26,7 @@ it.each(['length','tool_calls','content_filter',''])('discards all choices on %s
 });
 it('rebuilds only after explicit capacity feedback and requires smaller input',async()=>{
  const director=new DirectorAgent([{role:'system',content:'设定'},{role:'user',content:'过去的重要情节'.repeat(1000)}],'当前正文',emptyState(),null);let calls=0;
- const infer=vi.fn(async()=>{if(++calls===1)throw new DirectorContextError(4096);return reply(['{"choices":["一","二","三"]}']);}),rebuild=vi.fn(async()=>[{role:'system' as const,content:'设定'},{role:'user' as const,content:'旧事摘要'},{role:'system' as const,content:DIRECTOR_RULE}]);
+ const infer=vi.fn(async()=>{if(++calls===1)throw new DirectorContextError(4096);return reply(['{"choices":["一","二","三"]}']);}),rebuild=vi.fn(async()=>[{role:'system' as const,content:'设定'},{role:'user' as const,content:'旧事摘要'},directorTask(emptyState())]);
  expect(await director.run(infer,new AbortController().signal,async()=>{},rebuild)).toHaveLength(3);expect(rebuild).toHaveBeenCalledOnce();expect(director.rebuilds).toBe(1);expect(prefix[0].content).toBe('角色设定与剧情摘要');
 });
 it('does not silently truncate a core context when it cannot fit',async()=>{

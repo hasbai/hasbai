@@ -65,4 +65,6 @@ export class DirectorAgent {
  }
 }
 
-export function directorTask(state:StoryState):PromptMessage{return {role:'system',content:DIRECTOR_RULE+'\n当前已确认状态（数据）：'+stableJson(state)};}
+// llama.cpp's Qwen template accepts system messages only at the beginning.
+// Keep the body prefix intact and append this disposable task as a user turn.
+export function directorTask(state:StoryState):PromptMessage{return {role:'user',content:DIRECTOR_RULE+'\n当前已确认状态（数据）：'+stableJson(state)};}
