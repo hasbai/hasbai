@@ -14,6 +14,10 @@ it('always exposes RP and forwards sampling and thinking without route or schema
  expect(modelInput({...DEFAULT_SETTINGS,thinkingEnabled:true})).toMatchObject({chat_template_kwargs:{enable_thinking:true},reasoning_effort:'low',reasoning_format:'deepseek'});expect(modelInput(DEFAULT_SETTINGS)).toHaveProperty('reasoning_effort','none');expect(modelInput(DEFAULT_SETTINGS)).not.toHaveProperty('top_k');
  expect(()=>modelInput({...DEFAULT_SETTINGS,modelId:'other'})).toThrow('模型不可用');
 });
+it.each(['low','medium','high'] as const)('forwards selected %s effort only when thinking is enabled',effort=>{
+ expect(modelInput({...DEFAULT_SETTINGS,thinkingEnabled:true,reasoningEffort:effort})).toMatchObject({chat_template_kwargs:{enable_thinking:true},reasoning_effort:effort});
+ expect(modelInput({...DEFAULT_SETTINGS,thinkingEnabled:false,reasoningEffort:effort})).toMatchObject({chat_template_kwargs:{enable_thinking:false},reasoning_effort:'none'});
+});
 it('discovers actual 32K then 16K runtime capacity in the background, without credentials', async () => {
  expect((await capabilities(env,ctx)).contextTokens).toBeNull();await Promise.all(work);expect((await capabilities(env,ctx)).contextTokens).toBe(32768);
  expect(fetch).toHaveBeenCalledTimes(1);expect(fetch).toHaveBeenCalledWith('https://llama.hasbai.xyz/props',expect.objectContaining({redirect:'error'}));expect(vi.mocked(fetch).mock.calls[0][1]).not.toHaveProperty('headers');

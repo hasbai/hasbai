@@ -31,7 +31,7 @@ export async function modelOptions(env: Env, ctx: Pick<ExecutionContext, 'waitUn
 }
 export function modelInput(settings: Settings) {
  if (settings.modelId !== 'rp') throw new HttpError(400, '模型不可用');
- return { temperature: settings.temperature, top_p: settings.topP, cache_prompt: true, chat_template_kwargs: { enable_thinking: settings.thinkingEnabled }, reasoning_effort: settings.thinkingEnabled ? 'low' : 'none', reasoning_format: 'deepseek', ...(settings.topK ? { top_k: settings.topK } : {}), frequency_penalty: settings.frequencyPenalty, presence_penalty: settings.presencePenalty, stream_options: { include_usage: true } };
+ return { temperature: settings.temperature, top_p: settings.topP, cache_prompt: true, chat_template_kwargs: { enable_thinking: settings.thinkingEnabled }, reasoning_effort: settings.thinkingEnabled ? settings.reasoningEffort : 'none', reasoning_format: 'deepseek', ...(settings.topK ? { top_k: settings.topK } : {}), frequency_penalty: settings.frequencyPenalty, presence_penalty: settings.presencePenalty, stream_options: { include_usage: true } };
 }
 /** Explicit upstream capacity is cached; generation compresses history before retrying. */
 export async function recordFeedback(env: Env, capability: Capability, feedback: { model?: string; contextLimit?: number }) {

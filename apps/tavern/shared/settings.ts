@@ -10,9 +10,10 @@ export function normalizeSettings(value: unknown): Settings {
  if (typeof v.persona !== 'string' || v.persona.length > 12000 || typeof v.systemPrompt !== 'string' || !v.systemPrompt.trim() || v.systemPrompt.length > 12000) throw new Error('请检查角色设定与系统提示');
  if (v.modelId !== 'rp') throw new Error('模型不可用');
  if (typeof v.thinkingEnabled !== 'boolean') throw new Error('请检查思考开关');
+ if (!['low', 'medium', 'high'].includes(v.reasoningEffort)) throw new Error('请检查思考强度');
  if (!range(v.temperature, 0, 2)) throw new Error('温度需为 0–2');
  if (!range(v.topP, Number.MIN_VALUE, 1)) throw new Error('Top P 需大于 0 且不超过 1');
  if (!range(v.topK, 0, 1000, true)) throw new Error('Top K 需为 0–1000 的整数');
  if (!range(v.frequencyPenalty, -2, 2) || !range(v.presencePenalty, -2, 2)) throw new Error('惩罚参数需为 −2–2');
- return { userName: v.userName.trim(), persona: v.persona, systemPrompt: v.systemPrompt, modelId: v.modelId, thinkingEnabled: v.thinkingEnabled, temperature: v.temperature, topP: v.topP, topK: v.topK, frequencyPenalty: v.frequencyPenalty, presencePenalty: v.presencePenalty };
+ return { userName: v.userName.trim(), persona: v.persona, systemPrompt: v.systemPrompt, modelId: v.modelId, thinkingEnabled: v.thinkingEnabled, reasoningEffort: v.reasoningEffort, temperature: v.temperature, topP: v.topP, topK: v.topK, frequencyPenalty: v.frequencyPenalty, presencePenalty: v.presencePenalty };
 }
