@@ -52,7 +52,9 @@ flowchart LR
 
 manifest 声明北极账本、standalone、同源 scope/start_url 和图标；同时提供180px Apple Touch Icon。Vite build 完成后 scripts/build-pwa.mjs 按 index、manifest、icons、assets 的内容生成有版本的 sw.js 和静态资源清单。
 
-Service Worker 只预缓存公开应用资源；不拦截跨域Auth0/Neon、非GET、Authorization请求，也不缓存带查询参数的资源或任何运行时API响应。受控导航优先以no-store请求规范根路径/，失败或非HTML成功响应时回退当前完整安装版本的应用壳；不把在线页面写入另一版本缓存。新SW完整预缓存后skipWaiting并clients.claim，后续刷新取得线上版本；不调用页面reload或Client.navigate，不打断正在填写的交易。旧页面仍可能加载旧哈希chunk，因此有打开窗口时保留旧版本静态缓存并按精确资源路径查找；仅激活时确认没有打开窗口才清理旧financial-static缓存，不触碰其他应用缓存。应用启动、回到前台、恢复网络时检查SW更新，合并在途检查，离线失败等待下次事件重试。
+Service Worker 只预缓存公开应用资源；不拦截跨域Auth0/Neon、非GET、Authorization请求，也不缓存带查询参数的资源或任何运行时API响应。受控导航优先以no-store请求规范根路径/，失败或非HTML成功响应时回退当前完整安装版本的应用壳；不把在线页面写入另一版本缓存。
+
+新SW完整预缓存后skipWaiting并clients.claim，后续刷新取得线上版本；不调用页面reload或Client.navigate，不打断正在填写的交易。旧页面仍可能加载旧哈希chunk，因此有打开窗口时保留旧版本静态缓存并按精确资源路径查找；仅激活时确认没有打开窗口才清理旧financial-static缓存，不触碰其他应用缓存。应用启动、回到前台、恢复网络时检查SW更新，合并在途检查，离线失败等待下次事件重试。
 
 账本查询与token继续只放内存，无离线数据库、离线保存队列或后台写入。编辑期间断网保留当前内存输入，禁用保存；网络恢复允许提交，结果不明确仍沿用待核对状态禁止重复写入。冷启动离线只能取得应用壳，登录/读取需要网络。
 

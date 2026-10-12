@@ -10,7 +10,9 @@ Node API 保留 XrayR NewV2board `/api/v1/server/UniProxy/config|user|push`，No
 
 ## Clash/Mihomo 内置分流模板
 
-`format=clash` 返回完整的 Mihomo YAML。默认包含节点选择、自动测速、故障转移、广告拦截、国内直连、AI、YouTube、Netflix、Disney+、Spotify、哔哩哔哩、Telegram、社交平台、GitHub、Google、微软、苹果、游戏和兜底策略组。国内游戏/CDN、苹果和微软中国域名优先直连；国内服务分类先于海外大类，海外代理域名先于中国 IP，最终未匹配流量交给“漏网之鱼”。广告默认 REJECT，可在客户端切换 DIRECT。微软、苹果、哔哩哔哩默认 DIRECT，其余海外服务默认走节点选择。
+`format=clash` 返回完整的 Mihomo YAML。默认基础策略组为节点选择、自动测速、故障转移、广告拦截、国内直连和兜底。服务策略组包括 AI、YouTube、Netflix、Disney+、Spotify、哔哩哔哩、Telegram。
+
+另有社交平台、GitHub、Google、微软、苹果和游戏组。国内游戏/CDN、苹果和微软中国域名优先直连；国内服务分类先于海外大类，海外代理域名先于中国 IP，最终未匹配流量交给“漏网之鱼”。广告默认 REJECT，可在客户端切换 DIRECT。微软、苹果、哔哩哔哩默认 DIRECT，其余海外服务默认走节点选择。
 
 规则数据来自 [MetaCubeX/meta-rules-dat](https://github.com/MetaCubeX/meta-rules-dat) 的 `meta/geo/geosite` 域名 YAML 与 `meta/geo/geoip` IP YAML，客户端按 `rule-providers` 每 86400 秒更新和本地缓存；不在 Worker 请求中下载、不把上游规则全文复制入仓库。上游数据许可为 [GPL-3.0](https://github.com/MetaCubeX/meta-rules-dat/blob/master/LICENSE)，其 README 记录各数据源。模板结构参考 [Xboard 默认配置](https://github.com/cedar2025/Xboard/blob/master/resources/rules/default.clash.yaml) 的动态节点、测速与故障转移做法；本站策略及规则编排单独实现。规则匹配和下载字段遵循 [Mihomo rule-providers](https://wiki.metacubex.one/en/config/rule-providers/) 与 [DNS](https://wiki.metacubex.one/en/config/dns/) 文档。
 
@@ -24,11 +26,15 @@ Node API 保留 XrayR NewV2board `/api/v1/server/UniProxy/config|user|push`，No
 
 JWT/audience/管理员权限的签发与验签规则见[AUTHORIZATION](../AUTHORIZATION.md)。Worker 以签名 sub 查本人，首次访问创建禁用账户，后续读取不重复写入；email 仅展示，不能用于旧账户关联。服务资格、订阅凭据和 Node token 是独立业务协议，不由登录成功替代。
 
-节点服务端 JSON 和订阅公开参数分别存储，订阅序列化仅使用白名单；REALITY 私钥仅存在管理员配置，不出现在订阅。节点地址、端口、SNI、公钥等由管理员据真实节点填写；面板不生成虚假的可用节点。VMess/VLESS/Trojan/Shadowsocks 支持常规 TCP/WS/gRPC 参数，Shadowsocks 仅标准 AEAD TCP。Clash 格式为 YAML；模板与覆盖项存于独立 `clash_settings` 表，与节点协议 JSON 模板分开。配额以字节存储，GB 输入换算 1024³；额度 0 为不限。到期编辑明确使用 UTC。设备上限仅按原节点协议提供字段，官方 NewV2board 可能使用本机 override。
+节点服务端 JSON 和订阅公开参数分别存储，订阅序列化仅使用白名单；REALITY 私钥仅存在管理员配置，不出现在订阅。节点地址、端口、SNI、公钥等由管理员据真实节点填写；面板不生成虚假的可用节点。VMess/VLESS/Trojan/Shadowsocks 支持常规 TCP/WS/gRPC 参数，Shadowsocks 仅标准 AEAD TCP。
+
+Clash 格式为 YAML；模板与覆盖项存于独立 `clash_settings` 表，与节点协议 JSON 模板分开。配额以字节存储，GB 输入换算 1024³；额度 0 为不限。到期编辑明确使用 UTC。设备上限仅按原节点协议提供字段，官方 NewV2board 可能使用本机 override。
 
 模板是可复制的配置快照；编辑模板不自动修改节点。载入模板只修改当前编辑器，保存才写入。JSON 中完整的 `{{var}}` 字符串按变量原始 JSON 类型替换，嵌入字符串的变量会正确转义；未提供变量拒绝载入。JSON 有效不等于所有 XrayR 协议字段有效，节点运行配置仍需按实际部署填写。
 
-同步按钮递增 revision，代表等待节点下次轮询；不表示节点已经应用。XrayR 官方 NewV2board 对空用户列表有既有局限，停用最后一个用户后节点端可能保留缓存，立即撤销全部代理服务须在节点端停服。未改变上游 XrayR。流量协议无幂等标识，响应不明确的重试可能重复累加；不承诺精确一次。报告页面最近100条，全零请求无报告，不伪造在线状态。D1 使用原五张表，未增加每日汇总或心跳写入；原始报告尚未自动清理。
+同步按钮递增 revision，代表等待节点下次轮询；不表示节点已经应用。XrayR 官方 NewV2board 对空用户列表有既有局限。停用最后一个用户后节点可能保留缓存；立即撤销全部代理服务须在节点端停服。
+
+未改变上游 XrayR。流量协议无幂等标识，响应不明确的重试可能重复累加；不承诺精确一次。报告页面最近100条，全零请求无报告，不伪造在线状态。D1 使用原五张表，未增加每日汇总或心跳写入；原始报告尚未自动清理。
 
 自动测试 fixture 独立于生产入口，生产无认证绕过。UI 组件用真实生产 CSS 验收；模拟设备不代表 iOS 真机或实际代理链路验收。
 

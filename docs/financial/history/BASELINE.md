@@ -95,6 +95,6 @@ ID 的 `column_default` 为空不等于没有自增：实际 identity 已另外�
 
 已核实：对象元数据、精确聚合计数、主要约束/索引/角色有效读取权限、无 token 请求结果和目标域名响应。
 
-未核实：Auth0 应用配置、有效用户 token、JWKS/audience、浏览器 CORS、退款业务语义、完整期初/币种、既有导入程序、其他 schema 消费者、Cloudflare 控制台/DNS、生产发布链路。
+未核实：Auth0 应用配置、有效用户 token、JWKS/audience 与浏览器 CORS。退款语义、完整期初/币种、既有导入程序和其他 schema 消费者待核实。Cloudflare 控制台/DNS 及生产发布链路也未核实。
 
 可重跑的聚合查询见 [只读核查 SQL](inspect-financial.sql)。它仅输出结构/质量计数，不执行写入；必须显式选择 hasbai 的目标分支和 neondb。详细元数据可再查询 information_schema、pg_constraint、pg_policies、pg_indexes 与权限函数。

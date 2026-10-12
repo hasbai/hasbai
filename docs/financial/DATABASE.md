@@ -22,7 +22,7 @@ superadmin 是 NOLOGIN/NOSUPERUSER/NOBYPASSRLS 的业务角色，authenticator �
 
 ## 金额、日期与刷新
 
-numeric 列在请求中转 text，前端 Decimal 汇总，不经 JavaScript Number 计算业务金额。按稳定唯一顺序每1000行分页；同一报表同时读取时复用进行中的请求。日期采用北京时间，现金及损益使用精确半开区间。当前首页由客户端固定同一 as_of 用于筛选、分组和下钻，多次数据请求不宣称数据库原子快照。
+numeric 列在请求中转 text，前端 Decimal 汇总，不经 JavaScript Number 计算业务金额。按稳定唯一顺序每1000行分页；同一报表同时读取时复用进行中的请求。日期采用北京时间，现金及损益使用精确半开区间。当前首页由客户端固定同一 as_of 用于筛选、分组和下钻，这些请求不构成数据库原子快照。
 
 balance 的纳入规则仅排除同笔科目缺失，包含已录入未来交易。balance_history 沿用该规则，按北京时间日末累计至维护当天；存在未来交易时最新历史不必等于当前余额。
 
@@ -40,4 +40,6 @@ scripts/check-api.mjs 使用真实 Auth0 PKCE 验证顶层 role、直接读取�
 
 007 保留三表和既有字段，`save_account(integer,jsonb)` 的 payload 支持显式五位 ID；p_id 始终是修改前 ID。首位对应资产1、负债2、净资产3、收入4、支出5，中间两位为子类，末两位为序号；已有同名子类保持相同前三位。旧客户端未传新增 ID 时从对应子类分配空闲编号，不再使用与历史编号脱节的 identity 序列。迁移本身不修改既有记录或编号。
 
-用户明确请求的单科目改号通过既有 ON UPDATE CASCADE 同步 entry.account_id，分录和交易 ID 不变，并更新关联交易 updated_at 阻止旧编辑器覆盖。`delete_transaction(integer,timestamptz)` 按 updated_at 检查后级联删除所有分录，包括退款分录；`delete_account(integer)` 仅删除无分录引用的科目。两者固定 search_path、以 financial_writer 执行、仅授予 superadmin EXECUTE，基表 DML 继续禁止。保存和删除同事务刷新余额。
+用户明确请求单科目改号后，既有 ON UPDATE CASCADE 同步 entry.account_id。分录和交易 ID 不变。同步更新关联交易 updated_at，阻止旧编辑器覆盖。
+
+`delete_transaction(integer,timestamptz)` 按 updated_at 检查后级联删除所有分录，包括退款分录；`delete_account(integer)` 仅删除无分录引用的科目。两者固定 search_path、以 financial_writer 执行、仅授予 superadmin EXECUTE，基表 DML 继续禁止。保存和删除同事务刷新余额。
