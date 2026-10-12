@@ -1,6 +1,7 @@
 import type { FinishReason } from './types';
 export function generationNotice(reason?: FinishReason | null): string {
  switch(reason){
+  case 'review_failed': return '正文未完成叙事审核，未提交剧情状态；请重试或调整输入';
   case 'length': return '回复达到长度上限，内容已保存';
   case 'timeout': return '生成超时，内容已保存';
   case 'stopped': return '已停止生成';

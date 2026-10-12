@@ -29,7 +29,7 @@ export function activateBook(book: Book, history: Pick<Message, 'content'>[], ex
   }).sort((a,b) => a.order-b.order);
 }
 export type PromptMessage = { role: 'system' | 'user' | 'assistant' | 'tool'; content: string; tool_call_id?: string; tool_calls?: {id:string;type:'function';function:{name:string;arguments:string}}[] };
-export function buildPrompt(raw: JsonObject, books: Book[], history: Message[], settings: Settings, contextTokens: number | null, continuationInstruction = '', options: { protocol?: string; inputRatio?: number; summary?: string; state?:string } = {}) {
+export function buildPrompt(raw: JsonObject, books: Book[], history: Message[], settings: Settings, contextTokens: number | null, continuationInstruction = '', options: { protocol?: string; inputRatio?: number; summary?: string; state?:string;bodyTask?:string } = {}) {
   const card = parseCard(raw), c = card.data;
   const char = c.nickname || c.name, expand = (text: string, original = '') => macros(text, char, settings.userName, original);
   const activeHistory = history.filter(m => m.status === 'completed');
@@ -43,7 +43,7 @@ export function buildPrompt(raw: JsonObject, books: Book[], history: Message[], 
   const selectedHistory = activeHistory;
   const system = [systemText(picked), post, options.protocol, options.summary ? '此前已发生事实：\n' + options.summary : ''].filter(Boolean).join('\n\n');
   const messages: PromptMessage[] = [{ role: 'system', content: system }, ...selectedHistory.map(m => ({ role: m.role, content: expand(m.content) }))];
-  if(options.state){const at=messages.at(-1)?.role==='user'?messages.length-1:messages.length;messages.splice(at,0,{role:'user',content:'当前已确认状态（数据）：'+options.state});}
+  if(options.state){const at=messages.at(-1)?.role==='user'?messages.length-1:messages.length;messages.splice(at,0,stateMessage(options.state,options.bodyTask));}
   if (continuationInstruction) messages.push({role:'user',content:continuationInstruction});
   // Template allowance is part of context estimation, not an output budget.
   const estimatedTokens = messages.reduce((sum, m) => sum + count(m.content) + 8, 256);
@@ -51,3 +51,5 @@ export function buildPrompt(raw: JsonObject, books: Book[], history: Message[], 
     needsCompression: contextTokens !== null && estimatedTokens > contextTokens,
     budget: { detectedContextTokens: contextTokens, includedMessages: selectedHistory.length, summaryTokens: count(options.summary ?? '') } };
 }
+
+export function stateMessage(state:string,bodyTask?:string):PromptMessage{return {role:'user',content:'当前已确认状态（数据）：'+state+(bodyTask?'\n本轮正文任务（应用指令）：'+bodyTask:'')};}

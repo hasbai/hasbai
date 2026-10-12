@@ -1,3 +1,4 @@
+import { draftProblems } from './narrative';
 import type { FinishReason, Message } from '../shared/types';
 import { HttpError } from './http';
 import type { Summary } from './context';
@@ -22,6 +23,7 @@ CREATE TABLE IF NOT EXISTS session_meta (id TEXT PRIMARY KEY, deleted INTEGER NO
 CREATE TABLE IF NOT EXISTS turn_snapshots (message_id TEXT PRIMARY KEY, before_json TEXT NOT NULL, after_json TEXT, steps_json TEXT NOT NULL DEFAULT '[]');
 CREATE TABLE IF NOT EXISTS director_synopsis (session_id TEXT PRIMARY KEY, value_json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS model_projections (message_id TEXT PRIMARY KEY, value_json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS generation_drafts (message_id TEXT PRIMARY KEY, content TEXT NOT NULL);
 `;
 export type TurnSnapshot={message_id:string;before_json:string;after_json:string|null;steps_json:string};
 /** Only the current session's SQLite operations; no remote database or model awaits in transactions. */
@@ -62,9 +64,17 @@ export class SessionStore {
  synced(revision:number){this.write('UPDATE session_meta SET synced_revision=? WHERE id=?',revision,this.id);}
  directory(){return this.rows<SessionRow & Record<string,SqlStorageValue>>('SELECT * FROM sessions WHERE id=?',this.id)[0];}
  idle(){const r=this.get();if(r.generation_id)throw new HttpError(409,'请先停止生成');return r;}
- recover(assistantId?:string){this.transaction(()=>{if(assistantId&&!this.owns(assistantId))return;this.write("UPDATE messages SET status='aborted',finish_reason='interrupted',candidates_json=NULL WHERE session_id=? AND status='pending'"+(assistantId?' AND id=?':''),this.id,...(assistantId?[assistantId]:[]));this.write('UPDATE sessions SET generation_id=NULL,generation_until=NULL WHERE id=?'+(assistantId?' AND generation_id=?':''),this.id,...(assistantId?[assistantId]:[]));});}
+ private recoverDrafts(assistantId?:string,reason:FinishReason='interrupted'){
+  // Recovery must recheck a final partial: the process may have died before validation.
+  const drafts=this.rows<{message_id:string;content:string}>("SELECT d.message_id,d.content FROM generation_drafts d JOIN messages m ON m.id=d.message_id WHERE m.session_id=? AND m.status IN ('pending','aborted')"+(assistantId?' AND m.id=?':''),this.id,...(assistantId?[assistantId]:[]));
+  for(const draft of drafts)if(draftProblems(draft.content).length)this.discardDraft(draft.message_id);
+  this.write("UPDATE messages SET content=COALESCE((SELECT content FROM generation_drafts WHERE message_id=messages.id),content),status='aborted',finish_reason=CASE WHEN status='aborted' AND finish_reason IS NOT NULL THEN finish_reason ELSE ? END,candidates_json=NULL WHERE session_id=? AND (status='pending' OR (status='aborted' AND EXISTS(SELECT 1 FROM generation_drafts WHERE message_id=messages.id)))"+(assistantId?' AND id=?':''),reason,this.id,...(assistantId?[assistantId]:[]));
+  this.write('DELETE FROM generation_drafts WHERE message_id IN (SELECT id FROM messages WHERE session_id=?'+(assistantId?' AND id=?':'')+')',this.id,...(assistantId?[assistantId]:[]));
+ }
+ recover(assistantId?:string){this.transaction(()=>{if(assistantId&&!this.owns(assistantId))return;this.recoverDrafts(assistantId);this.write('UPDATE sessions SET generation_id=NULL,generation_until=NULL WHERE id=?'+(assistantId?' AND generation_id=?':''),this.id,...(assistantId?[assistantId]:[]));});}
  claim(assistantId:string,now:number){return this.transaction(()=>{
   const r=this.get();if(r.generation_id&&(r.generation_until??0)>now)return false;
+  this.recoverDrafts(undefined,'expired');
   this.write('UPDATE sessions SET generation_id=?,generation_until=?,updated_at=? WHERE id=?',assistantId,now+180000,now,this.id);
   this.write("UPDATE messages SET status='aborted',finish_reason='expired' WHERE session_id=? AND status='pending'",this.id);this.dirty();return true;
  });}
@@ -80,6 +90,11 @@ export class SessionStore {
  pending(assistantId:string){return this.owns(assistantId)&&this.findMessage(assistantId)?.status==='pending';}
  saveSummary(assistantId:string,summary:string|null){if(!this.pending(assistantId))return false;return this.write('UPDATE sessions SET summary_json=? WHERE id=? AND generation_id=? AND EXISTS(SELECT 1 FROM messages WHERE id=? AND status=\'pending\')',summary,this.id,assistantId,assistantId)>0;}
  saveOutput(assistantId:string,content:string){if(!this.pending(assistantId))return false;return this.write("UPDATE messages SET content=? WHERE id=? AND session_id=? AND status='pending'",content,assistantId,this.id)>0;}
+ /** Private checkpoint: pending API messages never expose unaudited drafts. */
+ saveDraft(assistantId:string,content:string){if(!this.owns(assistantId))return false;this.write('INSERT INTO generation_drafts VALUES(?,?) ON CONFLICT(message_id) DO UPDATE SET content=excluded.content',assistantId,content);return true;}
+ /** Persist rejection before any later cleanup can fail; old versions remain untouched. */
+ rejectDraft(assistantId:string){return this.transaction(()=>{if(!this.owns(assistantId))return false;this.write("INSERT INTO generation_drafts VALUES(?,?) ON CONFLICT(message_id) DO UPDATE SET content=excluded.content",assistantId,'');this.write("UPDATE turn_snapshots SET steps_json='[]' WHERE message_id=?",assistantId);return true;});}
+ discardDraft(assistantId:string){this.write('DELETE FROM generation_drafts WHERE message_id=?',assistantId);}
  finish(assistantId:string,output:string,status:Message['status'],finishReason:FinishReason,candidates:string[],state?:StoryState,projection?:ModelProjection){return this.transaction(()=>{
   if(this.owns(assistantId)){
    if(status==='completed'&&finishReason==='stop'&&this.pending(assistantId)){
@@ -88,6 +103,7 @@ export class SessionStore {
    }
    this.write("UPDATE messages SET content=?,candidates_json=CASE WHEN status='aborted' OR ?<>'completed' THEN NULL ELSE ? END,finish_reason=CASE WHEN status='aborted' AND finish_reason IS NOT NULL THEN finish_reason ELSE ? END,status=CASE WHEN status='aborted' THEN 'aborted' ELSE ? END WHERE id=? AND session_id=?",output,status,candidates.length?JSON.stringify(candidates):null,finishReason,status,assistantId,this.id);
    this.write('UPDATE sessions SET generation_id=NULL,generation_until=NULL,updated_at=? WHERE id=? AND generation_id=?',Date.now(),this.id,assistantId);this.dirty();
+   this.discardDraft(assistantId);
   }
   return this.findMessage(assistantId);
  });}
