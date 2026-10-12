@@ -1,5 +1,11 @@
 import {it,expect} from 'vitest';
-import {draftProblems,projectionMatches,recallRequested} from './narrative';
+import {draftProblems,projectionMatches,recallRequested,streamableEnd} from './narrative';
+it('holds possible reasoning tags without delaying plain prose or ordinary markup',()=>{
+ for(const tag of ['<','< / ','<t','< THI','</think','<thinking','<think private','<thinking\n','<think data="<span','<think 内容<']){
+  expect(streamableEnd('正文。'+tag)).toBe(3);expect(draftProblems('正文。'+tag)).toHaveLength(1);
+ }
+ for(const prose of ['正文。','正文。<b>强调</b>','正文。<three','正文。<thought>'])expect(streamableEnd(prose)).toBe(prose.length);
+});
 it('rejects exposed reasoning markers and complete long paragraph duplication',()=>{
  const paragraph='灯下的账单上留着一处需要核对的编号。'.repeat(8);
  expect(draftProblems(paragraph+'\n\n'+paragraph)).toHaveLength(1);

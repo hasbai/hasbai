@@ -13,7 +13,7 @@ import type { FinishReason, Message } from '../shared/types';
 import { HttpError, json } from './http';
 import { settings, currentMessages, message, ownedBooks } from './store';
 import type { SessionStore } from './session-store';
-import { BODY_TASK, recallRequested, draftProblems, protocolProblems, projectionMatches, TOOL_CONTINUATION } from './narrative';
+import { BODY_TASK, recallRequested, draftProblems, protocolProblems, streamableEnd, projectionMatches, TOOL_CONTINUATION } from './narrative';
 import { AGENT_RULE, AGENT_TOOLS, AgentTurn, contentHash, stableJson, storyMessages, ToolCallStream, type ModelProjection, type StoryState } from './agent';
 export { explicitContextLimit } from './context';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
@@ -84,7 +84,7 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
    prompt=await conversation.fit(continuation);
    const saveSummary=async()=>{await owns();if(conversation.summary?.covered.includes(assistantId))return;checkpoint=conversation.summary?JSON.stringify(conversation.summary):null;const saved=store.saveSummary(assistantId,checkpoint);if(!saved){abort.abort();throw new Error('生成已停止');}if(conversation.contextTokens!==null)await recordFeedback(env,capability,{contextLimit:conversation.contextTokens});};
    await saveSummary();
-   const checkpointDraft=async()=>{await owns();if(protocolProblems(output).length){draftRejected=true;if(!store.rejectDraft(assistantId))throw Error('生成已停止');}else if(!draftRejected&&!store.saveDraft(assistantId,output))throw Error('生成已停止');};
+   const checkpointDraft=async()=>{await owns();if(protocolProblems(output).length){draftRejected=true;publishedOutput='';if(!store.rejectDraft(assistantId))throw Error('生成已停止');}else if(!draftRejected&&!store.saveDraft(assistantId,output))throw Error('生成已停止');};
    const syncOutput=(start:number)=>{const delta=output.slice(start);if(!delta)return;conversation.appendOutput({id:assistantId,role:'assistant',content:'',status:'completed',ordinal:0,requestId,createdAt:now},delta,continuing);continuation='接着最后一条未完成的正文续写，不重复已有内容。';};
    // Only plain emitted prose may become story memory; legacy candidate protocol stays opaque.
    const storyWire=(raw:string,start:number):PromptMessage=>output.slice(start).trim()===raw.replace(/\r\n?/g,'\n').trim()?conversation.storyFragment(raw):{role:'assistant',content:raw};
@@ -104,7 +104,14 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
     toolTranscript.push(repair);prompt=conversation.extend(prompt,[repair]);
     if(prompt.needsCompression)prompt=await conversation.fit(continuation,conversation.options,toolTranscript);
    }
-   const attemptPrefix=structuredClone(prompt.messages);let draftSavedAt=0;
+   const attemptPrefix=structuredClone(prompt.messages);let draftSavedAt=0;let streamedUntil=prefix.length;
+   const streamOutput=async()=>{
+    if(protocolProblems(output).length){await checkpointDraft();return;}
+    // A rejected first version may already be visible. The private revision replaces it via done.
+    if(revisions||draftRejected)return;
+    const end=streamableEnd(output),delta=output.slice(streamedUntil,end);
+    if(delta){firstBodyAt??=Date.now();await send({type:'delta',text:delta});streamedUntil=end;}
+   };
    for(;;){
    await owns();const storyAtStart=output.length;let requestOutput='';const toolCalls=new ToolCallStream();
    finishReason='upstream';
@@ -124,7 +131,7 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
     const choice=event.choices?.[0];if(typeof choice?.finish_reason==='string'&&choice.finish_reason){if(upstreamReason&&upstreamReason!==choice.finish_reason){finishReason='interrupted';throw new Error('conflicting finish');}upstreamReason=choice.finish_reason;}
     toolCalls.push(choice?.delta?.tool_calls);
     const delta=choice?.delta?.content;
-    if(typeof delta==='string') {requestOutput+=delta;rawGenerated+=delta;output+=parser.push(delta);if(Date.now()-draftSavedAt>=1000){await checkpointDraft();draftSavedAt=Date.now();}}
+    if(typeof delta==='string') {requestOutput+=delta;rawGenerated+=delta;output+=parser.push(delta);if(Date.now()-draftSavedAt>=1000){await checkpointDraft();draftSavedAt=Date.now();}await streamOutput();}
 
    }
    await checkpointDraft();
@@ -144,7 +151,7 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
    if(upstreamReason==='length'){if(!requestOutput.length)throw new Error('模型续写没有进展');
     const additions:PromptMessage[]=[storyWire(requestOutput,storyAtStart),{role:'user',content:'接着最后一条未完成的正文续写，不重复已有内容。'}];toolTranscript.push(...additions);
     syncOutput(storyAtStart);prompt=conversation.extend(prompt,additions);if(prompt.needsCompression)prompt=await conversation.fit(continuation,conversation.options,toolTranscript);await saveSummary();continue;}
-   const parsed=parser.finish();parserFinished=true;output+=parsed.body;
+   const parsed=parser.finish();parserFinished=true;output+=parsed.body;await streamOutput();
    if(abort.signal.aborted)throw new Error('aborted');
    finishReason=upstreamReason==='stop'?'stop':upstreamReason==='length'?'length':upstreamReason==='content_filter'?'content_filter':upstreamReason?'unsupported':'interrupted';
    if(finishReason!=='stop')throw new Error('incomplete');
@@ -153,13 +160,12 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
    const latestInput=[...sourceHistory].reverse().find(m=>m.role==='user')?.content??'';
    const problems=[...new Set([...draftProblems(output),...draftProblems(output.slice(prefix.length),committedBase.filter(m=>m.role==='assistant'&&m.status==='completed'&&(!continuing||m.ordinal<store.findMessage(assistantId)!.ordinal)).map(m=>m.content),recallRequested(latestInput))])];
    if(problems.length){
-    draftRejected=true;await owns();if(!store.rejectDraft(assistantId))throw Error('生成已停止');repairIssues=problems;storyProjection=undefined;
+    draftRejected=true;publishedOutput='';await owns();if(!store.rejectDraft(assistantId))throw Error('生成已停止');repairIssues=problems;storyProjection=undefined;
     if(revisions===1){finishReason='review_failed';throw Error('正文校验未通过');}
     continue attempts;
    }
    publishedOutput=output;finishReason='stop';
    await owns();if(!store.saveOutput(assistantId,publishedOutput))throw Error('生成已停止');
-   const newBody=publishedOutput.slice(prefix.length);if(newBody){firstBodyAt??=Date.now();await send({type:'delta',text:newBody});}
    await send({type:'candidates_pending',messageId:assistantId});
    const committedHistory=storyMessages([...store.messages().filter(m=>m.id!==assistantId),{id:assistantId,role:'assistant',content:output,status:'completed',ordinal:store.findMessage(assistantId)!.ordinal,requestId,createdAt:now}]);
    if(projectionMatches(rawGenerated,output.slice(prefix.length)))storyProjection={key:await contentHash([projectionContext,committedHistory.map(m=>[m.id,m.content])]),messages:[...prompt.messages,{role:'assistant',content:requestOutput}]};
@@ -216,7 +222,7 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
    try{
     let saved:ReturnType<SessionStore['finish']>;try{
      if(!parserFinished)output+=parser.finish().body;
-     if(draftProblems(output).length){draftRejected=true;if(!store.rejectDraft(assistantId))throw Error('生成已停止');}
+     if(draftProblems(output).length){draftRejected=true;publishedOutput='';if(!store.rejectDraft(assistantId))throw Error('生成已停止');}
      // Interrupted drafts remain visibly incomplete versions; they never commit state.
      if(status!=='completed'&&!draftRejected)publishedOutput=output;
      if(!draftRejected&&store.owns(assistantId))store.saveDraft(assistantId,publishedOutput);saved=store.finish(assistantId,publishedOutput,status,finishReason,candidates,agent.state,storyProjection);}finally{await onSettled(assistantId);}
