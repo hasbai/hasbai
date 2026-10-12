@@ -47,7 +47,8 @@
         "long",
         "candidates",
         "candidate-tail",
-        "composer"
+        "composer",
+        "model-controls"
       ]
     },
     {
@@ -269,7 +270,9 @@
             "desktop"
           ],
           "snapshots": [
-            "settings-reset.png"
+            "settings-reset.png",
+            "settings-thinking-high.png",
+            "chat-thinking-medium.png"
           ]
         }
       ]

@@ -230,6 +230,23 @@ it('normalizes legacy session/settings JSON and rejects unknown logical model be
  await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'出发'})).text();await Promise.all(work);
  expect(aiRun.mock.calls[0][0].query).toMatchObject({temperature:0.3,top_p:1,chat_template_kwargs:{enable_thinking:false},frequency_penalty:0,presence_penalty:0});expect(aiRun.mock.calls[0][0].query).not.toHaveProperty('top_k');expect(aiRun.mock.calls[0][0].query).not.toHaveProperty('max_tokens');
 });
+it('persists session effort and uses it for body inference while Director stays disabled',async()=>{
+ const {s}=await seed(),path='/api/sessions/'+s.id;
+ const saved={...DEFAULT_SETTINGS,thinkingEnabled:true,reasoningEffort:'high'};
+ expect((await call(path,'PATCH',{settings:saved})).status).toBe(200);
+ const read=await(await call(path)).json() as {session:{settings:typeof DEFAULT_SETTINGS}};
+ expect(read.session.settings).toMatchObject({thinkingEnabled:true,reasoningEffort:'high'});
+ await(await call(path+'/generate','POST',{requestId:crypto.randomUUID(),content:'你好'})).text();await Promise.all(work);
+ expect(aiRun.mock.calls[0][0].query).toMatchObject({chat_template_kwargs:{enable_thinking:true},reasoning_effort:'high'});
+ expect(aiRun.mock.calls[1][0].query).toMatchObject({chat_template_kwargs:{enable_thinking:false},reasoning_effort:'none'});
+ expect((await call(path,'PATCH',{settings:{...saved,thinkingEnabled:false}})).status).toBe(200);
+ const disabled=await(await call(path)).json() as {session:{settings:typeof DEFAULT_SETTINGS}};
+ expect(disabled.session.settings).toMatchObject({thinkingEnabled:false,reasoningEffort:'high'});
+ expect((await call(path,'PATCH',{settings:{...disabled.session.settings,thinkingEnabled:true}})).status).toBe(200);
+ expect((await call(path,'PATCH',{settings:{...saved,reasoningEffort:'invalid'}})).status).toBe(400);
+ const restored=await(await call(path)).json() as {session:{settings:typeof DEFAULT_SETTINGS}};
+ expect(restored.session.settings).toMatchObject({thinkingEnabled:true,reasoningEffort:'high'});
+});
 it('generates, persists and replays candidates in two stages without including candidate tail in the next turn',async()=>{
  const {s}=await seed(),requestId=crypto.randomUUID();
  const marker='\n[TAVERN_NEXT]\n';

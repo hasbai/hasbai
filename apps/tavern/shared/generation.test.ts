@@ -10,8 +10,9 @@ it('adds generation defaults to historical snapshots and preserves identity and 
  const old={userName:'旧用户',persona:'北方人',systemPrompt:'继续故事',temperature:0.4,maxTokens:1024};
  expect(normalizeSettings(old)).toEqual({...DEFAULT_SETTINGS,userName:old.userName,persona:old.persona,systemPrompt:old.systemPrompt,temperature:old.temperature});
  expect(normalizeSettings(old).thinkingEnabled).toBe(false);
+ expect(normalizeSettings(old).reasoningEffort).toBe('low');
 });
-it.each([{thinkingEnabled:'false'},{modelId:'dynamic/saki'},{topP:0},{topP:1.1},{topK:1.5},{frequencyPenalty:3},{presencePenalty:NaN},{temperature:undefined}])('rejects explicit invalid settings %j', invalid=>{
+it.each([{thinkingEnabled:'false'},{reasoningEffort:'xhigh'},{reasoningEffort:null},{reasoningEffort:undefined},{modelId:'dynamic/saki'},{topP:0},{topP:1.1},{topK:1.5},{frequencyPenalty:3},{presencePenalty:NaN},{temperature:undefined}])('rejects explicit invalid settings %j', invalid=>{
  expect(()=>normalizeSettings({...DEFAULT_SETTINGS,...invalid})).toThrow();
 });
 it('holds delimiter across every possible chunk boundary and never emits the protocol',()=>{

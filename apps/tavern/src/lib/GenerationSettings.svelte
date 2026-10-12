@@ -9,6 +9,7 @@
  <div class="section-heading"><div><Cpu size={18} aria-hidden="true"/><h2 id={`${id}-model-heading`}>模型</h2></div><span class="scope-badge">{scope}</span></div>
  <div class="field"><label for={`${id}-model`}>对话模型</label><select id={`${id}-model`} bind:value={settings.modelId} {disabled}><option value="rp">RP 动态路由</option></select></div>
  <div class="thinking-row"><div class="thinking-label"><Brain size={19} aria-hidden="true"/><label id={`${id}-thinking-label`} for={`${id}-thinking`}>启用思考</label><span class="scope-badge">{settings.thinkingEnabled?'已开启':'已关闭'}</span></div><button type="button" class="thinking-switch" id={`${id}-thinking`} role="switch" aria-checked={settings.thinkingEnabled} aria-labelledby={`${id}-thinking-label`} disabled={unavailable} onclick={()=>settings.thinkingEnabled=!settings.thinkingEnabled}><span></span></button></div>
+ <div class="field"><label for={`${id}-reasoning-effort`}>思考强度</label><select id={`${id}-reasoning-effort`} bind:value={settings.reasoningEffort} disabled={unavailable||!settings.thinkingEnabled}><option value="low">低</option><option value="medium">中</option><option value="high">高</option></select></div>
 </section>
 <section class="settings-section" aria-labelledby={`${id}-params-heading`}>
  <div class="section-heading"><div><SlidersHorizontal size={18} aria-hidden="true"/><h2 id={`${id}-params-heading`}>生成参数</h2></div><Button type="button" variant="ghost" disabled={disabled} onclick={()=>Object.assign(settings,GENERATION_DEFAULTS)}><RotateCcw size={14} aria-hidden="true"/>恢复默认</Button></div>
