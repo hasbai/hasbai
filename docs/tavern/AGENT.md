@@ -17,7 +17,7 @@
 
 工具不接受 URL、SQL、owner 或 session 参数，执行环境由服务端绑定。外部检索/索引前整批纯校验非法字段、重复调用及批内重复，合法调用按原顺序追加实际 tool_calls/results；工具返回是数据，不能改 system 或权限。不从普通剧情正则触发更新，不执行角色脚本。
 
-上游原生工具增量中的顶层 `tool_calls:null` 等同缺省；真实工具分片的可选 ID/type/function/name/arguments 为 null 时不覆盖已有累计值。index 必需，保留类型、身份、重复 ID、参数和空终态校验，不递归清洗业务 patch 或参数字符串中的 null。可选字段全空也不能把未完成 index 伪装成无工具。
+上游原生工具增量中的顶层 `tool_calls:null` 等同未提供该字段；真实工具分片的可选 ID/type/function/name/arguments 为 null 时不覆盖已有累计值。index 必需，保留类型、身份、重复 ID、参数和空终态校验，不递归清洗业务 patch 或参数字符串中的 null。可选字段全空也不能把未完成 index 伪装成无工具。
 
 ## 检索与原文
 
@@ -31,13 +31,17 @@ DO 成功消息版本与状态事务是权威剧情；摘要、旧 Director 梗�
 
 ## Prompt 与模型投影
 
-保持直接 TypeScript 模块，不引入通用插件框架或 Agents SDK。正文逻辑顺序为稳定短 system/工具 schema → 角色/persona/世界书约束 → 低频摘要 checkpoint → 完整近期剧情 → 当前 state/输入 → 实际工具调用与结果。角色宏及世界书位置见[架构](ARCHITECTURE.md#角色卡与世界书)。
+保持直接 TypeScript 模块，不引入通用插件框架或 Agents SDK。正文先放稳定短 system/工具 schema，再放角色/persona/世界书约束。随后依次放低频摘要 checkpoint、完整近期剧情、当前 state/输入、实际工具调用与结果。角色宏及世界书位置见[架构](ARCHITECTURE.md#角色卡与世界书)。
 
-固定正文规则要求承接最新输入、避免重演叙事节拍和仅换词复写，让用户行动产生可观察结果；进展包括同场景的新信息、后果、线索或关系变化。尊重明确的慢节奏、停留和回顾，不替用户决定、不强制转场或随机事件。用户只说“继续”“然后呢”等时，由角色推进自身行动或提供信息，不视为用户已行动、跟随、同意或产生感受；邀请和接触保留用户回应空间。规则不改写保存的用户系统提示、角色卡和历史，不增加逐轮 planner、动态提醒或惩罚默认值。规则发布会通过现有指纹使旧模型投影一次失效，后续仍复用稳定前缀；前缀相同不等于真实 GPU 命中。
+固定正文规则要求承接最新输入、避免重演叙事节拍和仅换词复写，让用户行动产生可观察结果；进展包括同场景的新信息、后果、线索或关系变化。尊重明确的慢节奏、停留和回顾，不替用户决定、不强制转场或随机事件。
+
+用户只说“继续”“然后呢”等时，由角色推进自身行动或提供信息，不视为用户已行动、跟随、同意或产生感受；邀请和接触保留用户回应空间。规则不改写保存的用户系统提示、角色卡和历史，不增加逐轮 planner、动态提醒或惩罚默认值。规则发布会通过现有指纹使旧模型投影一次失效，后续仍复用稳定前缀；前缀相同不等于真实 GPU 命中。
 
 方案依据（2026-10-12）：[SillyTavern 提示词文档](https://docs.sillytavern.app/usage/prompts/)建议回应用户行动与对话推进故事，并明确用户控制范围；[作者注](https://docs.sillytavern.app/usage/core-concepts/authors-note/)支持在上下文中强化写作要求，但本应用选择固定规则，避免逐轮移动注释；[采样参数](https://docs.sillytavern.app/usage/common-settings/)中的词级惩罚不等于语义进展，过大的范围还会损伤常用词。本方案保留现有可调惩罚项，不改变用户采样配置。[llama.cpp 缓存说明](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md)描述相同前缀的 KV 复用；[Re3](https://arxiv.org/abs/2210.06774)的规划、重排与修订适用于长篇生成，本轮不引入额外调用或自动改写链路。
 
-工具续轮冻结基础 prompt，只追加实际结果；JSON 紧凑编码和稳定键序，移除锁/revision/时间/日志字段。持久投影保留用户原文和实际工具协议，提示格式版本变化使旧投影失效，来源版本/正文/角色/设置/世界书与 system 均校验。普通下一轮追加，压缩、角色/世界书激活变化或编辑使投影失效；候选不进入正文投影或剧情摘要。
+工具续轮冻结基础 prompt，只追加实际结果；JSON 紧凑编码和稳定键序，移除锁/revision/时间/日志字段。持久投影保留用户原文和实际工具协议。
+
+提示格式版本变化使旧投影失效。校验来源版本、正文、角色、设置、世界书与 system。普通下一轮追加，压缩、角色/世界书激活变化或编辑使投影失效；候选不进入正文投影或剧情摘要。
 
 同次响应含正文和 tool_calls 时，仅已解析确认的剧情可压缩，wire 比对允许 CRLF/空白缓冲差异；保留调用、参数、结果及顺序。兼容候选标记或未确认协议片段不能作剧情摘要源，工具/length/流式超限入口保持一致。按 Unicode 字符拆小剧情源，单字符不可再拆时报告无法容纳，不重试同源或残代理；持久正文/版本不裁剪。
 
@@ -55,15 +59,19 @@ Director 复用正文实际前缀，不逐轮生成独立梗概；仅超限时�
 
 Worker 先验证共享身份，再按稳定 owner + session 路由每会话 SQLite DO，不使用全局 DO。create/get/generate/stop/update/fork/delete/export 均走同一存储入口；D1 保存目录、角色库、世界书、设置和旧迁移来源，R2 保留私有原件。
 
-惰性迁移只在旧生成为空/到期时，在 D1 原子设置 storage_backend=do 与永久 `generation_id=do:<sessionId>` 哨兵冻结旧 Worker。保留全部 ID/ordinal/候选/终态/摘要/版本，DO 同事务导入并逐字段校验；失败保留冻结来源供重试，不删旧记录。切换后只写 DO，D1 同步列表和世界书引用；新会话/分支先创建 D1 目录及来源，失败仍可惰性恢复。0007 增加 storage_backend/deleted_at，0008 增加分支 seed；回滚先停写并导出 DO 新消息，不能回到陈旧 D1 覆盖历史。
+惰性迁移只在旧生成为空/到期时，在 D1 原子设置 storage_backend=do 与永久 `generation_id=do:<sessionId>` 哨兵冻结旧 Worker。保留全部 ID/ordinal/候选/终态/摘要/版本，DO 同事务导入并逐字段校验；失败保留冻结来源供重试，不删旧记录。
+
+切换后只写 DO，D1 同步列表和世界书引用；新会话/分支先创建 D1 目录及来源，失败仍可惰性恢复。0007 增加 storage_backend/deleted_at，0008 增加分支 seed；回滚先停写并导出 DO 新消息，不能回到陈旧 D1 覆盖历史。
 
 DO revision/synced_revision 与 alarm 幂等重试目录同步，正文 done 不等待 D1 网络。世界书更新先持久标记 dirty，再预留旧+新引用并集，DO 成功后才收窄；故障/重启按已提交状态恢复，目录失败不把已成功正文当失败。
 
-删除先持久标记清理意图与重试 alarm，确认 D1 删除标记/隐藏目录/释放绑定，再 await `deleteAll` 清空全部私有 SQLite/元数据与 alarm，成功后才返回。失败用同一意图、重复 DELETE 或 alarm 重试，不提前取消重试 alarm。生成或收尾未结束仍拒绝删除。
+删除先持久标记清理意图与重试 alarm。确认 D1 删除标记、隐藏目录并释放绑定，再 await `deleteAll`。全部私有 SQLite/元数据与 alarm 清空成功后才返回。失败用同一意图、重复 DELETE 或 alarm 重试，不提前取消重试 alarm。生成或收尾未结束仍拒绝删除。
 
 构造函数不建表，已删除对象的旧请求不能重建表或重导入；D1 删除标记永久防复活，普通同步不得清除。DO 不永久保留 tombstone，空实例随运行时关闭释放，不承诺内存立即销毁或本地文件零字节。依据：[SQLite deleteAll](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/#deleteall)、[DO 生命周期](https://developers.cloudflare.com/durable-objects/best-practices/access-durable-objects-storage/#remove-a-durable-objects-storage)。
 
-初始化消息与 before 快照同一 SQLite 事务，快照失败回滚新消息且原 UUID 可重试。最终事务失败仍结束内存任务，只恢复该任务 ID 的未提交占用：保留已落盘正文，pending → interrupted，保留 stopped/disconnected 原因，不提交推测 state/投影，不伪报 done 或自动重发模型。持续故障保留恢复 ID，后续 read/generate/delete 重试；旧 ID 不清新占用。冷实例删除先恢复未完成任务，恢复成功才发布缓存。
+初始化消息与 before 快照同一 SQLite 事务，快照失败回滚新消息且原 UUID 可重试。最终事务失败仍结束内存任务，只恢复该任务 ID 的未提交占用。保留已落盘正文，将 pending 改为 interrupted，保留 stopped/disconnected 原因。
+
+不提交推测 state/投影，不伪报 done，不自动重发模型。持续故障保留恢复 ID，后续 read/generate/delete 重试；旧 ID 不清新占用。冷实例删除先恢复未完成任务，恢复成功才发布缓存。
 
 短事务领取占用，外部模型 await 期间允许 stop，不持有 blockConcurrencyWhile。重复 UUID 回放，其他并发请求冲突；重启未完成回合标中断，不自动重复推理。
 
@@ -81,4 +89,4 @@ Gateway 完整 payload、eventId、三项 metadata 和 `skipCache:true` 契约�
 
 已有 DO/state/原生工具/关键词记忆/世界书混合检索、模型投影与独立 Director。当前入口变更后的真实工具回合与日志关联差异优先按[PROGRESS](PROGRESS.md)处理。
 
-未来只在实际样本证实收益后评估按锚点 `read_memory`、单阶段候选重试、后台状态结算、会话记忆 embedding、精确 tokenizer 和多 slot 亲和。新增能力先明确来源/权限/取消/版本隔离与验收条件，不把这些目标写成现有功能，不新增模型入口、角色脚本或额外服务。
+未来只在实际样本证实收益后评估按锚点 `read_memory`、单阶段候选重试、后台状态结算、会话记忆 embedding、精确 tokenizer 和多 slot 亲和。新增能力前先明确来源、权限、取消、版本隔离及验收条件。目标不写成现有功能。不新增模型入口、角色脚本或额外服务。

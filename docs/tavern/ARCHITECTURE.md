@@ -6,10 +6,10 @@
 
 | 页面 | 可执行功能 |
 | --- | --- |
-| 角色库 | 搜索已安装角色、导入 JSON/PNG/CHARX、表单创建与 AI 补全角色、编辑角色、查看设定与来源、导出原卡、删除、选择开场白开始对话 |
-| 发现 | 输入关键词、选择公开来源、按热度/近期热门/发布或更新时间/评分排序、分类与自定义标签、分页、查看作者/源页面、安装角色；安装相同内容去重，不自动覆盖本地编辑 |
+| 角色库 | 搜索已安装角色，导入 JSON/PNG/CHARX，表单创建与 AI 补全。编辑、查看设定与来源、导出原卡、删除、选择开场白开始对话 |
+| 发现 | 输入关键词、选择公开来源。按热度/近期热门/发布或更新时间/评分排序，选择分类与自定义标签。分页、查看作者/源页面、安装角色；安装相同内容去重，不自动覆盖本地编辑 |
 | 世界书 | 独立 JSON 导入/导出、查看编辑原文、条目数量、启用/停用，给会话选择世界书；内嵌角色书自动生效 |
-| 对话 | 会话列表、角色与用户 persona、右侧用户气泡、无气泡角色正文、单行自动伸展输入、圆形发送/停止、回答末尾操作、持久化历史、重试、重新生成、编辑历史并派生新会话、导出 JSONL、删除会话 |
+| 对话 | 会话列表、角色与用户 persona。右侧用户气泡、无气泡角色正文、单行自动伸展输入、圆形发送/停止、回答末尾操作。持久化历史、重试、重新生成、编辑历史并派生新会话、导出 JSONL、删除会话 |
 | 设置 | RP模型、默认关闭思考、采样参数、用户名称/persona、系统提示、主题；模型路由由服务端固定，不接受客户端覆盖 |
 
 当前不执行外来 JS/Lua、正则替换脚本或扩展工具，不提供多人群聊、图像生成、语音或全量 SillyTavern 插件兼容。未知扩展和资源留在原始卡及导出中；兼容导入不等于执行全部扩展。不会提供伪造角色推荐、示例历史、评分或人数。只有 e2e 独立夹具有合成内容。
@@ -32,7 +32,11 @@ flowchart LR
 
 JWT 和本人/全站管理授权遵循[AUTHORIZATION](../AUTHORIZATION.md)。会话持久化、迁移与删除以[AGENT](AGENT.md#do与迁移一致性)为唯一详细契约。
 
-D1 公共 source_catalog/source_releases 保存固定版本目录，只有完整同步后原子切换，不包含私人数据。私人 D1 表：characters（完整卡 JSON、摘要、来源、原文件与头像 key、内容 hash）、worldbooks（原始书 JSON 与启用）、sessions（会话目录、可靠世界书引用与迁移占用哨兵）、messages（迁移前原文来源，只读保留）、settings（用户 persona 和生成参数）。会话角色快照、设置、全部消息版本、摘要与生成占用由每会话SQLite DO统一管理；旧 D1 原文按 AGENT 的惰性迁移契约保留。已安装角色删除不删除既有会话快照。R2 原文件私有，头像由 Bearer API 转 Blob URL；不创建公共桶，不自动加载角色扩展资源；发现页只显示经过HTTPS/固定头像域校验的公开Chub缩略图。
+D1 公共 source_catalog/source_releases 保存固定版本目录，只有完整同步后原子切换，不包含私人数据。私人 D1 表包括以下对象。characters 保存完整卡 JSON、摘要、来源、原文件与头像 key、内容 hash。worldbooks 保存原始书 JSON 与启用状态。
+
+sessions 保存会话目录、可靠世界书引用与迁移占用哨兵。messages 只读保留迁移前原文，settings 保存用户 persona 和生成参数。
+
+会话角色快照、设置、全部消息版本、摘要与生成占用由每会话SQLite DO统一管理；旧 D1 原文按 AGENT 的惰性迁移契约保留。已安装角色删除不删除既有会话快照。R2 原文件私有，头像由 Bearer API 转 Blob URL；不创建公共桶，不自动加载角色扩展资源；发现页只显示经过HTTPS/固定头像域校验的公开Chub缩略图。
 
 导入大小限制、PNG chunk 长度/CRC、ZIP 条目数量/未压缩总量/路径遍历验证在解析前执行。CHARX 支持 card.json 与内嵌主头像，原压缩包完整保留可下载；资源脚本不执行。远端安装 URL 只由适配器构造、固定 HTTPS 主机，重定向逐跳校验，有限时与响应大小。HTML 永远转义；聊天按纯文本显示角色动作和对白，链接不自动触发抓取。
 
@@ -40,7 +44,9 @@ D1 公共 source_catalog/source_releases 保存固定版本目录，只有完整
 
 创建角色使用分组表单，按基本信息、人物设定、开场与对白填写，高级作者信息及提示词折叠。用户可手写后直接保存，也可填写部分内容或生成要求后点击 AI 生成。生成结果回填同一表单，支持修改及撤销本次生成；点击保存才通过既有角色导入接口入库。已有导入角色继续使用原始 JSON 编辑，保留 V1/V2/V3、世界书及未知扩展。
 
-`POST /api/characters/generate` 验证本人 JWT 与账户 username，复用固定 Gateway `dynamic/rp`，metadata task 为 `character-generation`。输入为 `{brief,draft}`，输出为 `{card}`，不写 D1/R2。使用 strict CCv2 JSON Schema（固定版本、完整字段、禁止额外属性），可靠 stop 后再次严格校验并经 `parseCard` 检查。拒绝、工具调用、截断、非法结构或上游错误明确失败，不补模板、不重试。姓名及作者/版本/备注/高级指令保留用户填写值，不虚构署名。生成期间锁定表单，关闭取消请求并丢弃迟到回填；生成或保存失败保留输入。
+`POST /api/characters/generate` 验证本人 JWT 与账户 username，复用固定 Gateway `dynamic/rp`，metadata task 为 `character-generation`。输入为 `{brief,draft}`，输出为 `{card}`，不写 D1/R2。使用 strict CCv2 JSON Schema（固定版本、完整字段、禁止额外属性），可靠 stop 后再次严格校验并经 `parseCard` 检查。
+
+拒绝、工具调用、截断、非法结构或上游错误明确失败，不补模板、不重试。姓名及作者/版本/备注/高级指令保留用户填写值，不虚构署名。生成期间锁定表单，关闭取消请求并丢弃迟到回填；生成或保存失败保留输入。
 
 `system_prompt` 与 `post_history_instructions` 的 `{{original}}` 合并默认值；`{{char}}`/`{{user}}`/`<char>`/`<user>` 支持，V3 nickname 优先。creator_notes、标签、来源不进入 Prompt。
 
@@ -67,7 +73,8 @@ D1 公共 source_catalog/source_releases 保存固定版本目录，只有完整
 - GET/POST /api/characters；GET/PATCH/DELETE /api/characters/:id；GET /api/characters/:id/export；GET /api/characters/:id/avatar。
 - GET /api/discover?q=&source=&page=&sort=&tags=；POST /api/install {source,id}；固定适配器，不提供任意 URL 代理。
 - GET/POST /api/worldbooks；PATCH/DELETE /api/worldbooks/:id；GET /api/worldbooks/:id/export。
-- GET/POST /api/sessions；GET/DELETE /api/sessions/:id；PATCH /api/sessions/:id 配置；POST /api/sessions/:id/generate；POST /api/sessions/:id/stop；POST /api/sessions/:id/fork；GET /api/sessions/:id/export。
+- GET/POST /api/sessions；GET/DELETE /api/sessions/:id；PATCH /api/sessions/:id 配置。
+- POST /api/sessions/:id/generate；POST /api/sessions/:id/stop；POST /api/sessions/:id/fork；GET /api/sessions/:id/export。
 - GET/PUT /api/settings；GET /api/models。
 
 ## 规范与公开来源
@@ -79,7 +86,7 @@ D1 公共 source_catalog/source_releases 保存固定版本目录，只有完整
 | [TheatreLM 目录](https://huggingface.co/datasets/G-reen/TheatreLM-v2.1-Characters) | 固定 revision `eb8597aec4e3e114b2d28b86c3e2496dd48c5af3`，worlds.json 完整 hash/5011 行校验，9 条损坏名称隔离后 5002 可用；CC-BY-2.0 署名、版本与转换标记随卡保存 |
 | [Chub](https://docs.chub.ai/docs/the-basics/character-creation) | 固定适配器、真实排序/标签与标准 PNG 下载，不绕过访问保护；上游可用性单独验收 |
 | [RisuRealm API](https://realm.risuai.net/help/api)、[CharaVault](https://charavault.net/) | 首版未依赖 Risu 的未文档化搜索或需访问验证的 CharaVault；历史探针结果见交付记录 |
-| [AI Gateway 动态路由](https://developers.cloudflare.com/ai-gateway/features/dynamic-routing/usage/) | `worker/gateway.ts` 的 `runRoleplay` 共用原生 `AI.run('dynamic/rp', input, {gateway, returnRawResponse:true, signal})`；完整日志与单次调用约束见 MODELS |
+| [AI Gateway 动态路由](https://developers.cloudflare.com/ai-gateway/features/dynamic-routing/usage/) | `worker/gateway.ts` 的 `runRoleplay` 共用固定 `default/compat/chat/completions` HTTP 入口，model 为 `dynamic/rp`；完整日志与单次调用约束见 MODELS |
 
 目录先全量校验再原子切换 release，安装只从服务端同步内容读取，不相信客户端传回角色定义。上表固定版本与数量为目录版本数据，外部来源当前可用性不能由历史探针外推。
 

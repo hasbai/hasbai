@@ -47,4 +47,6 @@ Cloudflare Workers Builds 监听 `main` 自动构建发布。当前 Git remote �
 | Zboard | 仓库根；`pnpm --filter zboard build` | `apps/zboard/wrangler.jsonc`；Worker 版本及线上资源 |
 | Tavern | 仓库根；`pnpm --filter tavern build` | `apps/tavern/wrangler.jsonc`；`/health` 与部署版本 |
 
-2026-10-10 回读的过滤：财务 `apps/financial/*`、博客 `apps/blog/*`，均包含 `packages/*` 和根 workspace/lockfile；Tavern 为 `apps/tavern/**`、`packages/**` 和根 workspace/lockfile；Zboard 当前为 `*`（全仓库），并非只监控应用路径。此次仅记录现状，不修改后台触发器。自动 Build SHA 与线上版本在交付时核对。Tavern/Zboard 本地前端通过 Vite 代理独立 Worker API；细节见应用架构。发布、数据库兼容步骤和回滚验证的执行要求统一见[TESTING](TESTING.md)。
+2026-10-10 回读的构建过滤：财务 `apps/financial/*`、博客 `apps/blog/*`，均包含 `packages/*` 和根 workspace/lockfile；Tavern 为 `apps/tavern/**`、`packages/**` 和根 workspace/lockfile；Zboard 当前为 `*`（全仓库），并非只监控应用路径。此次仅记录现状，不修改后台触发器。
+
+自动 Build SHA 与线上版本在交付时核对。Tavern/Zboard 本地前端通过 Vite 代理独立 Worker API；细节见应用架构。发布、数据库兼容步骤和回滚验证的执行要求统一见[TESTING](TESTING.md)。

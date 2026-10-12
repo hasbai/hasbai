@@ -4,8 +4,8 @@
 
 ## 2026-09-26 博客视觉参考修正（已上线）
 
-- 直接对照 `innei.in` 与线上博客的桌面、移动首页、文章列表、阅读页、手记、时间线和关于页，确认上一版暖黄/棕色主题、放大的衬线标题与单一光晕偏离参考。
-- 在既有 SvelteKit、Luma UI、Tailwind 和 Data API 架构内，改为 neutral 主题和紧凑层级；桌面加入参考站同类的缓落花瓣 Canvas 背景，详情页加轻微页头波纹，移动导航移至底部。背景随主题变色，并在移动端或减少动效偏好下停用。
+- 直接对照 `innei.in` 与线上博客的桌面与移动首页、文章列表、阅读页、手记、时间线和关于页。确认上一版暖黄/棕色主题、放大的衬线标题与单一光晕偏离参考。
+- 在既有 SvelteKit、Luma UI、Tailwind 和 Data API 架构内，改为 neutral 主题和紧凑层级；桌面增加与参考站同类的缓落花瓣 Canvas 背景，详情页加轻微页头波纹，移动导航移至底部。背景随主题变色，并在移动端或减少动效偏好下停用。
 - PR #15 的 28 张候选截图经审阅导入，普通 `Blog` 与 `Check` 工作流的代码和视觉检查均通过。合并提交 `6fb530f` 已由 Cloudflare 自动部署到 `hasbai.xyz`；线上桌面首页确认近白底色和水合后的花瓣 Canvas，390px 移动视口无横向溢出。本次没有数据库迁移或业务数据改动。
 
 ## 2026-09-23 博客内容模型与界面
@@ -20,13 +20,17 @@
 
 用户已要求撤回未经确认的首页长说明，恢复原主体文案；首页仅显示小字“本站公开阅读，编辑发布需登录后使用。”，位于“隐私政策、服务条款”链接下面左对齐。修改用户内容须先展示具体文案、位置和范围并取得同意，审核退回信息本身不构成改稿授权。此规则已写入 `AGENTS.md`。
 
-用户已编辑并授权采用政策审阅稿。`0009_user_reviewed_policy.sql` 仅更新隐私政策正文：采用用户的登录信息和保存期限措辞，移除完整“AI 文字对话与日志”章节，其他保留段逐字采用用户稿；服务条款与现状一致，不重复改写。先在隔离生产分支 `blog-user-reviewed-policy-20261004` / `br-withered-wildflower-b3xo6oce` 验证重复执行、并发冲突拒绝和其他内容/元数据 fingerprint，再更新生产。既有 62 项数据库检查与博客页面权限检查通过，测试写入全部回滚；生产匿名 API 和 SSR 返回 200，隐私正文 hash 为 `dd935b834c3fedc6d37ab6a65282e712`。页面 ID、标题、摘要、发布状态及发布时间保留，服务条款正文 hash 不变。
+用户已编辑并授权采用政策审阅稿。`0009_user_reviewed_policy.sql` 仅更新隐私政策正文：采用用户的登录信息和保存期限措辞，移除完整“AI 文字对话与日志”章节。其他保留段逐字采用用户稿；服务条款与现状一致，不重复改写。
 
-`database/blog/0007_oauth_disclosures.sql` 以当前生产人工编辑版本为基线，补充 Google 身份资料的访问、使用、Auth0 存储、Cloudflare/Neon 处理、AI 模型传输、Gateway 完整请求/回复和账号名称记录，以及保留和删除方式；删除“不保存个人敏感信息”的错误概括。迁移只适用于本次生产两页 UUID 和已审阅正文，不能用于全新数据库的顺序初始化。行锁及正文 MD5 拒绝并发编辑，任一冲突整体回滚；重复执行不改变时间戳，原页面 ID、标题、摘要、发布状态和发布时间保留。
+先在隔离生产分支 `blog-user-reviewed-policy-20261004` / `br-withered-wildflower-b3xo6oce` 验证重复执行、并发冲突拒绝和其他内容/元数据 fingerprint，再更新生产。既有 62 项数据库检查与博客页面权限检查通过，测试写入全部回滚；生产匿名 API 和 SSR 返回 200，隐私正文 hash 为 `dd935b834c3fedc6d37ab6a65282e712`。页面 ID、标题、摘要、发布状态及发布时间保留，服务条款正文 hash 不变。
+
+`database/blog/0007_oauth_disclosures.sql` 以生产人工编辑版本为基线，补充 Google 身份资料的访问、使用、Auth0 存储及 Cloudflare/Neon 处理。另补充 AI 模型传输、Gateway 完整请求/回复、账号名称记录、保留和删除方式；删除“不保存个人敏感信息”的错误概括。迁移只适用于本次生产两页 UUID 和已审阅正文，不能用于全新数据库的顺序初始化。行锁及正文 MD5 拒绝并发编辑，任一冲突整体回滚；重复执行不改变时间戳，原页面 ID、标题、摘要、发布状态和发布时间保留。
 
 隔离生产分支 `blog-oauth-disclosures-20261004` / `br-wild-scene-b3kuusvz` 通过迁移、重复执行和并发冲突拒绝，文章、手记、图片、标签及页面其他元数据 fingerprint 一致。既有数据库脚本 62 项检查与 `database/blog/test_pages.sql` 的公开读取、草稿隔离、CRUD、匿名写入拒绝均通过，测试写入全部回滚。已应用生产，真实匿名 JWT API 与公开政策 SSR 均返回 200，两页正文 MD5 与隔离验证结果一致。
 
-`0008_policy_site_link.sql` 将隐私页站点裸 URL 改为显式 Markdown 链接，避免自动链接吞入后续中文；仅精确替换命中的短语，保留其他正文和元数据。已先在上述隔离分支验证，再应用生产；未登录浏览器确认链接文字与目标均正确，夹具增加实际链接断言。独立页面 2 项流程与 10 张 Linux 候选重新通过并审阅导入。`0007` 的幂等验证针对其完成时的正文；后续人工编辑或 `0008` 会使其版本保护拒绝重跑，正常顺序迁移不重放旧政策快照。
+`0008_policy_site_link.sql` 将隐私页站点裸 URL 改为显式 Markdown 链接，避免自动链接吞入后续中文；仅精确替换命中的短语，保留其他正文和元数据。已先在上述隔离分支验证，再应用生产；未登录浏览器确认链接文字与目标均正确，夹具增加实际链接断言。
+
+独立页面 2 项流程与 10 张 Linux 候选重新通过并审阅导入。`0007` 的幂等验证针对其完成时的正文；后续人工编辑或 `0008` 会使其版本保护拒绝重跑，正常顺序迁移不重放旧政策快照。
 
 Auth0 Google 连接实际配置为 `email`、`profile`；不修改现有登录连接。已核对 Google 项目 `hasbai` 的品牌名称“北极小站”、首页 `https://hasbai.xyz`、隐私 `https://hasbai.xyz/privacy`、条款 `https://hasbai.xyz/terms` 及授权域名 `hasbai.xyz`；控制台数据访问列表为空，尚未修改声明范围或重新提交审核，也未取得 Google 通过结论。登记授权域名不等同于再次验证 Search Console 所有权。
 
@@ -39,16 +43,20 @@ Auth0 Google 连接实际配置为 `email`、`profile`；不修改现有登录�
 
 ## 独立页面迁移（2026-10-04）
 
-`database/blog/0005_pages.sql` 添加 page 的显式主键、唯一路径、正文与发布约束、RLS 和 GRANT。旧 About 文字落库，隐私政策与服务条款使用 jsclndnz@gmail.com 作为联系邮箱，描述北极小站统一登录的实际身份范围与相关应用的数据处理；不更改 Auth0 登录连接或 Google OAuth 配置。已在隔离生产分支 `blog-pages-20261004` / `br-cold-cloud-b3cldjol` 验证，再应用生产并通过 NOTIFY 刷新 Data API schema cache。真实匿名 JWT 读取三份已发布页面返回 200；迁移前后原文章记录 fingerprint 一致。政策页不经登录也可 SSR 读取。验证 SQL 位于 `database/blog/test_pages.sql`，全部测试记录和变更在事务结束时回滚。
+`database/blog/0005_pages.sql` 添加 page 的显式主键、唯一路径、正文与发布约束、RLS 和 GRANT。旧 About 文字落库。隐私政策与服务条款使用 jsclndnz@gmail.com 作为联系邮箱。描述北极小站统一登录的实际身份范围及相关应用的数据处理；不更改 Auth0 登录连接或 Google OAuth 配置。已在隔离生产分支 `blog-pages-20261004` / `br-cold-cloud-b3cldjol` 验证，再应用生产并通过 NOTIFY 刷新 Data API schema cache。
 
-本地固定 Linux 候选 `2026-10-03T17-06-10.926Z` 已审阅并导入 38 张手机/桌面基线，7 项流程通过、1 项按设备跳过。覆盖 page SSR、canonical、UUID 跳转、顶部导航、流隔离、自定义路径发布/改名/删除、重复/保留路径、失败保留输入及拒绝放弃未保存编辑。隐私页同时验证浅深色；设备为 WebKit/Chromium 模拟，不是 iOS 真机。普通 PR 验收与自动部署结论随发布另行核验。
+真实匿名 JWT 读取三份已发布页面返回 200；迁移前后原文章记录 fingerprint 一致。政策页不经登录也可 SSR 读取。验证 SQL 位于 `database/blog/test_pages.sql`，全部测试记录和变更在事务结束时回滚。
+
+本地固定 Linux 候选 `2026-10-03T17-06-10.926Z` 已审阅并导入 38 张手机/桌面基线，7 项流程通过、1 项按设备跳过。覆盖 page SSR、canonical、UUID 跳转、顶部导航、流隔离、自定义路径发布/改名/删除和重复/保留路径。另检查失败保留输入及拒绝放弃未保存编辑。隐私页同时验证浅深色；设备为 WebKit/Chromium 模拟，不是 iOS 真机。普通 PR 验收与自动部署结论随发布另行核验。
 
 
 ## 北极小站统一登录方式（2026-10-04）
 
 博客、财务、Tavern 和 Zboard 共用 `packages/auth` 的 Auth0 Universal Login。共享工厂不再强制 `connection=eastmoney-email`，由同一北极小站组织显示邮箱、Google、Microsoft Account 和 GitHub；Zboard 继续使用独立 API audience。通用能力后续继续在共享 packages 实现，不增加各应用专属登录选择或重复认证配置。
 
-Google、Microsoft 和 GitHub 均已启用到北极小站应用及组织，Microsoft 组织连接已补齐。用户确认允许新 OAuth 账号登录、各应用权限另行分配：三个社交连接统一启用 `assign_membership_on_login=true`，邮箱连接准入与 signup 设置保留；不关联已有身份、不复制角色、不修改 Action。无角色账号仍签发 `role=authenticated`、`_roles=[]`，Tavern 允许经过 JWT 验证的普通用户管理本人数据，Zboard 首次账号默认禁用。提供商回调统一使用 `https://auth.hasbai.xyz/login/callback`。共享 SDK 的 domain、Tavern/Zboard Worker 的 issuer/JWKS 和两应用 CSP 均使用 `auth.hasbai.xyz`；各应用自身 `/auth/callback`、组织与 API audience 保留。原租户 `hasbai.eu.auth0.com` 仍是 Auth0 管理入口，不用于应用登录。旧域会话在切换后需重新登录。
+Google、Microsoft 和 GitHub 均已启用到北极小站应用及组织，Microsoft 组织连接已补齐。用户确认允许新 OAuth 账号登录、各应用权限另行分配：三个社交连接统一启用 `assign_membership_on_login=true`，邮箱连接准入与 signup 设置保留；不关联已有身份、不复制角色、不修改 Action。无角色账号仍签发 `role=authenticated`、`_roles=[]`，Tavern 允许经过 JWT 验证的普通用户管理本人数据，Zboard 首次账号默认禁用。
+
+提供商回调统一使用 `https://auth.hasbai.xyz/login/callback`。共享 SDK 的 domain、Tavern/Zboard Worker 的 issuer/JWKS 和两应用 CSP 均使用 `auth.hasbai.xyz`；各应用自身 `/auth/callback`、组织与 API audience 保留。原租户 `hasbai.eu.auth0.com` 仍是 Auth0 管理入口，不用于应用登录。旧域会话在切换后需重新登录。
 
 上一轮社交登录统一的共享 SDK 配置及 Zboard audience 的 9 项相关单测通过；四应用36张候选已审阅，35张像素一致、博客桌面编辑器20个像素差异，既有视觉基线保持。本轮自定义域名验证见下一节。视觉夹具不执行真实 OAuth，完整账号登录、PR CI 和线上部署须分别核验。
 
@@ -64,7 +72,11 @@ Google、Microsoft 和 GitHub 均已启用到北极小站应用及组织，Micro
 
 统一 Auth0 Action 使用 `auth0/login-claims.js`：顶层 `username`、`email` 为身份字段，`_roles` 为角色数组，`role` 为 Neon 数据库角色字符串。共享财务/博客 audience 的角色数组包含 superadmin 时签发 `role=superadmin`，其他 audience 或账号为 authenticated；Zboard 保留独立 audience，通过 `_roles` 判断管理员。酒馆验证用户 JWT，管理员权限读取 `permissions`，保留统一 audience。两份应用 setup 脚本复用同一 Action，并移除旧应用角色 Action 的重复绑定，避免重新签发旧字段。
 
-`role` 改成数组后，Neon 仍按 anonymous 执行，导致 `permission denied for table page`；生产 page CRUD GRANT 和编辑 RLS 本身正常。本次保留 Data API `.role` 和全部生产表权限，不添加授权 SQL 包装或扩大匿名权限。新令牌已在隔离生产副本 `auth-role-array-20261004` / `br-blue-feather-b38q5syq` 实测页面草稿创建、读取、更新、删除及文章 RPC 创建/更新；匿名公开读取、草稿隔离和写入拒绝通过。生产真实 JWT 已验证 page UPDATE 权限及财务读权限；完整页面与文章写入在隔离分支实测。最新线上统一 Action 的 blocked、邮箱验证及东方财富组织资料字段保留；将错误的字符串 contains 调用修正为 includes，避免登录返回 access_denied；数据库 superadmin 角色限定到共享财务/博客 audience。新 Zboard JWT 仍在 `_roles` 中保留 superadmin，但其数据库 role 为 authenticated，财务读取返回 403、博客写入返回 400（缺少对应 audience）。已经签发的旧令牌不会因 Action 更新被撤销，需等待过期或重新登录。旧浏览器会话需重新登录取得新签名字段，未保存编辑应先保留。
+`role` 改成数组后，Neon 仍按 anonymous 执行，导致 `permission denied for table page`；生产 page CRUD GRANT 和编辑 RLS 本身正常。本次保留 Data API `.role` 和全部生产表权限，不添加授权 SQL 包装或扩大匿名权限。
+
+新令牌已在隔离生产副本 `auth-role-array-20261004` / `br-blue-feather-b38q5syq` 实测页面草稿创建、读取、更新、删除及文章 RPC 创建/更新；匿名公开读取、草稿隔离和写入拒绝通过。生产真实 JWT 已验证 page UPDATE 权限及财务读权限；完整页面与文章写入在隔离分支实测。
+
+最新线上统一 Action 的 blocked、邮箱验证及东方财富组织资料字段保留；将错误的字符串 contains 调用修正为 includes，避免登录返回 access_denied；数据库 superadmin 角色限定到共享财务/博客 audience。新 Zboard JWT 仍在 `_roles` 中保留 superadmin，但其数据库 role 为 authenticated，财务读取返回 403、博客写入返回 400（缺少对应 audience）。已经签发的旧令牌不会因 Action 更新被撤销，需等待过期或重新登录。旧浏览器会话需重新登录取得新签名字段，未保存编辑应先保留。
 
 本地固定 Linux 流程完成博客全站和四应用代表页面截图审阅，无有意视觉修改；原视觉基线保留。完整单测、类型和视觉比较由 PR CI 执行；线上应用版本与真实 Worker JWT 验收在发布后独立核验。
 
