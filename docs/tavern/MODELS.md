@@ -29,7 +29,7 @@
 
 标准参数随请求直接发送，默认 `chat_template_kwargs.enable_thinking:false`，同时 `reasoning_effort:none`；开启时传 true 和保存的 low / medium / high。缺少强度字段的旧设置补 low。
 
-关闭思考仍传 none，不清除所选强度。摘要、Director 和角色生成保持关闭思考。
+关闭思考仍传 none，不清除所选强度。摘要和角色生成保持关闭思考。Director沿用正文思考开关与强度，不切换正文模板。开启时另传`thinking_budget_tokens:0`，尽力限制候选推理。当前Qwen已验证生效，Gemma会忽略预算；候选仍可能慢，停止仍中止当前请求。
 
 当前 llama 模板把 high 解释为 xhigh；应用仍透传 high，不绑定此映射。
 
@@ -82,15 +82,17 @@ Director 不替换正文的首条 system、不改动用户输入，也不重建�
 
 不再为最近四条消息之外的剧情每轮生成独立梗概。正文已有 checkpoint 随原前缀复用，未压缩的原历史完整保留。旧 DO `director_synopsis` 派生表为兼容保留，不再读取或写入；原始剧情与正文 checkpoint 不改写。
 
-只有整体输入超过已发现容量或遇到明确 context 超限，才用独立的 `ConversationContext` 从已确认剧情重建并压缩 Director 输入。复用有效正文 checkpoint；单条长正文按 Unicode 边界压缩其较早片段，核心角色与最新状态不截断。摘要只能涵盖已发生剧情，Director 指令与候选不得进入摘要。此临时上下文不写入正文 summary/projection；无法容纳则保留正常正文、返回空候选。
+只有整体输入超过已发现容量或遇到明确 context 超限，才用独立的 `ConversationContext` 从已确认剧情重建并压缩 Director 输入。复用有效正文 checkpoint；保留当前完整正文，按需压缩较早成功历史，核心角色与最新状态不截断。摘要只能涵盖已发生剧情，Director 指令与候选不得进入摘要。此临时上下文不写入正文 summary/projection；无法容纳则保留正常正文、返回空候选。
 
-通过同一 Gateway `dynamic/rp` 发送 `response_format: {type:"json_schema",json_schema:{name:"director_choices",strict:true,schema:...}}`。Schema 限制唯一对象字段 choices，数组恰三条，字符串非空且最多120个Unicode字符。Director 保留与正文相同的 tools schema，tool_choice 为 none，固定关闭思考。消息与工具前缀稳定为上游 KV 复用提供条件；实际命中仍以 cached tokens/prefill 计数认定，开启思考及模型模板差异单列核验。
+通过同一 Gateway `dynamic/rp` 发送 `response_format: {type:"json_schema",json_schema:{name:"director_choices",strict:true,schema:...}}`。Schema 限制唯一对象字段 choices，数组恰三条，字符串非空且最多120个Unicode字符。Director 保留与正文相同的 tools schema，tool_choice 为 none。Director保持正文的思考模板参数，预算行为以本页设置说明为准。消息与工具前缀稳定为上游 KV 复用提供条件；实际命中仍以 cached tokens/prefill 计数认定，开启思考及模型模板差异单列核验。
+
+零预算在当前llama.cpp生效，Gemma备用后端未生效，但两者均返回有效候选。此参数是尽力限制，不保证所有后端关闭思考。试验记录见[PROGRESS](PROGRESS.md)；不按计时字段猜能力，不删参数重试。
 
 服务端聚合完整 JSON，仅在可靠 stop 时校验。检查唯一字段、恰三字符串、trim 后非空/互异、长度和控制字符。
 
 全部合格才保存三条。代码围栏、逐行文本、额外字段、拒绝、工具响应、缺终态或 length 均丢弃全部候选；不拼半个 JSON、不逐条补缺、不填模板。Director 故障不影响已成功正文与状态提交；用户停止/断连/占用丢失仍沿原取消机制结束。
 
-正文、Director 及按需压缩的模型请求和指标分开记录。普通回合为正文与 Director 两次请求；工具、正文续写或超限压缩才增加请求。完整 Gateway payload、eventId、skipCache 与 app/task/username 三项 metadata 保持现有契约。
+正文、Director 及按需压缩的模型请求和指标分开记录。普通回合为正文与 Director 两次请求；工具、正文续写、确定性复写修订或超限压缩才增加请求。完整 Gateway payload、eventId、skipCache 与 app/task/username 三项 metadata 保持现有契约。
 
 候选仍与所属 message ID 一起保存为现有 nullable 元数据；刷新和 UUID 回放仅读取结果。候选不是剧情消息，不进入正文摘要或模型投影。SSE 与按钮发送契约保持现有 `candidates_pending → done`。
 
@@ -129,7 +131,7 @@ Director 不替换正文的首条 system、不改动用户输入，也不重建�
 
 消息区采用右侧用户气泡、无气泡角色正文，当前单角色会话隐藏双方姓名与头像，保留无障碍身份。发送/停止使用44px圆形图标按钮；输入框单行起步，按实际内容伸展到200px后内部滚动，发送后复位。复制、编辑与最后一条回答的重新生成放正文末尾；保留键盘、中文输入法、停止、续写和草稿。
 
-全局与当前会话都可编辑 System Prompt，并独立恢复默认提示；全局用于新会话，现有会话保留自身快照。默认鼓励3–6段、约300–600字的自然对白与场景细节，仍由用户控制自己的行动；长度是提示目标，不设应用输出上限。
+全局与当前会话都可编辑 System Prompt，并独立恢复默认提示；全局用于新会话，现有会话保留自身快照。默认鼓励3–6段、约300–600字的自然对白与场景细节，仍由用户控制自己的行动；长度是提示目标，不设应用输出上限。应用正文提醒允许已完成目标或无新可行动内容时简短结束，不为篇幅补写等待描写。
 
 只精确升级旧默认字符串，用户自定义内容不覆盖；用户提示始终进入system，角色卡提示附加，含 `{{original}}` 时替换且不重复插入。正文用户消息只包含用户原文；Director使用JSON Schema，缓存以实际计数验收。
 

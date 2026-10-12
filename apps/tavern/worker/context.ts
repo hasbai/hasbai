@@ -45,16 +45,16 @@ export class ConversationContext {
  private wireProjection:ReturnType<typeof buildPrompt>|null=null;
  private storyFragments=new WeakSet<PromptMessage>();
  constructor(readonly history: Message[], readonly card: JsonObject, readonly books: Book[], readonly settings: Settings,
-  public contextTokens: number | null, readonly options: { protocol: string; inputRatio: number; state?:string },
+  public contextTokens: number | null, readonly options: { protocol: string; inputRatio: number; state?:string;bodyTask?:string },
   readonly infer: (messages: PromptMessage[]) => Promise<string>) {}
  async restore(raw?: string | null) { this.summary = await validSummary(raw, this.history); }
  storyFragment(content:string):PromptMessage{const m:PromptMessage={role:'assistant',content};this.storyFragments.add(m);return m;}
  useProjection(messages:PromptMessage[]){this.wireProjection=this.extend({...this.prompt(),messages:messages.map(m=>structuredClone(m))},[]);}
  prompt(continuation = '', projection: { protocol: string } = this.options, suffix: PromptMessage[] = []) {
   if(this.wireProjection)return this.extend(this.wireProjection,suffix);
-  const hasTools=suffix.some(m=>m.role==='tool');
-  const projectedHistory=this.history.slice(this.summary?.covered.length ?? 0).filter(m=>!hasTools||m.id!==this.generatedId);
-  const base = buildPrompt(this.card, this.books, projectedHistory, this.settings, this.contextTokens, hasTools?'':continuation,
+  const hasDraft=suffix.some(m=>m.role==='tool'||m.role==='assistant');
+  const projectedHistory=this.history.slice(this.summary?.covered.length ?? 0).filter(m=>!hasDraft||m.id!==this.generatedId);
+  const base = buildPrompt(this.card, this.books, projectedHistory, this.settings, this.contextTokens, hasDraft?'':continuation,
    { ...this.options, ...projection, summary: [this.summary?.text, this.generatedMemory].filter(Boolean).join('\n') });
   return suffix.length ? this.extend(base, suffix) : base;
  }
@@ -80,7 +80,8 @@ export class ConversationContext {
   return prompt;
  }
  async compressProjection(suffix:PromptMessage[]){
-  if(suffix.some(m=>m.role==='tool')){
+  {
+   // Registered prose can be compressed on tool and plain length continuations.
    const plain=suffix.filter(m=>this.storyFragments.has(m)&&m.content.length>1);
    const largest=plain.sort((a,b)=>b.content.length-a.content.length)[0];
    const historyCost=this.history.slice(this.summary?.covered.length??0).filter(m=>m.id!==this.generatedId).reduce((n,m)=>n+estimateTokens(m.content),0);
