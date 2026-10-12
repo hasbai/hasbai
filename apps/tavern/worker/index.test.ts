@@ -2,6 +2,7 @@ import {it,expect,vi,beforeEach,afterEach} from 'vitest';import {DatabaseSync} f
 import worker from './index';import {TavernSession} from './session-object';import {SESSION_SCHEMA} from './session-store';
 vi.mock('cloudflare:workers',()=>({DurableObject:class {constructor(public ctx:DurableObjectState,public env:Env){}}}));import {identity,AuthError} from './auth';import {DEFAULT_SETTINGS,type Message} from '../shared/types';
 import { DIRECTOR_RESPONSE_FORMAT, DIRECTOR_RULE } from './director';
+import { AGENT_RULE } from './agent';
 import { LoreIndex } from './lore';
 import { characterCard, emptyCharacterDraft, CHARACTER_RESPONSE_FORMAT } from '../shared/character-draft';
 vi.mock('./auth',async(original)=>({...await original<typeof import('./auth')>(),identity:vi.fn()}));
@@ -354,6 +355,20 @@ it('appends to a successful actual model projection and invalidates it for chang
  const {s}=await seed();await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'第一次问候'})).text();await Promise.all(work);const original=(aiRun.mock.calls[0][0].query as {messages:unknown[]}).messages;
  await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'第二次问候'})).text();await Promise.all(work);const next=(aiRun.mock.calls[2][0].query as {messages:unknown[]}).messages;expect(next.slice(0,original.length)).toEqual(original);expect(sessionDb.prepare('SELECT count(*) n FROM model_projections').get()?.n).toBe(1);
 });
+it('discards a stale rule projection once and then resumes append-only prefix reuse without changing saved content',async()=>{
+ const {s}=await seed();const originalSettings=sessionDb.prepare('SELECT settings_json,character_json FROM sessions WHERE id=?').get(s.id);
+ await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'保留原文'})).text();await Promise.all(work);
+ const row=sessionDb.prepare('SELECT message_id,value_json FROM model_projections').get()!;
+ const projection=JSON.parse(row.value_json as string);projection.messages[0].content=projection.messages[0].content.replace(AGENT_RULE,'旧版正文规则');
+ sessionDb.prepare('UPDATE model_projections SET value_json=? WHERE message_id=?').run(JSON.stringify(projection),row.message_id);
+ await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'行动要有结果'})).text();await Promise.all(work);
+ const fresh=(aiRun.mock.calls[2][0].query as {messages:{role:string;content:string}[]}).messages;expect(fresh[0].content).toContain(AGENT_RULE);expect(JSON.stringify(fresh)).not.toContain('旧版正文规则');
+ const renewed=JSON.parse(sessionDb.prepare('SELECT value_json FROM model_projections').get()!.value_json as string);
+ await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'仍留在这里慢聊'})).text();await Promise.all(work);
+ const next=(aiRun.mock.calls[4][0].query as {messages:unknown[]}).messages;expect(next.slice(0,renewed.messages.length)).toEqual(renewed.messages);expect(aiRun).toHaveBeenCalledTimes(6);
+ expect(sessionDb.prepare('SELECT settings_json,character_json FROM sessions WHERE id=?').get(s.id)).toEqual(originalSettings);
+ expect(sessionDb.prepare("SELECT content FROM messages WHERE role='user' ORDER BY ordinal").all().map(m=>m.content)).toEqual(['保留原文','行动要有结果','仍留在这里慢聊']);
+});
 it('compresses only the model projection of long tool-assisted prose while retaining full persisted body',async()=>{
  const {s}=await seed();db.prepare('UPDATE model_capabilities SET value_json=?').run(JSON.stringify({contextTokens:2048,inputRatio:1.2,source:'llama.cpp:n_ctx'}));let bodies=0;
  aiRun.mockImplementation(async request=>{const q=request.query as {messages:{content:string}[]};if(q.messages[0].content.startsWith('总结已发生剧情'))return completion('旧事。');if(q.messages[0].content.startsWith('压缩会话记忆'))return completion('已经到达港口。');if((request.query as {response_format?:unknown}).response_format)return candidateCompletion(['我问问。','我坐下。','我看窗外。']);if(++bodies===1)return tool('update_state',{patch:{scene:'港口'}});if(bodies===2)return completion('正文'.repeat(2200),'length');expect(q.messages.some(m=>m.content.includes('已发生正文摘要'))).toBe(true);return completion('结尾。');});
@@ -507,9 +522,12 @@ it('appends only the last request output to Director after repeated length conti
 });
 it('keeps long ordinary conversation at two calls per turn and excludes candidate tasks from projections',async()=>{
  const {s}=await seed();for(let ordinal=1;ordinal<=6;ordinal++)sessionDb.prepare('INSERT INTO messages(id,session_id,role,content,status,ordinal,created_at) VALUES(?,?,?,?,?,?,?)').run('past-'+ordinal,s.id,ordinal%2?'user':'assistant','已发生的重要剧情'+ordinal+'，包含约定和未决线索。','completed',ordinal,Date.now()+ordinal);
+ let previous:{role:string;content:string}[]|undefined,system:string|undefined;
  for(const content of ['现在继续','新的情节','再次继续']){
   const at=aiRun.mock.calls.length;await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content})).text();await Promise.all(work);expect(aiRun.mock.calls.length-at).toBe(2);
-  const body=aiRun.mock.calls[at][0].query as {messages:{content:string}[]},candidate=aiRun.mock.calls[at+1][0].query as typeof body;expect(candidate.messages.slice(0,body.messages.length)).toEqual(body.messages);expect(JSON.stringify(body)).toContain('已发生的重要剧情1');expect(JSON.stringify(body)).not.toContain(DIRECTOR_RULE);
+  const body=aiRun.mock.calls[at][0].query as {messages:{role:string;content:string}[];tools:unknown;cache_prompt:boolean},candidate=aiRun.mock.calls[at+1][0].query as typeof body;expect(candidate.messages.slice(0,body.messages.length)).toEqual(body.messages);expect(candidate.tools).toEqual(body.tools);expect(body.cache_prompt).toBe(true);expect(candidate.cache_prompt).toBe(true);expect(JSON.stringify(body)).toContain('已发生的重要剧情1');expect(JSON.stringify(body)).not.toContain(DIRECTOR_RULE);
+  system??=body.messages[0].content;expect(body.messages[0].content).toBe(system);if(previous)expect(body.messages.slice(0,previous.length)).toEqual(previous);
+  previous=JSON.parse(sessionDb.prepare('SELECT value_json FROM model_projections').get()!.value_json as string).messages;
  }
  expect(sessionDb.prepare('SELECT * FROM director_synopsis').all()).toHaveLength(0);expect(sessionDb.prepare('SELECT summary_json FROM sessions WHERE id=?').get(s.id)?.summary_json).toBeNull();
  const projection=sessionDb.prepare('SELECT value_json FROM model_projections ORDER BY rowid DESC').get()!.value_json as string;expect(projection).not.toContain('director_choices');expect(projection).not.toContain(DIRECTOR_RULE);
