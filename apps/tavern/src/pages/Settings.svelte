@@ -1,11 +1,11 @@
 <script lang="ts">
  import { Notice } from '@hasbai/ui/notice';
- import { onMount } from 'svelte';import { Button } from '@hasbai/ui/button';import { Input } from '@hasbai/ui/input';import { Moon,Sun,UserRound } from '@lucide/svelte';import { DEFAULT_SETTINGS, type Settings, type ModelOption } from '../../shared/types';import type { Api } from '../lib/api';import GenerationSettings from '../lib/GenerationSettings.svelte';
+ import { onMount } from 'svelte';import { Button } from '@hasbai/ui/button';import { Input } from '@hasbai/ui/input';import { Moon,Sun,UserRound,Info } from '@lucide/svelte';import { DEFAULT_SETTINGS, type Settings, type ModelOption } from '../../shared/types';import type { Api } from '../lib/api';import GenerationSettings from '../lib/GenerationSettings.svelte';
  let {api,dark=false,ontheme=()=>{}}:{api:Api;dark?:boolean;ontheme?:()=>void}=$props();let settings=$state<Settings>({...DEFAULT_SETTINGS}),models=$state<ModelOption[]>([]),loading=$state(true),busy=$state(false),error=$state(''),saved=$state(false),loaded=$state(false);
  onMount(()=>{void load();});async function load(){loading=true;error='';try{const [value,options]=await Promise.all([api.request<Settings>('settings'),api.request<{models:ModelOption[]}>('models')]);settings={...DEFAULT_SETTINGS,...value};models=options.models;loaded=true;}catch(e){error=(e as Error).message;}finally{loading=false;}}
  async function save(){busy=true;error='';saved=false;try{settings=await api.request<Settings>('settings','PUT',settings);saved=true;}catch(e){error=(e as Error).message;}finally{busy=false;}}
 </script>
-<header class="page-head"><div><p class="eyebrow">CONVERSATION</p><h1>对话设置</h1></div><Button variant="outline" onclick={ontheme} aria-label={dark?'切换浅色模式':'切换深色模式'}>{#if dark}<Sun size={18}/>{:else}<Moon size={18}/>{/if}主题</Button></header>
+<header class="page-head"><div><h1>对话设置</h1></div><div class="actions"><Button variant="ghost" href="#about"><Info size={18} aria-hidden="true"/>关于</Button><Button variant="outline" onclick={ontheme} aria-label={dark?'切换浅色模式':'切换深色模式'}>{#if dark}<Sun size={18}/>{:else}<Moon size={18}/>{/if}主题</Button></div></header>
 {#if error}<Notice variant="error">{error}<Button variant="outline" onclick={load}>重试</Button></Notice>{/if}{#if loading}<div class="empty" role="status">正在加载设置…</div>{:else if loaded}
  <form class="settings-form" onsubmit={e=>{e.preventDefault();void save();}} oninput={()=>saved=false}>
   <GenerationSettings bind:settings {models} disabled={busy}/>

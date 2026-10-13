@@ -32,6 +32,7 @@
     "binding": "AI",
     "remote": true
   },
+  "kv_namespaces": [{"binding":"PROMPTS","id":"d0ed2b03c1be475fa8ae463723d33c05"}],
   "version_metadata": {
     "binding": "VERSION"
   },

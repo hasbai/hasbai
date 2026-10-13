@@ -1,3 +1,4 @@
+import { SUMMARY_RULE, SUMMARY_TASK, STORY_SUMMARY_PREFIX } from '../shared/instructions';
 import { buildPrompt, estimateTokens, type PromptMessage } from '../shared/prompt';
 import { sseData } from '../shared/sse';
 import type { Book, JsonObject, Message, Settings } from '../shared/types';
@@ -36,7 +37,6 @@ export function contextLimit(value: unknown): number | undefined {
 export class SummaryRetry extends Error {
  constructor(readonly contextTokens?: number) { super('会话摘要需要更小的输入'); }
 }
-const SUMMARY_RULE = '压缩会话记忆。只保留已发生事件、人物关系、约定和未决线索；保留否定、更正与时间顺序，不推测、不续写、不输出候选。简洁记录，显著短于原文。';
 function halveStory(text:string):[string,string]{const chars=[...text];if(chars.length<2)throw Error('模型上下文无法容纳会话摘要');const middle=Math.ceil(chars.length/2);return [chars.slice(0,middle).join(''),chars.slice(middle).join('')];}
 export class ConversationContext {
  summary: Summary | null = null;
@@ -45,7 +45,7 @@ export class ConversationContext {
  private wireProjection:ReturnType<typeof buildPrompt>|null=null;
  private storyFragments=new WeakSet<PromptMessage>();
  constructor(readonly history: Message[], readonly card: JsonObject, readonly books: Book[], readonly settings: Settings,
-  public contextTokens: number | null, readonly options: { protocol: string; inputRatio: number; state?:string;bodyTask?:string },
+  public contextTokens: number | null, readonly options: { protocol: string; inputRatio: number; state?:string; cardPostOriginal?:string; summaryRule?:string; summaryTask?:string },
   readonly infer: (messages: PromptMessage[]) => Promise<string>) {}
  async restore(raw?: string | null) { this.summary = await validSummary(raw, this.history); }
  storyFragment(content:string):PromptMessage{const m:PromptMessage={role:'assistant',content};this.storyFragments.add(m);return m;}
@@ -85,7 +85,7 @@ export class ConversationContext {
    const plain=suffix.filter(m=>this.storyFragments.has(m)&&m.content.length>1);
    const largest=plain.sort((a,b)=>b.content.length-a.content.length)[0];
    const historyCost=this.history.slice(this.summary?.covered.length??0).filter(m=>m.id!==this.generatedId).reduce((n,m)=>n+estimateTokens(m.content),0);
-   if(largest&&estimateTokens(largest.content)>historyCost){const [older,recent]=halveStory(largest.content);const text=await this.summarize('',[{id:'projection',role:'assistant',content:older,status:'completed',ordinal:0,requestId:null,createdAt:0}]);largest.content='已发生正文摘要：'+text+'\n'+recent;this.wireProjection=null;return;}
+   if(largest&&estimateTokens(largest.content)>historyCost){const [older,recent]=halveStory(largest.content);const text=await this.summarize('',[{id:'projection',role:'assistant',content:older,status:'completed',ordinal:0,requestId:null,createdAt:0}]);largest.content=STORY_SUMMARY_PREFIX+text+'\n'+recent;this.wireProjection=null;return;}
   }
   await this.compress();
  }
@@ -111,16 +111,16 @@ export class ConversationContext {
   }
  }
  private async summarize(previous:string,history:Message[]){
-  const options={contextTokens:this.contextTokens,inputRatio:this.options.inputRatio,infer:this.infer};
+  const options={contextTokens:this.contextTokens,inputRatio:this.options.inputRatio,infer:this.infer,rule:this.options.summaryRule,task:this.options.summaryTask};
   try{return await summarizeStory(previous,history,options);}finally{this.contextTokens=options.contextTokens;}
  }
 
 }
 
 /** Shared algorithm; callers own separate source checkpoints and context limits. */
-export async function summarizeStory(previous:string,history:Message[],options:{contextTokens:number|null;inputRatio:number;infer:(messages:PromptMessage[])=>Promise<string>;rule?:string;requireReduction?:boolean}):Promise<string>{
+export async function summarizeStory(previous:string,history:Message[],options:{contextTokens:number|null;inputRatio:number;infer:(messages:PromptMessage[])=>Promise<string>;rule?:string;task?:string;requireReduction?:boolean}):Promise<string>{
   const source = [previous, ...history.map(m => m.content)].filter(Boolean).join('\n');
-  const messages: PromptMessage[] = [{ role: 'system', content: (options.rule ?? SUMMARY_RULE) }, {role:'user',content:[previous?'已有记忆：\n'+previous:'',...history.map(m=>(m.role==='user'?'用户：':'角色：')+m.content),options.requireReduction===false?'请简洁总结以上整体剧情。':'请压缩以上会话。摘要必须显著短于来源。'].filter(Boolean).join('\n')}];
+  const messages: PromptMessage[] = [{ role: 'system', content: (options.rule ?? SUMMARY_RULE) }, {role:'user',content:[previous?'已有记忆：\n'+previous:'',...history.map(m=>(m.role==='user'?'用户：':'角色：')+m.content),options.requireReduction===false?'请简洁总结以上整体剧情。':(options.task ?? SUMMARY_TASK)].filter(Boolean).join('\n')}];
   const cost = 256 + messages.reduce((n, m) => n + Math.ceil(estimateTokens(m.content) * options.inputRatio) + 8, 0);
   let split = options.contextTokens !== null && cost > options.contextTokens;
   if (!split) {

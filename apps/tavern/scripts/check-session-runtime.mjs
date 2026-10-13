@@ -41,6 +41,9 @@ export class TestSession extends TavernSession {
   let wire='';for(;;){const next=await reader.read();if(next.done)break;wire+=decoder.decode(next.value);}return {wire,storage:await this.inspectStorage()};
  }
  constructor(ctx,env){super(ctx,{...env,AIG_RP_RUN_TOKEN:'fixture-only'});globalThis.fetch=async(url,options)=>{if(!String(url).includes('/compat/chat/completions'))throw Error('fixture unexpected fetch');const request={provider:'compat',endpoint:'chat/completions',query:JSON.parse(options.body)};if(request.query.model!=='dynamic/rp'||request.provider!=='compat'||request.endpoint!=='chat/completions')throw Error('gateway binding contract missing');
+ if(request.query.messages.some(m=>m.content.includes('本消息是每轮应用写作提醒')))throw new Error('body reminder leaked');
+ if(!request.query.response_format&&request.query.messages.filter(m=>m.content.startsWith('当前已确认状态')).length>1)throw new Error('historical state accumulated');
+ if(!request.query.response_format&&request.query.messages.at(-1).content==='污染验收继续'){if(request.query.messages.some(m=>m.role==='tool'||m.tool_calls))throw new Error('historical tool protocol accumulated');const states=request.query.messages.filter(m=>m.content.startsWith('当前已确认状态'));if(states.length!==1||!states[0].content.includes('北港'))throw new Error('current state missing');}
  const director=!!request.query.response_format;const synopsis=request.query.messages[0].content.startsWith('总结已发生剧情');const input=request.query.messages.at(-1).content;
  if(request.query.messages.some(m=>!m.content.isWellFormed()))throw new Error('split Unicode in model projection');
  if(!director&&!synopsis&&!request.query.messages[0].content.startsWith('压缩会话记忆')&&request.query.messages.some(m=>m.role==='user'&&m.content.includes('同次长正文工具'))){
@@ -53,7 +56,7 @@ export class TestSession extends TavernSession {
   const hits=results.map(m=>JSON.parse(m.content)[0]);if(hits[0].source.messageId!==hits[1].source.messageId||!hits[0].text.includes('北门钥匙在南塔')||!hits[0].text.isWellFormed()||hits[0].text.includes('银怀表')||!hits[1].text.includes('银怀表藏在南塔'))throw new Error('memory fragment provenance missing');
  }
  if(!director&&input.includes('工具抵达北港')&&!request.query.messages.some(m=>m.role==='tool'))return new Response([{tool_calls:[{index:1,id:'state-call',type:'function',function:{name:'update_state',arguments:''}}]},{tool_calls:[{index:1,id:null,type:null,function:null}]},{tool_calls:[{index:1,id:null,type:'function',function:{name:null,arguments:'{"patch":{"scene":"北港"}}'}}]}].map((delta,i)=>'data: '+JSON.stringify({choices:[{delta,finish_reason:i===2?'tool_calls':null}]})+'\\n\\n').join('')+'data: [DONE]\\n\\n',{headers:{'Content-Type':'text/event-stream'}});
- if(director){if(!request.query.tools||request.query.tool_choice!=='none'||request.query.messages.at(-1).role!=='user'||request.query.messages.slice(1).some(m=>m.role==='system'))throw new Error('Director prefix missing');if(!input.includes('当前已确认状态（数据）'))throw new Error('Director state missing');}
+ if(director){if(!request.query.tools||request.query.tool_choice!=='none'||request.query.messages.at(-1).role!=='user'||request.query.messages.slice(1).some(m=>m.role==='system'))throw new Error('Director prefix missing');if(input.includes('本轮正文任务（应用指令）'))throw new Error('Director reminder leaked');}
  if(director&&request.query.messages.some(m=>m.role==='user'&&m.content==='候选时重启'))return new Response(new ReadableStream(),{headers:{'Content-Type':'text/event-stream'}});
  if(!director&&input==='正文时重启')return new Response(new ReadableStream({start(c){c.enqueue(new TextEncoder().encode('data: '+JSON.stringify({choices:[{delta:{content:'重启前半句。'}}]})+'\\n\\n'));}}),{headers:{'Content-Type':'text/event-stream'}});
  if(!director&&input.includes('等待'))return new Response(new ReadableStream(),{headers:{'Content-Type':'text/event-stream'}});
@@ -68,7 +71,7 @@ export default {async fetch(request,env){const d=await request.json();const stub
  return new Response(await stub.invoke(d.owner,d.id,d.method,d.data??{}),{headers:{'Content-Type':'application/json'}});
 }};`;
 const bundle=await build({stdin:{contents:source,resolveDir:root,sourcefile:'session-test.ts',loader:'ts'},bundle:true,write:false,format:'esm',platform:'browser',target:'es2022',external:['cloudflare:workers']});
-const options={modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-09-18',compatibilityFlags:['nodejs_compat','enable_request_signal'],durableObjects:{SESSIONS:{className:'TestSession',useSQLite:true}},resourcePersistencePath:persist,d1Databases:{DB:'test'},bindings:{AIG_GATEWAY_ID:'default'}};
+const options={modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-09-18',compatibilityFlags:['nodejs_compat','enable_request_signal'],durableObjects:{SESSIONS:{className:'TestSession',useSQLite:true}},resourcePersistencePath:persist,kvNamespaces:{PROMPTS:'test-prompts'},d1Databases:{DB:'test'},bindings:{AIG_GATEWAY_ID:'default'}};
 let runtime=new Miniflare(convertV4MiniflareOptions(options));
 async function call(id,method,data,owner='owner'){return runtime.dispatchFetch('https://test',{method:'POST',body:JSON.stringify({id,owner,method,data})});}
 try{
@@ -91,6 +94,7 @@ try{
  for(const phase of ['start','delta','candidates_pending','completed']){const result=await(await call('pressure-'+phase,'backpressure',{phase})).json();assert.match(result.wire,/"type":"done"/);assert.match(result.wire,phase==='completed'?/"status":"completed"/:/"finishReason":"stopped"/);assert.deepEqual(result.storage.tables,[]);assert.equal(result.storage.alarm,null);}
  const fork=await(await call('a','fork',{messageId:a.value.messages.at(-1).id,content:'新分支'})).json();assert.equal((await(await call(fork.value.id,'read')).json()).value.messages.at(-1).content,'新分支');
  await(await call('a','generate',{requestId:crypto.randomUUID(),content:'工具抵达北港'})).text();a=await(await call('a','read')).json();assert.equal(a.value.session.state.scene,'北港');
+ const continued=await(await call('a','generate',{requestId:crypto.randomUUID(),content:'污染验收继续'})).text();assert.doesNotMatch(continued,/"type":"error"/);
  const preTool=a.value.messages.findLast(m=>m.role==='user');const priorBranch=await(await call('a','fork',{messageId:preTool.id,content:'不同方向'})).json();assert.equal((await(await call(priorBranch.value.id,'read')).json()).value.session.state.scene,null);
  const stateBranch=await(await call('a','fork',{messageId:a.value.messages.at(-1).id,content:'编辑这一轮'})).json();assert.equal((await(await call(stateBranch.value.id,'read')).json()).value.session.state.scene,null);
  const pending=await call('b','generate',{requestId:crypto.randomUUID(),content:'等待'}),reader=pending.body.getReader();await reader.read();const b=await(await call('b','read')).json();await call('b','stop',{generationId:b.value.session.generationId});while(!(await reader.read()).done){};

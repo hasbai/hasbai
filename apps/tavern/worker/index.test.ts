@@ -15,7 +15,7 @@ async function call(path:string,method='GET',data?:unknown){return worker.fetch(
 beforeEach(()=>{
  beforeRun=undefined;db=new DatabaseSync(':memory:');for(const name of ['0001_schema.sql','0002_source_catalog.sql','0003_generation_outcomes.sql','0004_source_quality.sql','0005_candidates_capabilities.sql','0006_session_summary.sql','0007_session_objects.sql','0008_branch_state_seed.sql'])db.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'));sessionDb=new DatabaseSync(':memory:');sessionDb.exec(SESSION_SCHEMA);files=new Map();work=[];
  aiRun=vi.fn<AiRun>(async request=>{const last=(request.query as {messages:{content:string}[]}).messages.at(-1)!.content;const candidate=!!(request.query as {response_format?:unknown}).response_format;const synopsis=(request.query as {messages:{content:string}[]}).messages[0].content.startsWith('总结已发生剧情');return new ReadableStream({start(c){c.enqueue(new TextEncoder().encode('data: '+JSON.stringify({choices:[{delta:{reasoning_content:'private'}}]})+'\n\ndata: '+JSON.stringify({choices:[{delta:{content:candidate?JSON.stringify({choices:['去港口。','问问来路。','坐下喝茶。']}):synopsis?'旧事。':'欢迎来到港城。'}}]})+'\n\ndata: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'));c.close();}});});
- env=Object.assign({} as Env,{DB:{prepare:statement,batch:async(stmts:D1PreparedStatement[])=>{const result=[];db.exec('BEGIN');try{for(const s of stmts)result.push(await s.run());db.exec('COMMIT');return result;}catch(e){db.exec('ROLLBACK');throw e;}}},FILES:{put:async(key:string,bytes:Uint8Array)=>files.set(key,bytes),get:async(key:string)=>files.has(key)?{body:new Response(Uint8Array.from(files.get(key)!)).body}:null,delete:async(keys:string|string[])=>{for(const key of Array.isArray(keys)?keys:[keys])files.delete(key);}},AI:{gateway:(id:string)=>({run:async(data:AIGatewayUniversalRequest,options?:{gateway?:UniversalGatewayOptions;signal?:AbortSignal})=>{expect(id).toBe('default');expect(data.provider).toBe('compat');expect(data.endpoint).toBe('chat/completions');expect((data.query as {model:string}).model).toBe('dynamic/rp');const result=await aiRun(data,options);return result instanceof ReadableStream?new Response(result,{headers:{'Content-Type':'text/event-stream','cf-aig-log-id':'test-log'}}):result;}})},AUTH0_DOMAIN:'auth.hasbai.xyz',AUTH0_AUDIENCE:'https://financial.hasbai.xyz/api',AIG_GATEWAY_ID:'default',CONTEXT_TOKENS:'16000',VERSION:{id:'test'},ASSETS:{fetch:async()=>new Response('assets')}});
+ env=Object.assign({} as Env,{PROMPTS:{get:vi.fn(async()=>null),put:vi.fn(async()=>{})},DB:{prepare:statement,batch:async(stmts:D1PreparedStatement[])=>{const result=[];db.exec('BEGIN');try{for(const s of stmts)result.push(await s.run());db.exec('COMMIT');return result;}catch(e){db.exec('ROLLBACK');throw e;}}},FILES:{put:async(key:string,bytes:Uint8Array)=>files.set(key,bytes),get:async(key:string)=>files.has(key)?{body:new Response(Uint8Array.from(files.get(key)!)).body}:null,delete:async(keys:string|string[])=>{for(const key of Array.isArray(keys)?keys:[keys])files.delete(key);}},AI:{gateway:(id:string)=>({run:async(data:AIGatewayUniversalRequest,options?:{gateway?:UniversalGatewayOptions;signal?:AbortSignal})=>{expect(id).toBe('default');expect(data.provider).toBe('compat');expect(data.endpoint).toBe('chat/completions');expect((data.query as {model:string}).model).toBe('dynamic/rp');const result=await aiRun(data,options);return result instanceof ReadableStream?new Response(result,{headers:{'Content-Type':'text/event-stream','cf-aig-log-id':'test-log'}}):result;}})},AUTH0_DOMAIN:'auth.hasbai.xyz',AUTH0_AUDIENCE:'https://financial.hasbai.xyz/api',AIG_GATEWAY_ID:'default',CONTEXT_TOKENS:'16000',VERSION:{id:'test'},ASSETS:{fetch:async()=>new Response('assets')}});
  const objects=new Map<string,TavernSession>();
  const storage={sql:{exec:(sql:string,...values:unknown[])=>{beforeRun?.(sql,values);const stmt=sessionDb.prepare(sql);const rows=stmt.all(...values as never[]);return {toArray:()=>rows};}},transactionSync:<T>(fn:()=>T)=>{sessionDb.exec('BEGIN');try{const result=fn();sessionDb.exec('COMMIT');return result;}catch(e){sessionDb.exec('ROLLBACK');throw e;}},setAlarm:async()=>{},deleteAll:async()=>{for(const row of sessionDb.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all())sessionDb.exec('DROP TABLE "'+row.name+'"');}};
  Object.assign(env,{SESSIONS:{getByName:(name:string)=>{let target=objects.get(name);if(!target){target=new TavernSession({storage,waitUntil:ctx.waitUntil} as unknown as DurableObjectState,env);objects.set(name,target);}return target;}}});
@@ -352,7 +352,10 @@ it('keeps committed state after failed regeneration and restarts successful rege
  aiRun.mockResolvedValueOnce(tool('update_state',{patch:{scene:'未来灯塔'}})).mockRejectedValueOnce(Error('offline'));await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),regenerate:true})).text();await Promise.all(work);
  const failed=await(await call('/api/sessions/'+s.id)).json() as {session:{state:{scene:string}};messages:Message[]};expect(failed.session.state.scene).toBe('北港');expect(failed.messages.at(-1)?.status).toBe('error');
  aiRun.mockResolvedValueOnce(tool('update_state',{patch:{scene:'新港'}})).mockResolvedValueOnce(completion('到了新港。'));const at=aiRun.mock.calls.length;await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),regenerate:true})).text();await Promise.all(work);
- const query=aiRun.mock.calls[at][0].query as {messages:{content:string}[]};expect(query.messages.find(m=>m.content.startsWith('当前已确认状态'))!.content).toContain('"scene":null');expect((await(await call('/api/sessions/'+s.id)).json() as {session:{state:{scene:string}}}).session.state.scene).toBe('新港');
+ const query=aiRun.mock.calls[at][0].query as {messages:{content:string}[]};expect(query.messages.some(m=>m.content.startsWith('当前已确认状态'))).toBe(false);expect((await(await call('/api/sessions/'+s.id)).json() as {session:{state:{scene:string}}}).session.state.scene).toBe('新港');
+ const projection=JSON.parse(sessionDb.prepare('SELECT value_json FROM model_projections').get()!.value_json as string).messages;
+ const nextAt=aiRun.mock.calls.length;await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'然后呢'})).text();await Promise.all(work);
+ const next=aiRun.mock.calls[nextAt][0].query as {messages:{role:string;content:string}[]};expect(next.messages.slice(0,projection.length)).toEqual(projection);expect(next.messages.filter(m=>m.content.startsWith('当前已确认状态'))).toHaveLength(1);expect(JSON.stringify(next)).not.toContain('未来灯塔');expect(next.messages.filter(m=>m.role==='assistant').some(m=>m.content==='到达北港。')).toBe(false);
 });
 it('rolls back staged state for duplicate tools; candidate failure still preserves completed state',async()=>{
  const {s}=await seed();aiRun.mockResolvedValueOnce(tool('update_state',{patch:{scene:'北港'}})).mockResolvedValueOnce(tool('update_state',{patch:{scene:'北港'}},'again'));
@@ -431,7 +434,11 @@ it('rejects invalid tool parameters without committing state and preserves a sto
  let controller!:ReadableStreamDefaultController<Uint8Array>;aiRun.mockResolvedValueOnce(tool('update_state',{patch:{scene:'未完成灯塔'}})).mockResolvedValueOnce(new ReadableStream({start(c){controller=c;}}));
  const response=await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'去灯塔'}),drain=response.text();await vi.waitFor(()=>expect(aiRun).toHaveBeenCalledTimes(4));controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"半句正文"}}]}\n\n'));await vi.waitFor(()=>expect(sessionDb.prepare('SELECT content FROM generation_drafts').get()?.content).toBe('半句正文'));
  const generationId=sessionDb.prepare('SELECT generation_id FROM sessions WHERE id=?').get(s.id)?.generation_id;await call('/api/sessions/'+s.id+'/stop','POST',{generationId});await drain;await Promise.all(work);expect(sessionDb.prepare('SELECT after_json FROM turn_snapshots WHERE message_id=?').get(generationId as string)?.after_json).toBeNull();
- const at=aiRun.mock.calls.length;await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),continue:true})).text();await Promise.all(work);const q=aiRun.mock.calls[at][0].query as {messages:{content:string}[]};expect(q.messages.find(m=>m.content.startsWith('当前已确认状态'))!.content).toContain('"scene":null');
+ const at=aiRun.mock.calls.length;await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),continue:true})).text();await Promise.all(work);const q=aiRun.mock.calls[at][0].query as {messages:{content:string}[]};expect(q.messages.some(m=>m.content.startsWith('当前已确认状态'))).toBe(false);
+ const projection=JSON.parse(sessionDb.prepare('SELECT value_json FROM model_projections').get()!.value_json as string).messages;
+ expect(JSON.stringify(projection)).not.toContain('继续上一条回复');expect(JSON.stringify(projection)).not.toContain('未完成灯塔');
+ const nextAt=aiRun.mock.calls.length;await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'现在呢'})).text();await Promise.all(work);
+ const next=aiRun.mock.calls[nextAt][0].query as {messages:unknown[]};expect(next.messages.slice(0,projection.length)).toEqual(projection);expect(JSON.stringify(next)).not.toContain('继续上一条回复');
 });
 it('automatically continues through more than three length finishes with one parser and UUID',async()=>{
  const {s}=await seed(),requestId=crypto.randomUUID();
@@ -630,12 +637,12 @@ it('keeps a streamed rejected first version discarded when stopped during its pr
  expect(wire).toContain(paragraph);const done=terminal(wire);expect(done).toMatchObject({status:'aborted',finishReason:'stopped',content:'岚补好交接登记。'});expect(done.content).not.toContain(paragraph);expect(sessionDb.prepare('SELECT after_json FROM turn_snapshots').get()?.after_json).toBeNull();
  expect(await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId})).json()).toMatchObject({replayed:true,message:done});
 });
-it('replaces streamed repetition with a private revision and discards speculative tools while preserving the accepted wire',async()=>{
+it('replaces streamed repetition and keeps only accepted story in the next turn',async()=>{
  const {s}=await seed(),paragraph='岚在灯下将那张货单和记录册并排摆好，逐项检查库位编号、交付签名与入库时间。'.repeat(4);
  aiRun.mockResolvedValueOnce(tool('update_state',{patch:{scene:'错位场景',facts:{bad:'拒稿事实'}}})).mockResolvedValueOnce(completion(paragraph+'\n\n'+paragraph)).mockResolvedValueOnce(completion('岚查明交付签名漏填，货物还在原库位。')).mockResolvedValueOnce(candidateCompletion(['我问签名。','我留在这里。','我请岚补登记。']));
  const wire=await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'请岚核对'})).text();await Promise.all(work);expect(terminal(wire)).toMatchObject({status:'completed',content:'岚查明交付签名漏填，货物还在原库位。'});expect(wire).toContain(paragraph);expect(terminal(wire).content).not.toContain(paragraph);expect(aiRun).toHaveBeenCalledTimes(4);expect(JSON.parse(sessionDb.prepare('SELECT after_json FROM turn_snapshots').get()!.after_json as string)).toEqual(emptyState());expect(JSON.parse(sessionDb.prepare('SELECT steps_json FROM turn_snapshots').get()!.steps_json as string)).toEqual([]);
  const projection=JSON.parse(sessionDb.prepare('SELECT value_json FROM model_projections').get()!.value_json as string);expect(JSON.stringify(projection)).not.toContain('拒稿事实');expect(JSON.stringify(projection)).not.toContain(DIRECTOR_RULE);expect(sessionDb.prepare('SELECT * FROM generation_drafts').all()).toHaveLength(0);
- await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'然后呢？'})).text();await Promise.all(work);const next=aiRun.mock.calls[4][0].query as {messages:unknown[]};expect(next.messages.slice(0,projection.messages.length)).toEqual(projection.messages);expect(JSON.stringify(next).split('仅用于本次待生成回复')).toHaveLength(2);expect(JSON.stringify(next)).not.toContain('错位场景');
+ await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'然后呢？'})).text();await Promise.all(work);const next=aiRun.mock.calls[4][0].query as {messages:unknown[]};expect(next.messages.slice(0,projection.messages.length)).toEqual(projection.messages);expect(JSON.stringify(next)).not.toContain('重新生成本次正文');expect(JSON.stringify(next)).not.toContain('错位场景');
 });
 it('fails after one invalid revision without publishing either draft or state',async()=>{
  const {s}=await seed();aiRun.mockResolvedValueOnce(completion('第一稿。</think>')).mockResolvedValueOnce(completion('第二稿。<thinking>'));
@@ -649,7 +656,7 @@ it('streams generating prose and restores a stopped valid partial without state'
 it('preserves tool and length wire prefixes across buffered newlines',async()=>{
  const {s}=await seed(),native={id:'newline-state',type:'function',function:{name:'update_state',arguments:'{"patch":{"scene":"值班室"}}'}};
  aiRun.mockResolvedValueOnce(new Response('data: '+JSON.stringify({choices:[{delta:{content:'岚核对记录。\n',tool_calls:[{index:0,...native}]},finish_reason:'tool_calls'}]})+'\n\ndata: [DONE]\n\n',{headers:{'Content-Type':'text/event-stream'}})).mockResolvedValueOnce(completion('发现签名漏填。','length')).mockResolvedValueOnce(completion('货物未发出。')).mockResolvedValueOnce(candidateCompletion(['我问签名。','我留在这里。','我请岚补登记。']));
- const wire=await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'核对原因'})).text();await Promise.all(work);expect(terminal(wire).content).toBe('岚核对记录。\n发现签名漏填。货物未发出。');const projection=JSON.parse(sessionDb.prepare('SELECT value_json FROM model_projections').get()!.value_json as string);expect(JSON.stringify(projection)).toContain('newline-state');expect(JSON.stringify(projection)).not.toContain(DIRECTOR_RULE);
+ const wire=await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'核对原因'})).text();await Promise.all(work);expect(terminal(wire).content).toBe('岚核对记录。\n发现签名漏填。货物未发出。');const projection=JSON.parse(sessionDb.prepare('SELECT value_json FROM model_projections').get()!.value_json as string);expect(JSON.stringify(projection)).not.toContain('newline-state');expect(JSON.stringify(projection)).not.toContain(DIRECTOR_RULE);
  await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'然后呢？'})).text();await Promise.all(work);const next=aiRun.mock.calls[4][0].query as {messages:unknown[]};expect(next.messages.slice(0,projection.messages.length)).toEqual(projection.messages);
 });
 it('never restores a known invalid draft when cancellation wins at its rejection',async()=>{
@@ -700,4 +707,80 @@ it('keeps a durably rejected cross-turn replay empty when final cleanup fails',a
  const {s}=await seed(),a='岚将货单和记录册并排放在台灯下，逐项核对库位编号、交付签名与入库时间。她翻到交付登记的下一页，对照两处经手人的字迹，又把未填写的栏目用笔圈出，确认记录上的批次与桌面货单一致。',b='这批货尚未获得复核签名，也没有装车放行的记录。岚把这两项核对结果记在表格里，合上账簿并收好印章；接下来要核查的就是复核人员为何未完成签字，而不需要再重复对照同一份货单。',body=a+'\n\n'+b;
  aiRun.mockResolvedValueOnce(completion(body)).mockResolvedValueOnce(candidateCompletion(['我问签字。','我等结果。','我喝茶。']));await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'核对'})).text();await Promise.all(work);aiRun.mockClear();aiRun.mockResolvedValueOnce(completion(body)).mockResolvedValueOnce(completion(body));let failures=0;beforeRun=sql=>{if(aiRun.mock.calls.length>=2&&sql.startsWith('DELETE FROM generation_drafts')&&++failures<=1)throw Error('cleanup unavailable');};
  const wire=await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'继续'})).text();await Promise.all(work);beforeRun=undefined;expect(wire).toContain(a);expect(terminal(wire)?.content??'').not.toContain(a);const read=await(await call('/api/sessions/'+s.id)).json() as {messages:Message[]};expect(read.messages.at(-1)).toMatchObject({content:'',status:'aborted'});expect(sessionDb.prepare('SELECT * FROM generation_drafts').all()).toHaveLength(0);expect(sessionDb.prepare('SELECT after_json FROM turn_snapshots ORDER BY rowid DESC LIMIT 1').get()?.after_json).toBeNull();expect(sessionDb.prepare('SELECT value_json FROM model_projections').all()).toHaveLength(1);
+});
+
+it.each(['tool','length','repair'])('keeps only confirmed story across three turns after %s, retaining current state and raw input',async mode=>{
+ const {s}=await seed(),raw='请岚核查。我引用“本轮正文任务（应用指令）”这几个字。';
+ const paragraph='岚在灯下逐项核对库位编号与交接时间，查明这批货物从未离开原仓库。'.repeat(4);
+ aiRun.mockResolvedValueOnce(tool('update_state',{patch:{scene:'第一状态'}}));
+ if(mode==='length')aiRun.mockResolvedValueOnce(completion('岚查明货物尚未发出。','length'));
+ if(mode==='repair')aiRun.mockResolvedValueOnce(completion(paragraph+'\n\n'+paragraph));
+ aiRun.mockResolvedValueOnce(completion('岚查明签名遗漏，完成核查。')).mockResolvedValueOnce(candidateCompletion(['我询问结果。','我留在旅店。','我喝茶。']));
+ const first=await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:raw})).text();await Promise.all(work);expect(terminal(first).status).toBe('completed');
+ // Tool protocol is sufficient; no synthetic user reminder follows the result.
+ const toolRequest=aiRun.mock.calls[1][0].query as {messages:{role:string;content:string}[]};expect(toolRequest.messages.at(-1)?.role).toBe('tool');
+ if(mode==='repair')expect(JSON.stringify(aiRun.mock.calls[2][0].query)).toContain('重新生成本次正文');
+ const secondAt=aiRun.mock.calls.length;
+ aiRun.mockResolvedValueOnce(tool('update_state',{patch:{scene:'第二状态'}})).mockResolvedValueOnce(completion('岚打开临街的窗。')).mockResolvedValueOnce(candidateCompletion(['我看街景。','我听雨。','我聊旅店。']));
+ await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'看看窗外'})).text();await Promise.all(work);
+ const second=aiRun.mock.calls[secondAt][0].query as {messages:{role:string;content:string;tool_calls?:unknown}[]};
+ const projection=JSON.parse(sessionDb.prepare('SELECT value_json FROM model_projections').get()!.value_json as string).messages as typeof second.messages;
+ expect(projection.some(m=>m.role==='tool'||m.tool_calls||m.content.startsWith('当前已确认状态'))).toBe(false);
+ // The persisted prefix must match a fresh rebuild, not an edited wire transcript.
+ sessionDb.prepare('DELETE FROM model_projections').run();
+ const thirdAt=aiRun.mock.calls.length;await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'聊聊旅店'})).text();await Promise.all(work);
+ const third=aiRun.mock.calls[thirdAt][0].query as typeof second;expect(third.messages.slice(0,projection.length)).toEqual(projection);
+ for(const [q,scene] of [[second,mode==='repair'?null:'第一状态'],[third,'第二状态']] as const){
+  const states=q.messages.filter(m=>m.content.startsWith('当前已确认状态'));expect(states).toHaveLength(scene?1:0);if(scene){expect(states[0].content).toContain(scene);expect(states[0].content).not.toContain('应用指令');}
+  expect(q.messages.some(m=>m.role==='tool'||m.tool_calls)).toBe(false);expect(q.messages.find(m=>m.content===raw)).toEqual({role:'user',content:raw});
+  expect(JSON.stringify(q)).not.toContain('重新生成本次正文');expect(JSON.stringify(q)).not.toContain('接着最后一条未完成的正文续写');expect(JSON.stringify(q)).not.toContain(DIRECTOR_RULE);
+ }
+ expect(JSON.stringify(third)).not.toContain('第一状态');expect(JSON.stringify(third)).toContain('岚查明签名遗漏，完成核查。');
+});
+
+it('reuses a validated checkpoint with full accepted story and excludes discarded request controls',async()=>{
+ const {s}=await seed();
+ for(let ordinal=1;ordinal<=4;ordinal++)sessionDb.prepare('INSERT INTO messages(id,session_id,role,content,status,ordinal,created_at) VALUES(?,?,?,?,?,?,?)').run('old-'+ordinal,s.id,ordinal%2?'user':'assistant','此前核查过程与否定更正。'.repeat(250),'completed',ordinal,Date.now()+ordinal);
+ db.prepare('UPDATE model_capabilities SET value_json=?').run(JSON.stringify({contextTokens:2048,inputRatio:1.2,source:'llama.cpp:n_ctx'}));
+ let bodies=0;aiRun.mockImplementation(async request=>{
+  const q=request.query as {messages:{role:string;content:string}[];response_format?:unknown};
+  if(q.messages[0].content.startsWith('压缩会话记忆'))return completion('未出港');
+  if(q.response_format)return candidateCompletion(['我询问结果。','我喝茶。','我看街景。']);
+  if(++bodies===1)return tool('update_state',{patch:{scene:'已确认港口'}});
+  return completion('岚核实签名遗漏，货物仍在库位。');
+ });
+ const wire=await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'核查'})).text();await Promise.all(work);expect(terminal(wire)).toMatchObject({status:'completed'});
+ const projection=JSON.parse(sessionDb.prepare('SELECT value_json FROM model_projections').get()!.value_json as string).messages as {role:string;content:string}[];
+ expect(projection[0].content).toContain('未出港');expect(projection.at(-1)).toEqual({role:'assistant',content:'岚核实签名遗漏，货物仍在库位。'});
+ expect(projection.some(m=>m.role==='tool'||m.content.startsWith('当前已确认状态'))).toBe(false);
+ const at=aiRun.mock.calls.length;await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'然后呢'})).text();await Promise.all(work);
+ const next=aiRun.mock.calls[at][0].query as {messages:{role:string;content:string}[]};expect(next.messages.slice(0,projection.length)).toEqual(projection);expect(next.messages.filter(m=>m.content.startsWith('当前已确认状态'))).toEqual([{role:'user',content:'当前已确认状态（数据）：'+JSON.stringify({facts:{},inventory:{},relationships:{},scene:'已确认港口'})}]);
+ expect(next.messages.at(-1)?.content).toBe('然后呢');
+});
+
+it('allows signed in prompt reads and checks manage:tavern before any write',async()=>{
+ const {DEFAULT_PROMPTS}=await import('../shared/prompts');
+ vi.mocked(identity).mockResolvedValue({sub:'owner',username:'玩家',email:'player',admin:false});
+ expect(await(await call('/api/prompts')).json()).toMatchObject({admin:false,texts:DEFAULT_PROMPTS});
+ expect((await call('/api/prompts','PUT',{texts:DEFAULT_PROMPTS})).status).toBe(403);expect(env.PROMPTS.put).not.toHaveBeenCalled();
+ vi.mocked(identity).mockResolvedValue({sub:'owner',username:'管理者',email:'admin',admin:true});
+ const texts={...DEFAULT_PROMPTS,agent:'管理者保存的正文规则'};const saved=await(await call('/api/prompts','PUT',{texts})).json() as {revision:string};
+ expect(saved).toMatchObject({admin:true,texts});expect(env.PROMPTS.put).toHaveBeenCalledWith('dialogue-v1',JSON.stringify({revision:saved.revision,texts}));
+ expect((await call('/api/prompts','PUT',{texts:{agent:'partial'}})).status).toBe(400);
+ vi.mocked(identity).mockRejectedValue(new AuthError(401,'请先登录'));expect((await call('/api/prompts')).status).toBe(401);
+});
+it('keeps a single prompt snapshot through a turn then invalidates the old projection after editing',async()=>{
+ const {DEFAULT_PROMPTS}=await import('../shared/prompts');
+ let document={revision:'one',texts:{...DEFAULT_PROMPTS,agent:'第一版正文协议',director:'第一版候选协议'}};
+ Object.assign(env.PROMPTS,{get:vi.fn(async()=>JSON.stringify(document))});
+ const original=aiRun.getMockImplementation()!;
+ aiRun.mockImplementation(async(data,options)=>{const result=await original(data,options);document={revision:'two',texts:{...DEFAULT_PROMPTS,agent:'第二版正文协议',director:'第二版候选协议'}};return result;});
+ const {s}=await seed();const path='/api/sessions/'+s.id+'/generate';
+ await(await call(path,'POST',{requestId:crypto.randomUUID(),content:'第一轮'})).text();await Promise.all(work);
+ expect(env.PROMPTS.get).toHaveBeenCalledTimes(1);
+ const first=aiRun.mock.calls.map(([data])=>(data.query as {messages:{content:string}[]}).messages);
+ expect(first[0][0].content).toContain('第一版正文协议');expect(first[1].at(-1)!.content).toContain('第一版候选协议');expect(JSON.stringify(first)).not.toContain('第二版');
+ await(await call(path,'POST',{requestId:crypto.randomUUID(),content:'第二轮'})).text();await Promise.all(work);
+ const next=(aiRun.mock.calls[2][0].query as {messages:{content:string}[]}).messages;
+ expect(next[0].content).toContain('第二版正文协议');expect(JSON.stringify(next)).not.toContain('第一版');expect(env.PROMPTS.get).toHaveBeenCalledTimes(2);
 });

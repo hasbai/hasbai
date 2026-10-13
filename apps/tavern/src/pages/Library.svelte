@@ -19,7 +19,7 @@
  async function remove(){if(!deleting)return;busy=true;try{await api.request('characters/'+deleting.id,'DELETE');deleting=undefined;deleteOpen=false;detail=undefined;await load();}catch(e){error=(e as Error).message;}finally{busy=false;}}
  const cardData=$derived(detail?.card?parseCard(detail.card).data:undefined);
 </script>
-<header class="page-head"><div><p class="eyebrow">YOUR CAST</p><h1>角色库 <span class="count">{cards.length}</span></h1></div><div class="actions"><Button variant="outline" disabled={busy} onclick={()=>input.click()}><Upload size={16}/>导入</Button><Button onclick={create}><Plus size={16}/>创建角色</Button></div></header>
+<header class="page-head"><div><h1>角色库 <span class="count">{cards.length}</span></h1></div><div class="actions"><Button variant="outline" disabled={busy} onclick={()=>input.click()}><Upload size={16}/>导入</Button><Button onclick={create}><Plus size={16}/>创建角色</Button></div></header>
 <input class="sr-only" tabindex="-1" bind:this={input} type="file" accept=".json,.png,.charx" aria-label="导入角色卡" onchange={upload}/>
 <label class="search-label" for="library-search">搜索角色</label><Input id="library-search" bind:value={query} placeholder="角色、作者或标签"/>
 {#if error}<Notice variant="error">{error}<Button variant="outline" onclick={load}>重试</Button></Notice>{/if}
