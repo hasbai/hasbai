@@ -85,3 +85,27 @@ Google、Microsoft 和 GitHub 均已启用到北极小站应用及组织，Micro
 ## Markdown 扩展（2026-10-09）
 
 2026-10-09 固定 Linux 候选 `2026-10-09T02-53-45.317Z`：11 项流程通过、1 项按设备跳过，50 张截图已比对；审阅并导入新增扩展展示/预览及编辑工具栏的 12 张基线，其他原基线保留。覆盖 WebKit/Chromium 浅深色、真实三类图表渲染、KaTeX SSR、脚注双向跳转、局部图表失败、预览与保存重开保真。Mermaid 使用禁用过渡的临时容器测量，防止全局减少动效样式导致 Chromium 包围盒裁切。完整单测、类型和严格视觉比較由最终 PR CI 执行，设备为模拟。
+
+
+## Hono MCP Portal 与权限统一（2026-10-13）
+
+博客接口使用 Hono；MCP 位于 `/api/mcp`。北极小站 Portal 入口为 `https://mcp.hasbai.xyz/mcp`。Eastmoney Portal 迁至 `eastmoney-mcp.hasbai.xyz`，保留原服务及访问策略。
+
+Portal 和上游 MCP Access 应用使用 Allow/Everyone。独立 Auth0 Regular Web 应用启用 OIDC 与 RS256；上游采用逐用户 OAuth，不共享管理员 Token。登录统一提供四种连接；邮箱允许组织内注册及自动加入，保留邮箱验证。此次真实完整登录只验收邮箱账号。
+
+Hasbai 五个应用权限统一为 `scope.resource:action`，具体值见[AUTHORIZATION](../../AUTHORIZATION.md#已有-auth0-api-与权限)。Auth0 已移除五个旧权限定义；全部八个角色回读均无旧授权。超级管理员保留五个规范权限。Eastmoney 现有权限保留，代码不接受旧权限别名。权限改名不撤销已签发的 JWT，也不改变 Data API 的数据库角色规则。
+
+真实管理员使用 MCP SDK 经 Portal 完成文章、手记、独立页面的新建、读取、修改、删除。三类内容的旧版本更新均拒绝，标签增删改查通过。独立无角色合成账号经正常 Universal Login 及上游 OAuth 验收：公开列表与正文可读，三个草稿均不可见。六个管理调用使用有效参数，均拒绝并提示 `blog.all:all`；管理员回读确认内容及标签未变。
+
+三个合成草稿与标签均经管理员 Portal 删除并回读确认；临时用户已删除并确认 404。此记录不证明新用户注册、邮箱验证及三个社交账号完整登录已实测。
+
+[PR #75](https://github.com/hasbai/hasbai/pull/75) 部署 Hono MCP。[PR #77](https://github.com/hasbai/hasbai/pull/77) 部署统一权限及逐次 MCP 管理检查。四应用本地非浏览器检查及 12 个 PR 必需状态通过。合并 SHA 为 `88d0be732e3e1a7ea79c065ebfd6362b0162ccc4`；四个自动 Build 均成功，Worker 版本及 100% 流量回读如下。
+
+| Worker | 部署版本 |
+| --- | --- |
+| Financial | `7a235e6f-90d2-48bb-8b54-92bade86767f` |
+| Blog | `da0ce7d9-1840-4e1c-9959-1cf6422eefa7` |
+| Tavern | `35fec48d-3bed-4a75-8ddd-b481426a5d2c` |
+| Zboard | `fcf051be-a9bf-4bb6-a072-6c9240fbbd48` |
+
+独立 Vaultwarden 仓库 `cloudflare` 分支提交 `cc75828d43cd5a2f2aae9f23a6fdb8047bf26ec9`。自动 Build 成功，版本为 `13584f8b-885d-4a94-9be4-fddccd74f512`；线上 `AUTH0_PERMISSION` 为 `vaultwarden.all:all`。

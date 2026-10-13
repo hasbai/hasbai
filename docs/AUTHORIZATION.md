@@ -28,7 +28,7 @@
 
 ## 已有 Auth0 API 与权限
 
-Hasbai 应用权限统一使用 `scope.resource:action`。四个应用的全量管理权限为 `financial.all:all`、`blog.all:all`、`tavern.all:all`、`zboard.all:all`。同一 audience 的 Vaultwarden 使用 `vaultwarden.all:all`，实现位于独立仓库。代码不接受旧权限名；已签发旧令牌须重新登录。
+Hasbai 应用权限统一使用 `scope.resource:action`。四个应用的全量管理权限为 `financial.all:all`、`blog.all:all`、`tavern.all:all`、`zboard.all:all`。同一 audience 的 Vaultwarden 使用 `vaultwarden.all:all`，实现位于独立仓库。代码不接受旧权限名；Auth0 已删除五个旧定义及角色授权。已签发旧令牌须重新登录取得新权限，改名不撤销现有 JWT。
 
 | API | audience | 使用情况 | RBAC | Access Token 权限 |
 | --- | --- | --- | --- | --- |
@@ -48,9 +48,9 @@ Hasbai 应用权限统一使用 `scope.resource:action`。四个应用的全量�
 
 主代理运行 `node scripts/setup-auth0-rbac.mjs` 只读查看，明确授权后运行 `node scripts/setup-auth0-rbac.mjs --apply`。脚本移除本仓库旧权限名，追加规范权限，保留其他 scopes。脚本更新已有自定义 API，并回读验证 API 与 superadmin 分配。它不输出凭据、不创建角色或 API，不修改其他角色或系统 Management API。
 
-Portal 使用独立 Regular Web Auth0 应用及同一北极组织。Cloudflare Access 允许所有登录用户；上游 OAuth 的用户 Token 使用共享 audience。目标为 Portal 保存各用户授权，不配置共享管理员 Token。管理员工具在每次调用时检查 `blog.all:all`；真实 Portal 登录和调用尚待验收。
+Portal 使用独立 Regular Web Auth0 应用及同一北极组织。Cloudflare Access 允许所有登录用户；上游 OAuth 的用户 Token 使用共享 audience。Portal 保存各用户授权，不配置共享管理员 Token。管理员工具在每次调用时检查 `blog.all:all`。2026-10-13 真实管理员及无角色合成账号的 Portal 读写隔离验收通过。
 
-真实 JWT/API、本地相关单元、Linux 视觉、CI 与自动部署分别记录。普通用户不改变生产角色来模拟；负向 JWT 与 owner 隔离由签名测试/接口夹具验证。真实普通用户登录须独立核验。
+真实 JWT/API、本地相关单元、Linux 视觉、CI 与自动部署分别记录。普通用户不改变生产角色来模拟；负向 JWT 与 owner 隔离由签名测试/接口夹具验证。Portal 普通用户采用独立无角色合成账号验收；未替代新用户注册、邮箱验证及社交账号完整登录测试。
 
 ## 正常登录专项核验
 

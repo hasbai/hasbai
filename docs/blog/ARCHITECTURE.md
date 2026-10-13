@@ -50,7 +50,9 @@ Cloudflare MCP Portal“北极小站”的入口为 `https://mcp.hasbai.xyz/mcp`
 
 上游为 `https://hasbai.xyz/api/mcp`，采用手动 OAuth，`on_behalf=true`。Portal 为每个用户保存并转发共享 audience 的 Auth0 Token，不使用共享管理员 Token。普通用户经 Portal 读取公开内容，管理员经同一 Portal 增删改查。
 
-MCP 固定公布九个工具，避免 Portal 缓存目录随登录用户权限缩减。每次管理调用检查 `blog.all:all`，普通用户和旧权限 Token 均拒绝写入。Portal 未登录请求返回 401，并提供 OAuth 发现地址；上游仍允许匿名读取。Portal 真实用户读取与增删改查尚待验收，工具同步不算验收通过。
+MCP 固定公布九个工具，避免 Portal 缓存目录随登录用户权限缩减。每次管理调用检查 `blog.all:all`，普通用户和旧权限 Token 均拒绝写入。Portal 未登录请求返回 401，并提供 OAuth 发现地址；上游仍允许匿名读取。
+
+2026-10-13 真实管理员经 Portal 的增删改查与版本冲突拒绝通过。无角色合成账号公开读取通过，草稿不可见，六个管理调用均拒绝。详细证据见[DELIVERY](history/DELIVERY.md#hono-mcp-portal-与权限统一2026-10-13)。
 
 既有 Eastmoney Portal 迁到 `eastmoney-mcp.hasbai.xyz`，保留服务与访问策略。API 创建 Portal 后须设置 proxied CNAME，指向 `gateway.agents.cloudflare.com`。完成部署后再同步工具并核验实际调用，不能只核验资源创建。[官方配置说明](https://developers.cloudflare.com/cloudflare-one/access-controls/ai-controls/mcp-portals/)
 
