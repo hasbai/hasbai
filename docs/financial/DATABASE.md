@@ -14,7 +14,7 @@
 
 ## 权限
 
-JWT claims、audience 与应用 `access:financial` 门禁统一见[AUTHORIZATION](../AUTHORIZATION.md)。Data API 验证 JWT 后按 `.role` 切换 PostgreSQL 角色；应用 permission 检查不替代数据库 GRANT，也不增加 SQL 身份重复校验。
+JWT claims、audience 与应用 `financial.all:all` 门禁统一见[AUTHORIZATION](../AUTHORIZATION.md)。Data API 验证 JWT 后按 `.role` 切换 PostgreSQL 角色；应用 permission 检查不替代数据库 GRANT，也不增加 SQL 身份重复校验。
 
 superadmin 是 NOLOGIN/NOSUPERUSER/NOBYPASSRLS 的业务角色，authenticator 与管理用 neondb_owner 可切换到它。superadmin 具有 schema USAGE、三表及现有业务视图 SELECT，以及公开保存/删除函数 EXECUTE；没有基表 DML 或直接刷新权限。anonymous、authenticated 和 PUBLIC 的 financial 访问授权撤销。旧 is_owner、personal_read/personal_write 已删除，三表 RLS 关闭。
 

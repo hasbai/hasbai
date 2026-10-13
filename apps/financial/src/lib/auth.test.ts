@@ -30,7 +30,7 @@ beforeEach(() => {
   sessionStorage.clear();
   router.navigate("/", true, true);
   sdk.getUser.mockResolvedValue({ sub: "auth0|test" });
-  sdk.getTokenSilently.mockResolvedValue("e30." + btoa(JSON.stringify({ permissions: ["access:financial"] })) + ".signature");
+  sdk.getTokenSilently.mockResolvedValue("e30." + btoa(JSON.stringify({ permissions: ["financial.all:all"] })) + ".signature");
 });
 it("offers organization login methods with the shared audience and memory-only cache", async () => {
   const auth = createAuth();
@@ -166,7 +166,7 @@ it("authorizes from API permissions rather than a specific account or role", asy
   const admin = createAuth();
   await admin.init(vi.fn());
   expect(admin.authorized).toBe(true);
-  for (const claims of [{ _roles: ["superadmin"] }, { permissions: [] }, { permissions: "access:financial" }]) {
+  for (const claims of [{ _roles: ["superadmin"] }, { permissions: [] }, { permissions: "financial.all:all" }, { permissions: ["access:financial"] }]) {
     sdk.getTokenSilently.mockResolvedValue("e30." + btoa(JSON.stringify(claims)) + ".signature");
     const auth = createAuth();
     await auth.init(vi.fn());

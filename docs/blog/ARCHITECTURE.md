@@ -40,17 +40,17 @@ R2 bucket `image`，key 精确等于 image.id UUID。metadata 包括 name、sha2
 - `get_content`：按类型和 UUID 读取 Markdown 正文与规范网址。
 - `list_tags`：读取公开标签。
 
-匿名请求使用 `publicRepository()` 的匿名 JWT，列表和详情限定发布状态与发布时间。管理员 Token 使用共享 `packages/auth/server` 验证签名、issuer、audience、有效期和用户身份，再检查 `manage:blog`。无效 Token 返回 401；普通用户仍只读公开内容。
+匿名请求使用 `publicRepository()` 的匿名 JWT，列表和详情限定发布状态与发布时间。管理员 Token 使用共享 `packages/auth/server` 验证签名、issuer、audience、有效期和用户身份，再检查 `blog.all:all`。无效 Token 返回 401；普通用户仍只读公开内容。
 
 管理员可调用 `create_content`、`update_content`、`delete_content`，管理文章、手记和独立页面。写入复用现有 schema、repository 和文章原子 RPC。修改和删除要求最近读取的 `updated_at`；文章详情返回 `tag_ids`。
 
 管理员还可新建、修改、删除标签；已被文章引用的标签不能直接删除。数据库继续执行 GRANT/RLS。
 
-Cloudflare MCP Portal 已创建“北极小站”，域名 `mcp.hasbai.xyz`，目标为公开访问。上游为 `https://hasbai.xyz/api/mcp`，认证方式为 `unauthenticated`。Portal 已同步三个读取工具，不存储管理员 Token。
+Cloudflare MCP Portal“北极小站”的入口为 `https://mcp.hasbai.xyz/mcp`。Managed OAuth 与 Access Allow/Everyone 允许任意用户登录。登录统一使用北极组织及 `auth.hasbai.xyz`，提供邮箱、Google、Microsoft Account、GitHub。
 
-截至 2026-10-13，Portal 自身仍要求 Access 身份令牌，匿名实测返回 401。关闭 Managed OAuth 和设置 Bypass 均未提供匿名访问。上游匿名配置只影响 Portal 与博客之间的连接。域名访问方案待用户确认，不能将工具同步视为公开入口验收通过。
+上游为 `https://hasbai.xyz/api/mcp`，采用手动 OAuth，`on_behalf=true`。Portal 为每个用户保存并转发共享 audience 的 Auth0 Token，不使用共享管理员 Token。普通用户经 Portal 读取公开内容，管理员经同一 Portal 增删改查。
 
-当前可用入口为 `https://hasbai.xyz/api/mcp`，支持匿名读取和管理员 Bearer Token 增删改查。Portal 的逐用户管理授权尚未实现。
+MCP 固定公布九个工具，避免 Portal 缓存目录随登录用户权限缩减。每次管理调用检查 `blog.all:all`，普通用户和旧权限 Token 均拒绝写入。Portal 未登录请求返回 401，并提供 OAuth 发现地址；上游仍允许匿名读取。Portal 真实用户读取与增删改查尚待验收，工具同步不算验收通过。
 
 既有 Eastmoney Portal 迁到 `eastmoney-mcp.hasbai.xyz`，保留服务与访问策略。API 创建 Portal 后须设置 proxied CNAME，指向 `gateway.agents.cloudflare.com`。完成部署后再同步工具并核验实际调用，不能只核验资源创建。[官方配置说明](https://developers.cloudflare.com/cloudflare-one/access-controls/ai-controls/mcp-portals/)
 

@@ -17,7 +17,7 @@ beforeAll(async () => {
   admin = await sign();
   ordinary = await sign({ permissions: [], _roles: ["superadmin"] });
 });
-function sign(claims = { permissions: ["manage:blog"] } as Record<string, unknown>,
+function sign(claims = { permissions: ["blog.all:all"] } as Record<string, unknown>,
   audience = "https://financial.hasbai.xyz/api", issuer = "https://auth.hasbai.xyz/", exp = "1h", sub = "auth0|admin") {
   return new SignJWT(claims).setProtectedHeader({ alg: "RS256", kid: "admin-test" })
     .setSubject(sub).setIssuer(issuer).setAudience(audience).setIssuedAt().setExpirationTime(exp).sign(key.privateKey);
@@ -62,16 +62,33 @@ it("verifies signed administrator permissions and keeps ordinary users read-only
   expect(listed.result.tools.map((t: { name: string }) => t.name))
     .toEqual(["list_content", "get_content", "list_tags", "create_content", "update_content", "delete_content", "create_tag", "update_tag", "delete_tag"]);
   const ordinaryList = await (await rpc("tools/list", {}, ordinary)).json();
-  expect(ordinaryList.result.tools).toHaveLength(3);
+  expect(ordinaryList.result.tools).toEqual(listed.result.tools);
   expect((await call("delete_content", { kind: "note", id, updated_at: updatedAt }, ordinary)).result.isError).toBe(true);
   expect((await call("create_content", { content: content("note") }, "")).result.isError).toBe(true);
+  expect(calls).toEqual([]);
+});
+it("rejects every management operation for ordinary, anonymous and legacy-permission callers", async () => {
+  const legacy = await sign({ permissions: ["manage:blog"], _roles: ["superadmin"] });
+  const operations: [string, object][] = [
+    ["create_content", { content: content("note") }],
+    ["update_content", { content: content("note"), id, updated_at: updatedAt }],
+    ["delete_content", { kind: "note", id, updated_at: updatedAt }],
+    ["create_tag", { name: "标签", slug: "tag" }],
+    ["update_tag", { id: tagId, name: "标签", slug: "tag" }],
+    ["delete_tag", { id: tagId }],
+  ];
+  for (const token of [ordinary, legacy, ""]) for (const [name, args] of operations) {
+    const response = await call(name, args, token);
+    expect(response.result.isError).toBe(true);
+    expect(response.result.content[0].text).toBe("需要 blog.all:all 权限");
+  }
   expect(calls).toEqual([]);
 });
 it("rejects malformed, forged, expired, wrong-issuer/audience and machine tokens", async () => {
   const tokens = ["invalid", await sign(undefined, "wrong"), await sign(undefined, undefined, "https://wrong.test/"),
     await sign(undefined, undefined, undefined, "-1h"), await sign(undefined, undefined, undefined, undefined, "app@clients")];
   const other = await generateKeyPair("RS256");
-  tokens.push(await new SignJWT({ permissions: ["manage:blog"] }).setProtectedHeader({ alg: "RS256", kid: "admin-test" })
+  tokens.push(await new SignJWT({ permissions: ["blog.all:all"] }).setProtectedHeader({ alg: "RS256", kid: "admin-test" })
     .setSubject("auth0|forged").setIssuer("https://auth.hasbai.xyz/").setAudience("https://financial.hasbai.xyz/api")
     .setIssuedAt().setExpirationTime("1h").sign(other.privateKey));
   for (const token of tokens) expect((await rpc("tools/list", {}, token)).status).toBe(401);

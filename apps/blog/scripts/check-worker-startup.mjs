@@ -51,7 +51,7 @@ try {
   if (initialized.status !== 200 || initialized.body.result?.serverInfo.name !== "北极小站")
     throw new Error("Production MCP failed to initialize in workerd");
   const listed = await rpc("tools/list");
-  if (listed.status !== 200 || listed.body.result?.tools.map(tool => tool.name).join(",") !== "list_content,get_content,list_tags")
+  if (listed.status !== 200 || listed.body.result?.tools.map(tool => tool.name).join(",") !== "list_content,get_content,list_tags,create_content,update_content,delete_content,create_tag,update_tag,delete_tag")
     throw new Error("Production MCP failed tool discovery in workerd");
   const invalid = await rpc("tools/call", { name: "get_content", arguments: { kind: "article", id: "invalid" } });
   if (invalid.status !== 200 || !invalid.body.result?.isError)

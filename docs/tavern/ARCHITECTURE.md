@@ -70,7 +70,7 @@ Cloudflare KV 绑定 `PROMPTS`，namespace `tavern-prompts`。
 字段与默认值在 `shared/prompts.ts`，工具 schema、消息角色、发送顺序及响应 schema 保留在代码中。
 
 `GET /api/prompts` 读取配置并返回签名权限对应的 `admin`。
-`PUT /api/prompts` 需要 `manage:tavern`，校验完整文本字段后保存新 revision。
+`PUT /api/prompts` 需要 `tavern.all:all`，校验完整文本字段后保存新 revision。
 保存成功直接返回写入内容；页面保留失败草稿。
 缺 key 使用默认值但不自动写入；读取失败或内容损坏报错。
 

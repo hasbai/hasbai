@@ -82,7 +82,8 @@ export function createBlogMcp(token?: string) {
     description: "返回北极小站公开文章标签的 ID、名称和 slug。",
     inputSchema: {}, annotations,
   }, () => toolResult(async () => ({ items: await repo().tags() })));
-  if (token) registerManagement(server, repository(async () => token));
+  // Portal caches tool schemas across users; authorize each management call.
+  registerManagement(server, token);
   return server;
 }
 
@@ -93,8 +94,12 @@ const contentInput = z.discriminatedUnion("kind", [
 ]);
 const versionInput = { id: z.string().uuid(), updated_at: z.iso.datetime({ offset: true }) };
 const writeAnnotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false };
-function registerManagement(server: McpServer, repo: ReturnType<typeof repository>) {
-  async function save(content: z.infer<typeof contentInput>, id?: string, updatedAt?: string) {
+function registerManagement(server: McpServer, token?: string) {
+  const repo = token ? repository(async () => token) : undefined;
+  const manage = (work: (repo: ReturnType<typeof repository>) => Promise<Record<string, unknown>>) => repo
+    ? toolResult(() => work(repo))
+    : Promise.resolve({ isError: true, content: [{ type: "text" as const, text: "需要 blog.all:all 权限" }] });
+  async function save(repo: ReturnType<typeof repository>, content: z.infer<typeof contentInput>, id?: string, updatedAt?: string) {
     const item = content.kind === "article" ? await repo.saveArticle(content.value, id, updatedAt)
       : content.kind === "note" ? await repo.saveNote(content.value, id, updatedAt)
       : await repo.savePage(content.value, id, updatedAt);
@@ -103,26 +108,26 @@ function registerManagement(server: McpServer, repo: ReturnType<typeof repositor
   server.registerTool("create_content", {
     title: "新建内容", description: "管理员新建文章、手记或独立页面。value 使用完整字段；status=draft 保存草稿，published 发布。文章须提供 tag_ids。",
     inputSchema: { content: contentInput }, annotations: writeAnnotations,
-  }, ({ content }) => toolResult(() => save(content)));
+  }, ({ content }) => manage(repo => save(repo, content)));
   server.registerTool("update_content", {
     title: "修改内容", description: "管理员修改或发布内容。提交完整 value 和最近读取的 updated_at；版本冲突时重新读取，勿自动覆盖。",
     inputSchema: { content: contentInput, ...versionInput }, annotations: { ...writeAnnotations, destructiveHint: true },
-  }, ({ content, id, updated_at }) => toolResult(() => save(content, id, updated_at)));
+  }, ({ content, id, updated_at }) => manage(repo => save(repo, content, id, updated_at)));
   server.registerTool("delete_content", {
     title: "删除内容", description: "管理员删除文章、手记或独立页面；使用最近读取的 updated_at 防止删除已修改版本。",
     inputSchema: { kind: kindSchema, ...versionInput }, annotations: { ...writeAnnotations, destructiveHint: true },
-  }, ({ kind, id, updated_at }) => toolResult(async () => {
+  }, ({ kind, id, updated_at }) => manage(async repo => {
     await repo.remove(kind, id, updated_at);
     return { deleted: true, kind, id };
   }));
   const tagInput = { name: z.string().trim().min(1).max(80), slug: slugSchema.refine(value => value.length <= 80) };
   server.registerTool("create_tag", {
     title: "新建标签", description: "管理员新建文章标签。", inputSchema: tagInput, annotations: writeAnnotations,
-  }, ({ name, slug }) => toolResult(async () => ({ item: await repo.createTag(name, slug) })));
+  }, ({ name, slug }) => manage(async repo => ({ item: await repo.createTag(name, slug) })));
   server.registerTool("update_tag", {
     title: "修改标签", description: "管理员修改标签名称和 slug。", inputSchema: { id: z.string().uuid(), ...tagInput },
     annotations: { ...writeAnnotations, destructiveHint: true },
-  }, ({ id, name, slug }) => toolResult(async () => {
+  }, ({ id, name, slug }) => manage(async repo => {
     const { data, error } = await repo.db.from("tag").update({ name, slug }).eq("id", id).select("id,name,slug").single();
     if (error) throw error;
     return { item: data };
@@ -130,7 +135,7 @@ function registerManagement(server: McpServer, repo: ReturnType<typeof repositor
   server.registerTool("delete_tag", {
     title: "删除标签", description: "管理员删除未使用标签。已被文章引用的标签不能删除，应先修改文章标签。", inputSchema: { id: z.string().uuid() },
     annotations: { ...writeAnnotations, destructiveHint: true },
-  }, ({ id }) => toolResult(async () => {
+  }, ({ id }) => manage(async repo => {
     const { data, error } = await repo.db.from("tag").delete().eq("id", id).select("id").single();
     if (error || !data) throw error ?? new Error("Tag missing");
     return { deleted: true, id };
