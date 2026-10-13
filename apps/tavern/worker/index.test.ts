@@ -758,7 +758,7 @@ it('reuses a validated checkpoint with full accepted story and excludes discarde
  expect(next.messages.at(-1)?.content).toBe('然后呢');
 });
 
-it('allows signed in prompt reads and checks manage:tavern before any write',async()=>{
+it('allows signed in prompt reads and checks tavern.all:all before any write',async()=>{
  const {DEFAULT_PROMPTS}=await import('../shared/prompts');
  vi.mocked(identity).mockResolvedValue({sub:'owner',username:'玩家',email:'player',admin:false});
  expect(await(await call('/api/prompts')).json()).toMatchObject({admin:false,texts:DEFAULT_PROMPTS});

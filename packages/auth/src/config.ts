@@ -7,10 +7,10 @@ export const authConfig = {
 export const authClaims = { role: "role", roles: "_roles", username: "username", email: "email" } as const;
 
 export const permissions = {
-  financial: "access:financial",
-  blog: "manage:blog",
-  tavern: "manage:tavern",
-  zboard: "manage:zboard",
+  financial: "financial.all:all",
+  blog: "blog.all:all",
+  tavern: "tavern.all:all",
+  zboard: "zboard.all:all",
 } as const;
 
 /** Use only after the API has verified the JWT. */

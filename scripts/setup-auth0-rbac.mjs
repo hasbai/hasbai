@@ -21,6 +21,8 @@ const additions = new Map([
     { value: permissions.zboard, description: 'Zboard：用户、节点、配额及模板管理，仅 Super Admin' },
   ]],
 ]);
+// Retired names are removed, never accepted as authorization aliases.
+const retired = new Set(['access:financial', 'manage:blog', 'manage:tavern', 'manage:zboard']);
 const resources = api('get', 'resource-servers');
 const roles = api('get', 'roles');
 const admin = roles.find(role => role.name === 'superadmin' && role.type !== 'organization');
@@ -36,7 +38,7 @@ const desired = [...additions].flatMap(([resource_server_identifier, scopes]) =>
 const missing = desired.filter(permission => !granted.some(current =>
   current.resource_server_identifier === permission.resource_server_identifier && current.permission_name === permission.permission_name));
 for (const resource of custom) {
-  const scopes = [...(resource.scopes ?? [])];
+  const scopes = (resource.scopes ?? []).filter(scope => !retired.has(scope.value));
   for (const scope of additions.get(resource.identifier) ?? []) {
     if (!scopes.some(current => current.value === scope.value)) scopes.push(scope);
   }
@@ -48,7 +50,8 @@ for (const resource of custom) {
     const verified = api('get', `resource-servers/${resource.id}`);
     observed = verified;
     if (verified.enforce_policies !== true || verified.token_dialect !== dialect ||
-      scopes.some(scope => !verified.scopes?.some(current => current.value === scope.value))) {
+      scopes.some(scope => !verified.scopes?.some(current => current.value === scope.value)) ||
+      verified.scopes?.some(scope => retired.has(scope.value))) {
       throw new Error(`API verification failed: ${resource.name}`);
     }
   }
@@ -57,12 +60,20 @@ for (const resource of custom) {
     desired: { rbac: true, tokenDialect: dialect, permissions: scopes.map(scope => scope.value) } }));
 }
 if (apply && missing.length) api('post', `roles/${admin.id}/permissions`, { permissions: missing });
+const observedGrants = apply ? api('get', `roles/${admin.id}/permissions`) : granted;
+const retiredGrants = observedGrants.filter(permission => retired.has(permission.permission_name)
+  && additions.has(permission.resource_server_identifier)).map(({ resource_server_identifier, permission_name }) => ({
+    resource_server_identifier, permission_name,
+  }));
+if (apply && retiredGrants.length) api('delete', `roles/${admin.id}/permissions`, { permissions: retiredGrants });
 if (apply) {
   const verified = api('get', `roles/${admin.id}/permissions`);
   if (desired.some(permission => !verified.some(current =>
     current.resource_server_identifier === permission.resource_server_identifier && current.permission_name === permission.permission_name))) {
     throw new Error('Superadmin permission assignment verification failed.');
   }
+  if (verified.some(permission => retired.has(permission.permission_name) && additions.has(permission.resource_server_identifier)))
+    throw new Error('Retired permission assignment still present.');
 }
 console.log(JSON.stringify({ applied: apply, role: admin.name, newGrants: missing,
   ordinaryUsers: 'Verified user JWT; no Auth0 role required', managementApi: 'Unchanged' }));

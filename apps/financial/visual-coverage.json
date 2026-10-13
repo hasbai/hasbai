@@ -504,7 +504,7 @@
         }
       ],
       "url": "/",
-      "state": "authenticated account without access:financial"
+      "state": "authenticated account without financial.all:all"
     }
   ],
   "router": {

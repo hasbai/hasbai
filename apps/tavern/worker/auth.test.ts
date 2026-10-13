@@ -19,7 +19,7 @@ it("verifies signature, issuer, audience, expiry and grants admin only from the 
     exp = "1h",
     issuer = "https://auth.hasbai.xyz/",
     role: unknown = ["member", "superadmin"],
-    granted: unknown = ["manage:tavern"],
+    granted: unknown = ["tavern.all:all"],
   ) =>
     new SignJWT({ permissions: granted, [ROLE_CLAIM]: role, [EMAIL_CLAIM]: "owner@example.test", [USERNAME_CLAIM]: "月石" })
       .setProtectedHeader({ alg: "RS256", kid: "test" })
@@ -54,11 +54,11 @@ it("verifies signature, issuer, audience, expiry and grants admin only from the 
     const request = req(await sign(env.AUTH0_AUDIENCE, "1h", "https://auth.hasbai.xyz/", role));
     expect((await identity(request, env)).admin).toBe(true);
   }
-  for (const granted of [[], undefined, "manage:tavern", { "manage:tavern": true }, ["manage:other"]]) {
+  for (const granted of [[], undefined, "tavern.all:all", { "tavern.all:all": true }, ["manage:other"], ["manage:tavern"]]) {
     const request = req(await sign(env.AUTH0_AUDIENCE, "1h", "https://auth.hasbai.xyz/", ["superadmin"], granted ?? null));
     expect((await identity(request, env)).admin).toBe(false);
   }
-  const machine = await new SignJWT({ permissions: ["manage:tavern"] }).setProtectedHeader({alg:'RS256',kid:'test'}).setSubject('app@clients').setIssuer('https://auth.hasbai.xyz/').setAudience(env.AUTH0_AUDIENCE).setIssuedAt().setExpirationTime('1h').sign(keys.privateKey);
+  const machine = await new SignJWT({ permissions: ["tavern.all:all"] }).setProtectedHeader({alg:'RS256',kid:'test'}).setSubject('app@clients').setIssuer('https://auth.hasbai.xyz/').setAudience(env.AUTH0_AUDIENCE).setIssuedAt().setExpirationTime('1h').sign(keys.privateKey);
   await expect(identity(req(machine),env)).rejects.toMatchObject({status:401});
   await expect(
     identity(new Request("https://tavern.test/api/me"), env),

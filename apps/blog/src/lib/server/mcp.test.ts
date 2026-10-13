@@ -34,15 +34,15 @@ async function rpc(method: string, params?: object, authorization?: string) {
 const call = (name: string, args: object, authorization?: string) =>
   rpc("tools/call", { name, arguments: args }, authorization).then(r => r.json());
 
-it("initializes and discovers only read-only tools without opening the database", async () => {
+it("discovers a stable tool catalog for the Portal without opening the database", async () => {
   const initialized = await (await rpc("initialize", {
     protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "test", version: "1" },
   })).json();
   expect(initialized.result.serverInfo.name).toBe("北极小站");
   const listed = await (await rpc("tools/list")).json();
   expect(listed.result.tools.map((t: { name: string }) => t.name))
-    .toEqual(["list_content", "get_content", "list_tags"]);
-  expect(listed.result.tools.every((t: { annotations: { readOnlyHint: boolean } }) => t.annotations.readOnlyHint)).toBe(true);
+    .toEqual(["list_content", "get_content", "list_tags", "create_content", "update_content", "delete_content", "create_tag", "update_tag", "delete_tag"]);
+  expect(listed.result.tools.slice(0, 3).every((t: { annotations: { readOnlyHint: boolean } }) => t.annotations.readOnlyHint)).toBe(true);
   expect(requests).toEqual([]);
 });
 
