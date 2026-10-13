@@ -46,7 +46,11 @@ R2 bucket `image`，key 精确等于 image.id UUID。metadata 包括 name、sha2
 
 管理员还可新建、修改、删除标签；已被文章引用的标签不能直接删除。数据库继续执行 GRANT/RLS。
 
-Cloudflare MCP Portal 的目标配置为“北极小站”，域名 `mcp.hasbai.xyz`，公开访问。上游为 `https://hasbai.xyz/api/mcp`，认证方式为 `unauthenticated`。公开 Portal 只发现三个读取工具，不存储管理员 Token。管理员携带 Token 直连博客 MCP；Portal 的逐用户管理授权尚未实现。
+Cloudflare MCP Portal 已创建“北极小站”，域名 `mcp.hasbai.xyz`，目标为公开访问。上游为 `https://hasbai.xyz/api/mcp`，认证方式为 `unauthenticated`。Portal 已同步三个读取工具，不存储管理员 Token。
+
+截至 2026-10-13，Portal 自身仍要求 Access 身份令牌，匿名实测返回 401。关闭 Managed OAuth 和设置 Bypass 均未提供匿名访问。上游匿名配置只影响 Portal 与博客之间的连接。域名访问方案待用户确认，不能将工具同步视为公开入口验收通过。
+
+当前可用入口为 `https://hasbai.xyz/api/mcp`，支持匿名读取和管理员 Bearer Token 增删改查。Portal 的逐用户管理授权尚未实现。
 
 既有 Eastmoney Portal 迁到 `eastmoney-mcp.hasbai.xyz`，保留服务与访问策略。API 创建 Portal 后须设置 proxied CNAME，指向 `gateway.agents.cloudflare.com`。完成部署后再同步工具并核验实际调用，不能只核验资源创建。[官方配置说明](https://developers.cloudflare.com/cloudflare-one/access-controls/ai-controls/mcp-portals/)
 
