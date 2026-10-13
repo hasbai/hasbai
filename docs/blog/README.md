@@ -1,6 +1,6 @@
 # Blog · 北极小站开发入口
 
-`apps/blog` 是 SvelteKit SSR 博客，Worker `blog`；`hasbai.xyz` 与 `blog.hasbai.xyz` 共用 canonical `https://hasbai.xyz`。公开阅读，管理员在线编辑文章、手记及独立页面。财务三表与禁止基表 DML 的专属限制不适用于博客。
+`apps/blog` 使用 SvelteKit SSR 页面和 Hono 接口，Worker 为 `blog`。`hasbai.xyz` 与 `blog.hasbai.xyz` 共用 canonical `https://hasbai.xyz`。公开阅读，管理员在线编辑文章、手记及独立页面。财务专属限制不适用于博客。
 
 ## 内容修改边界
 

@@ -4,7 +4,7 @@
 
 ## 结构与主题
 
-SvelteKit SSR，业务 repository 和主题留在应用内，共用 `packages/ui`、`packages/auth`、`packages/data`、`packages/markdown`。博客近白 neutral 底、深灰文字、少量玫瑰色强调、衬线正文、紧凑导航。桌面花瓣以轻量 SVG 显示首屏，水合后淡出并交给 Canvas；移动端和减少动效偏好停用。
+SvelteKit 负责 SSR 页面，Hono 负责 `/api/**` 与 `/images/**` 接口。`hooks.server.ts` 分派请求并设置统一安全头。业务 repository 和主题留在应用内，共用 `packages/ui`、`packages/auth`、`packages/data`、`packages/markdown`。博客近白 neutral 底、深灰文字、少量玫瑰色强调、衬线正文、紧凑导航。桌面花瓣以轻量 SVG 显示首屏，水合后淡出并交给 Canvas；移动端和减少动效偏好停用。
 
 站点名称及页面无障碍名称引用 `site.name`（北极小站），手记只是内容类型；编辑器标题保留站点后缀。共享 Markdown 扩展和源码编辑选择见[MARKDOWN](../MARKDOWN.md)。
 
@@ -32,13 +32,31 @@ R2 bucket `image`，key 精确等于 image.id UUID。metadata 包括 name、sha2
 
 先由 PostgREST 对 Auth0 token 执行元数据写入授权，再使用 Worker R2 binding 上传；sha256 唯一键处理并发去重，未完成的上传可重试同一 key，不产生重复图片。只有 ready 元数据对匿名可见。`/images/:id` 流式返回 R2 内容，nosniff、固定媒体类型与 immutable 缓存。图片为公开博客素材，不提供私有附件语义。
 
+## MCP
+
+`/api/mcp` 提供 Streamable HTTP MCP，匿名公开读取，管理员携带 Bearer Token 管理内容。Hono 路由使用标准 MCP SDK，响应为 JSON。每个请求新建 server 和 transport，完成后关闭；不使用会话或独立 SSE 流。
+
+- `list_content`：按类型分页，可搜索标题、摘要和正文。列表只返回摘要与规范网址，每页最多 50 条。
+- `get_content`：按类型和 UUID 读取 Markdown 正文与规范网址。
+- `list_tags`：读取公开标签。
+
+匿名请求使用 `publicRepository()` 的匿名 JWT，列表和详情限定发布状态与发布时间。管理员 Token 使用共享 `packages/auth/server` 验证签名、issuer、audience、有效期和用户身份，再检查 `manage:blog`。无效 Token 返回 401；普通用户仍只读公开内容。
+
+管理员可调用 `create_content`、`update_content`、`delete_content`，管理文章、手记和独立页面。写入复用现有 schema、repository 和文章原子 RPC。修改和删除要求最近读取的 `updated_at`；文章详情返回 `tag_ids`。
+
+管理员还可新建、修改、删除标签；已被文章引用的标签不能直接删除。数据库继续执行 GRANT/RLS。
+
+Cloudflare MCP Portal 的目标配置为“北极小站”，域名 `mcp.hasbai.xyz`，公开访问。上游为 `https://hasbai.xyz/api/mcp`，认证方式为 `unauthenticated`。公开 Portal 只发现三个读取工具，不存储管理员 Token。管理员携带 Token 直连博客 MCP；Portal 的逐用户管理授权尚未实现。
+
+既有 Eastmoney Portal 迁到 `eastmoney-mcp.hasbai.xyz`，保留服务与访问策略。API 创建 Portal 后须设置 proxied CNAME，指向 `gateway.agents.cloudflare.com`。完成部署后再同步工具并核验实际调用，不能只核验资源创建。[官方配置说明](https://developers.cloudflare.com/cloudflare-one/access-controls/ai-controls/mcp-portals/)
+
 ## 编辑和阅读
 
 Tiptap 3 WYSIWYG，Markdown 官方扩展；支持标题、粗斜体、列表、引用、代码块、链接、表格、图片、撤销/重做和 Markdown 源码切换。安全渲染与扩展契约见[共享 MARKDOWN](../MARKDOWN.md)。Markdown 表格不支持合并单元格，编辑工具不提供这种操作。
 
 文章可管理标签；手记使用同一 Markdown 编辑器，不填写标题或标签。封面可上传/移除，图片 name 作为默认 alt/title。离开未保存文档有确认；失败不清空内容。
 
-YAML 的 SSR 解析固定使用依赖提供的浏览器 ESM 入口，避免 Node/CommonJS 构建注入 `createRequire(import.meta.url)`，导致 Worker 初始化失败。博客固定独立 workerd 开发依赖，保留生产兼容日期，通过 Miniflare 的运行时路径覆盖用于启动检查。生产 `build` 完成后用本地 workerd 启动实际 Worker 并验证 `/api/version`，候选流程和 CI 均执行；Vite/Node 预览不能替代该运行时检查。
+YAML 的 SSR 解析固定使用依赖提供的浏览器 ESM 入口，避免 Node/CommonJS 构建注入 `createRequire(import.meta.url)`，导致 Worker 初始化失败。博客固定独立 workerd 开发依赖，保留生产兼容日期，通过 Miniflare 的运行时路径覆盖用于启动检查。生产 `build` 完成后用本地 workerd 启动实际 Worker。检查包括版本接口、MCP 初始化、工具发现、无效输入、通知与 HTTP 方法。候选流程和 CI 均执行；Vite/Node 预览不能替代该运行时检查。
 
 ## 迁移与发布
 

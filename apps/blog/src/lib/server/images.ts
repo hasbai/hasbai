@@ -1,9 +1,17 @@
-import { json, error } from "@sveltejs/kit";
+import { Hono } from "hono";
+import { HTTPException } from "hono/http-exception";
+import type { BlogBindings } from "./http";
 import { repository } from "$lib/api";
+import { publicRepository } from "$lib/public-api";
 import { boundedImage, imageType } from "$lib/images";
 import type { ImageRecord } from "$lib/content";
-import type { RequestHandler } from "./$types";
-export const POST: RequestHandler = async ({ request, platform }) => {
+function error(status: 400 | 401 | 403 | 409 | 413 | 415 | 503, message: string): never {
+  throw new HTTPException(status, { message });
+}
+export const imageRoutes = new Hono<{ Bindings: BlogBindings }>();
+imageRoutes.post("/api/images", async (c) => {
+  const request = c.req.raw;
+  const platform = c.env.platform;
   const authorization = request.headers.get("authorization");
   if (!authorization?.startsWith("Bearer ")) error(401, "请登录");
   const token = authorization.slice(7);
@@ -64,8 +72,37 @@ export const POST: RequestHandler = async ({ request, platform }) => {
       .eq("id", record.id);
     if (updated.error) error(503, "图片信息保存失败，请重试");
   }
-  return json(
+  return c.json(
     { id: record.id, name: record.name },
     { headers: { "Cache-Control": "no-store" } },
   );
-};
+});
+
+imageRoutes.get("/images/:id", async (c) => {
+  const id = c.req.param("id");
+  const request = c.req.raw;
+  const platform = c.env.platform;
+  if (!/^[0-9a-f-]{36}$/i.test(id)) throw new HTTPException(404);
+  const { data, error: dbError } = await publicRepository()
+    .db.from("image")
+    .select("id,name,content_type,ready")
+    .eq("id", id)
+    .eq("ready", true)
+    .maybeSingle();
+  if (dbError) error(503, "图片暂时不可用");
+  if (!data) throw new HTTPException(404);
+  const images = platform?.env?.IMAGES;
+  if (!images) error(503, "图片存储暂时不可用");
+  const object = await images.get(id);
+  if (!object) throw new HTTPException(404);
+  const headers = new Headers({
+    "Content-Type": data.content_type,
+    "Cache-Control": "public,max-age=31536000,immutable",
+    "X-Content-Type-Options": "nosniff",
+    "Content-Security-Policy": "default-src 'none'",
+    ETag: object.httpEtag,
+  });
+  if (request.headers.get("if-none-match") === object.httpEtag)
+    return new Response(null, { status: 304, headers });
+  return new Response(object.body, { headers });
+});

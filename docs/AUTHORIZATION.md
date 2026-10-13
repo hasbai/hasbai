@@ -17,7 +17,7 @@
 
 | 应用 | 匿名 | 普通登录用户 | Super Admin | 权限与执行点 |
 | --- | --- | --- | --- | --- |
-| 博客 | 读取已发布且发布时间已到的文章、手记、独立页面、图片 | 同公开读取范围，无编辑权限 | 编辑、发布、删除及上传图片 | `manage:blog`：编辑室与编辑请求；Data API 的 GRANT/RLS 和图片上传真实写入授权继续执行 |
+| 博客 | 读取已发布且发布时间已到的文章、手记、独立页面、图片 | 同公开读取范围，无编辑权限 | 编辑、发布、删除及上传图片 | `manage:blog`：编辑室、编辑请求与 MCP 管理工具；MCP 使用共享 JWT 验证，Data API 的 GRANT/RLS 继续执行 |
 | 北极账本 | 无财务数据访问 | 无财务访问 | 全部财务功能 | `access:financial`：应用入口及数据请求；Data API 继续使用标量 `role=superadmin` 和原 schema/对象 GRANT |
 | 酒馆 | 无私有数据访问或对话 | 搜卡、安装/导入、编辑/删除本人卡片和世界书、本人会话及对话、本人设置、服务端白名单模型选择 | 同本人功能；全站敏感操作仅管理员 | 现有 `/api/characters`、`discover`、`install`、`worldbooks`、`sessions`、`settings`、`models` 验证用户 JWT，以 `sub` 隔离本人数据；`manage:tavern` 为全站管理边界 |
 | Zboard | 无账户访问；随机订阅凭据与 Node token 为独立协议 | `/api/me`、`/api/me/rotate`；首次登录仍默认禁用，启用、节点、配额、有效期控制服务资格 | `/api/admin/**` 用户、节点、模板、配额及报告管理 | `manage:zboard`：Worker 验证 JWT 后判断管理员；订阅资格及 Node API 机制保留 |

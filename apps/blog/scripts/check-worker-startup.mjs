@@ -39,7 +39,30 @@ try {
     const error = stderr.split("\n").filter(line => /Uncaught|createRequire|file URL|ERROR|failed to start/i.test(line)).slice(0,8).join("\n");
     throw new Error("Production Worker failed to initialize in workerd" + (error ? "\n" + error : ""));
   }
-  console.log("Production Worker initialized in workerd; /api/version returned 200.");
+  const rpc = async (method, params, id = 1) => {
+    const response = await fetch(`http://127.0.0.1:${port}/api/mcp`, {
+      method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" },
+      body: JSON.stringify({ jsonrpc: "2.0", ...(id === null ? {} : { id }), method, params }),
+      signal: AbortSignal.timeout(5000),
+    });
+    return { status: response.status, body: response.status === 202 ? null : await response.json() };
+  };
+  const initialized = await rpc("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "worker-startup", version: "1" } });
+  if (initialized.status !== 200 || initialized.body.result?.serverInfo.name !== "北极小站")
+    throw new Error("Production MCP failed to initialize in workerd");
+  const listed = await rpc("tools/list");
+  if (listed.status !== 200 || listed.body.result?.tools.map(tool => tool.name).join(",") !== "list_content,get_content,list_tags")
+    throw new Error("Production MCP failed tool discovery in workerd");
+  const invalid = await rpc("tools/call", { name: "get_content", arguments: { kind: "article", id: "invalid" } });
+  if (invalid.status !== 200 || !invalid.body.result?.isError)
+    throw new Error("Production MCP failed input validation in workerd");
+  const notification = await rpc("notifications/initialized", undefined, null);
+  if (notification.status !== 202) throw new Error("Production MCP failed notification handling in workerd");
+  for (const method of ["GET", "DELETE"]) {
+    const response = await fetch(`http://127.0.0.1:${port}/api/mcp`, { method, signal: AbortSignal.timeout(5000) });
+    if (response.status !== 405) throw new Error("Production MCP unexpectedly enabled session transport");
+  }
+  console.log("Production Worker initialized in workerd; version, MCP initialize/discovery/validation/notifications/methods passed.");
 } finally {
   if (child.pid) {
     if (process.platform === "win32") child.kill("SIGTERM");
