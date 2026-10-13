@@ -63,7 +63,7 @@ test('SSR, direct Data API navigation, skeleton, canonical URLs and reading stat
 
   let releaseArticles!: () => void;
   const articlesPending = new Promise<void>((resolve) => { releaseArticles = resolve; });
-  await page.route(/\/rest\/v1\/article\?/, async (route) => {
+  await page.route(/\/rest\/v1\/content\?/, async (route) => {
     await articlesPending;
     await route.continue();
   });
@@ -78,7 +78,7 @@ test('SSR, direct Data API navigation, skeleton, canonical URLs and reading stat
   await expect(page.getByRole('heading', { name: '文章', exact: true })).toBeVisible();
   await expect(page).toHaveTitle('文章 · 北极小站');
   expect(dataRequests).toEqual([]);
-  await page.unroute(/\/rest\/v1\/article\?/);
+  await page.unroute(/\/rest\/v1\/content\?/);
   await expect(page).toHaveScreenshot('articles.png', { fullPage: true });
 
   await page.getByRole('link', { name: /Hello World，开始记录/ }).click();
@@ -137,19 +137,19 @@ test('editor writes articles and titleless notes through Data API', async ({ pag
   await page.getByLabel('Markdown 源码').fill('## 标题\n\n保存并发布。');
   await page.getByRole('button', { name: 'Markdown', exact: true }).click();
   await expect(page).toHaveScreenshot('editor.png', { fullPage: true });
-  const articleSave = page.waitForRequest((request) => request.method() === 'POST' && new URL(request.url()).pathname.endsWith('/rpc/save_article'));
+  const articleSave = page.waitForRequest((request) => request.method() === 'POST' && new URL(request.url()).pathname === '/api/content');
   await page.getByRole('button', { name: '发布文章', exact: true }).click();
-  expect((await articleSave).postDataJSON()).toMatchObject({ p_id: expect.any(String), p_status: 'published', p_markdown: expect.stringContaining('## 标题') });
+  expect((await articleSave).postDataJSON()).toMatchObject({ kind:'article', value:{status:'published',markdown:expect.stringContaining('## 标题')} });
   await expect(page.getByRole('link', { name: '查看' })).toBeVisible();
 
   await page.goto('/studio/notes/new');
   await expect(page).toHaveTitle('新手记 · 编辑室 · 北极小站');
   await page.getByRole('textbox', { name: '正文' }).fill('今天的一则手记。');
   await expect(page).toHaveScreenshot('note-editor.png', { fullPage: true });
-  const noteSave = page.waitForRequest((request) => request.method() === 'POST' && new URL(request.url()).pathname.endsWith('/note'));
+  const noteSave = page.waitForRequest((request) => request.method() === 'POST' && new URL(request.url()).pathname === '/api/content');
   await page.getByRole('button', { name: '发布手记', exact: true }).click();
-  const noteBody = (await noteSave).postDataJSON();
-  expect(noteBody).toMatchObject({ id: expect.any(String), status: 'published' });
+  const noteBody = (await noteSave).postDataJSON().value;
+  expect(noteBody).toMatchObject({status:'published'});
   expect(noteBody).not.toHaveProperty('title');
   expect(noteBody).not.toHaveProperty('tag_ids');
   await expect(page.getByRole('link', { name: '查看' })).toBeVisible();
@@ -210,9 +210,9 @@ test('standalone pages stay out of feeds and support editable paths', async ({ p
   await expect(page.getByLabel('标题', { exact: true })).toHaveValue('自定义页面');
   await page.getByLabel('页面路径').fill('custom-page');
   await expect(page).toHaveScreenshot('page-editor.png', { fullPage: true });
-  const save = page.waitForRequest((request) => request.method() === 'POST' && new URL(request.url()).pathname.endsWith('/page'));
+  const save = page.waitForRequest((request) => request.method() === 'POST' && new URL(request.url()).pathname === '/api/content');
   await page.getByRole('button', { name: '发布页面', exact: true }).click();
-  expect((await save).postDataJSON()).toMatchObject({ title: '自定义页面', slug: 'custom-page', status: 'published' });
+  expect((await save).postDataJSON().value).toMatchObject({ title: '自定义页面', slug: 'custom-page', status: 'published' });
   await expect(page).toHaveURL(/\/studio\/pages\/[\da-f-]+$/);
   await expect(page.getByRole('link', { name: '查看', exact: true })).toHaveAttribute('href', '/custom-page');
   await page.getByLabel('页面路径').fill('changed-page');
@@ -312,10 +312,123 @@ test('Markdown extensions render safely and survive editor preview and save', as
   await page.getByRole('button', { name: 'Markdown', exact: true }).click();
   await expect(page.getByLabel('Markdown 源码')).toHaveValue(source);
   await page.getByLabel('Markdown 源码').fill(source + '\n新增正文。');
-  const saved = page.waitForRequest(request => request.method() === 'POST' && request.url().endsWith('/rpc/save_article'));
+  const saved = page.waitForRequest(request => request.method() === 'POST' && new URL(request.url()).pathname === '/api/content');
   await page.getByRole('button', { name: '更新文章', exact: true }).click();
-  expect((await saved).postDataJSON().p_markdown).toBe(source + '\n新增正文。');
+  expect((await saved).postDataJSON().value.markdown).toBe(source + '\n新增正文。');
   await expect(page.getByRole('link', { name: '查看', exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByLabel('Markdown 源码')).toHaveValue(source + '\n新增正文。');
+});
+
+
+test("multilingual routes, fallback, language settings and translation editing", async ({
+  page,
+  request,
+}) => {
+  const id = "20000000-0000-4000-8000-000000000001";
+  const english = {
+    content_id: id,
+    locale: "en-US",
+    title: "Hello World, a new beginning",
+    excerpt: "Writing gives our thoughts a shape.",
+    markdown: "## A blank page\n\nKeep a moment in words.",
+    updated_at: "2026-10-13T01:00:00Z",
+  };
+  await request.post("http://127.0.0.1:4180/fixture/translation", {
+    data: english,
+  });
+  const ssr = await request.get("/en/articles/hello-world");
+  expect(ssr.status()).toBe(200);
+  expect(await ssr.text()).toContain("Hello World, a new beginning");
+  await page.goto("/en/articles/hello-world");
+  await expect(
+    page.getByRole("heading", { name: english.title }),
+  ).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("lang", "en-US");
+  await expect(
+    page.getByRole("link", { name: "Articles", exact: true }).first(),
+  ).toHaveAttribute("href", "/en-US/articles");
+  await expect(page).toHaveScreenshot("english-article.png", {
+    fullPage: true,
+  });
+  await page.getByLabel("Language", { exact: true }).selectOption("zh-TW");
+  await expect(
+    page.getByRole("heading", { name: "Hello World，开始记录" }),
+  ).toBeVisible();
+  await expect(page.getByRole("status")).toHaveText("正在顯示简体中文原文");
+  await expect(page).toHaveScreenshot("traditional-article.png", {
+    fullPage: true,
+  });
+  await page.goto("/en-US/studio");
+  await expect(
+    page.getByRole("heading", { name: "Studio", exact: true }),
+  ).toBeVisible();
+  await page.getByText("Translation settings", { exact: true }).click();
+  await expect(page.getByRole("checkbox", { name: "简体中文" })).toBeDisabled();
+  await expect(page).toHaveScreenshot("language-settings.png", {
+    fullPage: true,
+  });
+  await page.goto("/en-US/studio/" + id);
+  await page.getByLabel("Content language").selectOption("en-US");
+  await expect(page.getByLabel("Title", { exact: true })).toHaveValue(
+    english.title,
+  );
+  await expect(page).toHaveScreenshot("english-editor.png", { fullPage: true });
+  await page
+    .getByRole("textbox", { name: "Body", exact: true })
+    .fill("Edited English body.");
+  await expect(
+    page.getByRole("button", { name: "Translate now" }),
+  ).toBeDisabled();
+  await page
+    .getByRole("button", { name: "Update article", exact: true })
+    .click();
+  await expect(page.getByRole("status").first()).not.toHaveText("Unsaved");
+  await page.reload();
+  await page.getByLabel("Content language").selectOption("en-US");
+  await expect(
+    page.getByRole("textbox", { name: "Body", exact: true }),
+  ).toContainText("Edited English body.");
+  await page.route("**/api/translate", async (route) => {
+    const response = await request.post(
+      "http://127.0.0.1:4180/fixture/translation",
+      {
+        data: {
+          ...english,
+          title: "Translated again",
+          markdown: "New translation body.",
+          updated_at: "2026-10-13T02:00:00Z",
+        },
+      },
+    );
+    await route.fulfill({ json: { item: await response.json() } });
+  });
+  await page.getByRole("button", { name: "Translate now" }).click();
+  await expect(page.getByLabel("Title", { exact: true })).toHaveValue(
+    "Translated again",
+  );
+  await expect(
+    page.getByRole("textbox", { name: "Body", exact: true }),
+  ).toContainText("New translation body.");
+  // A cancelled language change retains the actual selected language and dirty input.
+  await page.getByLabel('Article URL').fill('unsaved-path');
+  page.once('dialog',dialog=>dialog.dismiss());
+  await page.getByLabel('Content language').selectOption('zh-CN');
+  await expect(page.getByLabel('Content language')).toHaveValue('en-US');
+  await expect(page.getByLabel('Article URL')).toHaveValue('unsaved-path');
+  page.once('dialog',dialog=>dialog.accept());
+  await page.getByLabel('Content language').selectOption('zh-CN');
+  await expect(page.getByLabel('Article URL')).toHaveValue('hello-world');
+  // An AI-delayed save returns another editor's full snapshot and version.
+  await page.route('**/api/content',async route=>{
+    const saved=await (await route.fetch()).json();
+    const changed=await request.post('/api/content',{headers:{Authorization:route.request().headers().authorization},data:{kind:'article',id,updated_at:saved.item.updated_at,value:{locale:'zh-CN',title:'并发编辑标题',slug:'concurrent-path',excerpt:'并发摘要',markdown:'并发正文',cover_id:null,status:'draft',published_at:null,tag_ids:[]}}});
+    await route.fulfill({json:await changed.json()});
+  });
+  await page.getByRole('button',{name:'Update article',exact:true}).click();
+  await expect(page.getByLabel('Title',{exact:true})).toHaveValue('并发编辑标题');
+  await expect(page.getByLabel('Article URL')).toHaveValue('concurrent-path');
+  await expect(page.getByRole('textbox',{name:'Body',exact:true})).toContainText('并发正文');
+  await expect(page.getByRole('status').first()).toHaveText('Draft saved');
+
 });

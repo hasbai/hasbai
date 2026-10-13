@@ -1,10 +1,13 @@
+import type { PageLoad } from "./$types";
+import { localeFromPath, localizedPath } from "$lib/locales";
 import { error } from "@sveltejs/kit";
 import { publicRepository } from "$lib/public-api";
 import type { Article, Note } from "$lib/content";
 
-export async function load() {
+export const load: PageLoad = async ({ url, parent }) => {
+  const { locale } = await parent();
   try {
-    const repo = publicRepository();
+    const repo = publicRepository(locale);
     async function collect<T>(getPage: (page: number) => Promise<T[]>) {
       const all: T[] = [];
       for (let page = 1; page <= 1000; page++) {
@@ -26,4 +29,4 @@ export async function load() {
   } catch {
     error(503, "时间线暂时无法加载");
   }
-}
+};

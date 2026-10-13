@@ -10,7 +10,11 @@
 
 Hono 提供博客接口及 MCP。`mcp.hasbai.xyz/mcp` Portal 允许任意用户登录读取公开内容；管理员经同一 Portal 增删改查。权限使用 `blog.all:all`，旧权限不兼容。验收记录见[DELIVERY](history/DELIVERY.md#hono-mcp-portal-与权限统一2026-10-13)。
 
+多语言改造已实现统一 content/translation 存储、enum 类型、JSONB 标签名称、locale 路由、i18next 界面、KV 语言配置和 AI 翻译。发布补齐缺失译文；编辑室手动翻译直接覆盖，保留来源和目标冲突检测。
+
 ## 证据与待核验
+
+多语言改造已在隔离 Neon 分支验证迁移及原文校验值，并通过译文 RLS 和并发冲突 SQL 测试。真实 dynamic/translate 请求成功。生产迁移、最终 PR CI 和部署分别核验，不能由隔离测试结果推断。
 
 历史内容迁移、匿名/管理员 API 和 Linux 截图证据见[DELIVERY](history/DELIVERY.md)。Hono MCP、Portal 登录与权限统一的 CI、自动部署及真实调用已登记；其他功能不由合并状态推断生产已验收。
 

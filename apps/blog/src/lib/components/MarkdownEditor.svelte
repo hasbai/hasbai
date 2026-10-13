@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { ui } from "$lib/i18n";
+  const t = ui();
   import { onMount } from "svelte";
   import { hasMarkdownExtensions, renderMarkdown } from "$lib/markdown";
   import MarkdownContent from "@hasbai/markdown/content";
@@ -64,7 +66,7 @@
       editorProps: {
         attributes: {
           role: "textbox",
-          "aria-label": "正文",
+          "aria-label": t("正文"),
           "aria-multiline": "true",
         },
       },
@@ -77,6 +79,14 @@
     return () => instance.destroy();
   });
   $effect(() => {
+    const text = value;
+    if (editor && !source && !preview && editor.getMarkdown() !== text)
+      editor.commands.setContent(text, {
+        contentType: "markdown",
+        emitUpdate: false,
+      });
+  });
+  $effect(() => {
     editor?.setEditable(!disabled && !source && !preview);
   });
   $effect(() => {
@@ -84,17 +94,38 @@
     if (!preview) return;
     let current = true;
     previewLoading = true;
-    renderMarkdown(markdown).then(html => {
-      if (current) { previewHtml = html; previewLoading = false; }
-    }).catch(() => {
-      if (current) { error = "预览失败"; previewLoading = false; }
-    });
-    return () => { current = false; };
+    renderMarkdown(markdown)
+      .then((html) => {
+        if (current) {
+          previewHtml = html;
+          previewLoading = false;
+        }
+      })
+      .catch(() => {
+        if (current) {
+          error = t("预览失败");
+          previewLoading = false;
+        }
+      });
+    return () => {
+      current = false;
+    };
   });
   function toggleSource() {
-    if (preview) { preview = false; source = true; return; }
-    if (source && extended) { preview = true; return; }
-    if (source && editor) editor.commands.setContent(value, { contentType: "markdown", emitUpdate: false });
+    if (preview) {
+      preview = false;
+      source = true;
+      return;
+    }
+    if (source && extended) {
+      preview = true;
+      return;
+    }
+    if (source && editor)
+      editor.commands.setContent(value, {
+        contentType: "markdown",
+        emitUpdate: false,
+      });
     source = !source;
   }
   async function addImage(event: Event) {
@@ -110,7 +141,7 @@
         .setImage({ src: image.src, alt: image.name, title: image.name })
         .run();
     } catch (e) {
-      error = e instanceof Error ? e.message : "上传失败";
+      error = e instanceof Error ? e.message : t("上传失败");
     } finally {
       busy = false;
       fileInput.value = "";
@@ -119,7 +150,7 @@
   function addLink() {
     if (!editor) return;
     if (linkUrl && !/^https?:\/\//i.test(linkUrl)) {
-      error = "请输入 http 或 https 链接";
+      error = t("请输入 http 或 https 链接");
       return;
     }
     editor
@@ -136,13 +167,13 @@
 <div
   class="editor-bar"
   role="toolbar"
-  aria-label="正文格式"
+  aria-label={t("正文格式")}
   data-revision={revision}
 >
   <Button
     variant="ghost"
     size="icon"
-    aria-label="加粗"
+    aria-label={t("加粗")}
     aria-pressed={editor?.isActive("bold") ?? false}
     disabled={disabled || source || preview}
     onclick={() => editor?.chain().focus().toggleBold().run()}
@@ -151,7 +182,7 @@
   <Button
     variant="ghost"
     size="icon"
-    aria-label="斜体"
+    aria-label={t("斜体")}
     aria-pressed={editor?.isActive("italic") ?? false}
     disabled={disabled || source || preview}
     onclick={() => editor?.chain().focus().toggleItalic().run()}
@@ -160,21 +191,21 @@
   <Button
     variant="ghost"
     disabled={disabled || source || preview}
-    aria-label="二级标题"
+    aria-label={t("二级标题")}
     onclick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}
     >H2</Button
   >
   <Button
     variant="ghost"
     disabled={disabled || source || preview}
-    aria-label="三级标题"
+    aria-label={t("三级标题")}
     onclick={() => editor?.chain().focus().toggleHeading({ level: 3 }).run()}
     >H3</Button
   >
   <Button
     variant="ghost"
     size="icon"
-    aria-label="无序列表"
+    aria-label={t("无序列表")}
     disabled={disabled || source || preview}
     onclick={() => editor?.chain().focus().toggleBulletList().run()}
     ><List size={16} /></Button
@@ -182,7 +213,7 @@
   <Button
     variant="ghost"
     size="icon"
-    aria-label="有序列表"
+    aria-label={t("有序列表")}
     disabled={disabled || source || preview}
     onclick={() => editor?.chain().focus().toggleOrderedList().run()}
     ><ListOrdered size={16} /></Button
@@ -190,7 +221,7 @@
   <Button
     variant="ghost"
     size="icon"
-    aria-label="引用"
+    aria-label={t("引用")}
     disabled={disabled || source || preview}
     onclick={() => editor?.chain().focus().toggleBlockquote().run()}
     ><Quote size={16} /></Button
@@ -198,7 +229,7 @@
   <Button
     variant="ghost"
     size="icon"
-    aria-label="代码块"
+    aria-label={t("代码块")}
     disabled={disabled || source || preview}
     onclick={() => editor?.chain().focus().toggleCodeBlock().run()}
     ><Code size={16} /></Button
@@ -206,7 +237,7 @@
   <Button
     variant="ghost"
     size="icon"
-    aria-label="插入链接"
+    aria-label={t("插入链接")}
     disabled={disabled || source || preview}
     onclick={() => {
       linkUrl = editor?.getAttributes("link").href ?? "";
@@ -216,7 +247,7 @@
   <Button
     variant="ghost"
     size="icon"
-    aria-label="插入表格"
+    aria-label={t("插入表格")}
     disabled={disabled || source || preview}
     onclick={() =>
       editor
@@ -228,7 +259,7 @@
   <Button
     variant="ghost"
     size="icon"
-    aria-label="分隔线"
+    aria-label={t("分隔线")}
     disabled={disabled || source || preview}
     onclick={() => editor?.chain().focus().setHorizontalRule().run()}
     ><Minus size={16} /></Button
@@ -236,14 +267,14 @@
   <Button
     variant="ghost"
     size="icon"
-    aria-label="上传图片"
+    aria-label={t("上传图片")}
     disabled={disabled || source || preview || busy}
     onclick={() => fileInput.click()}><ImagePlus size={16} /></Button
   >
   <Button
     variant="ghost"
     size="icon"
-    aria-label="撤销"
+    aria-label={t("撤销")}
     disabled={disabled || source || preview || !editor?.can().undo()}
     onclick={() => editor?.chain().focus().undo().run()}
     ><Undo size={16} /></Button
@@ -251,7 +282,7 @@
   <Button
     variant="ghost"
     size="icon"
-    aria-label="重做"
+    aria-label={t("重做")}
     disabled={disabled || source || preview || !editor?.can().redo()}
     onclick={() => editor?.chain().focus().redo().run()}
     ><Redo size={16} /></Button
@@ -261,7 +292,11 @@
     variant={preview ? "secondary" : "ghost"}
     aria-pressed={preview}
     {disabled}
-    onclick={() => { preview = !preview; if (!preview && extended) source = true; }}>预览</Button>
+    onclick={() => {
+      preview = !preview;
+      if (!preview && extended) source = true;
+    }}>{t("预览")}</Button
+  >
   <Button
     variant={source && !preview ? "secondary" : "ghost"}
     aria-pressed={source && !preview}
@@ -274,34 +309,36 @@
   type="file"
   accept="image/png,image/jpeg,image/webp,image/gif"
   class="hidden"
-  aria-label="选择图片"
+  aria-label={t("选择图片")}
   onchange={addImage}
 />
 {#if linkOpen}<div class="flex gap-2 py-3">
     <Input
       bind:value={linkUrl}
-      aria-label="链接地址"
+      aria-label={t("链接地址")}
       type="url"
       placeholder="https://"
-    /><Button onclick={addLink}>确定</Button><Button
+    /><Button onclick={addLink}>{t("确定")}</Button><Button
       variant="ghost"
-      onclick={() => (linkOpen = false)}>取消</Button
+      onclick={() => (linkOpen = false)}>{t("取消")}</Button
     >
   </div>{/if}
 {#if error}<p class="error py-3" role="alert">{error}</p>{/if}{#if busy}<p
     class="meta py-3"
     role="status"
   >
-    正在上传图片…
+    {t("正在上传图片…")}
   </p>{/if}
 {#if source && !preview}<textarea
     class="min-h-110 w-full resize-y rounded-lg border bg-background p-4 font-mono text-sm"
-    aria-label="Markdown 源码"
+    aria-label={t("Markdown 源码")}
     bind:value
     {disabled}></textarea>{/if}
 {#if preview}
   <div class="py-4" aria-busy={previewLoading}>
-    {#if previewLoading}<p role="status">正在预览…</p>{:else}<MarkdownContent html={previewHtml} />{/if}
+    {#if previewLoading}<p role="status">
+        {t("正在预览…")}
+      </p>{:else}<MarkdownContent html={previewHtml} />{/if}
   </div>
 {/if}
 <div bind:this={element} class:hidden={source || preview}></div>

@@ -10,13 +10,13 @@
 
 ## 范围与任务路由
 
-- 业务表全部在 `public`；当前内容继承、标签、页面与图片对象以[架构](ARCHITECTURE.md#数据与权限)及 `database/blog` 为准，不把最初“四表”描述当永久限制。
+- 业务表全部在 `public`；当前统一内容、语言翻译、标签、页面与图片对象以[架构](ARCHITECTURE.md#数据与权限)及 `database/blog` 为准，不把最初“四表”描述当永久限制。
 - 现有 Hugo 博客和文章不迁移、不覆盖。图片使用公开 R2 `image`，不是私有附件。
 - 用户登录只使用共享 Auth0，Neon Auth 仅为访客提供短期匿名 JWT；[AUTHORIZATION](../AUTHORIZATION.md)统一维护权限与 audience。
 
 | 任务 | 入口 |
 | --- | --- |
-| SSR、内容继承、路由、CRUD、图片、Worker | [ARCHITECTURE](ARCHITECTURE.md) |
+| SSR、多语言、路由、CRUD、AI 翻译、图片、Worker | [ARCHITECTURE](ARCHITECTURE.md) |
 | 安全渲染、数学、引用、图表与源码保真 | [共享 MARKDOWN](../MARKDOWN.md)；`packages/markdown` |
 | 当前能力与未验收项 | [PROGRESS](PROGRESS.md) |
 | 政策、名称、内容迁移和登录变更的历史证据 | [history/DELIVERY](history/DELIVERY.md) |

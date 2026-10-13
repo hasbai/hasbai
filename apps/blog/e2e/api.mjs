@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 const seededPages = JSON.parse(readFileSync(new URL('./pages.json', import.meta.url), 'utf8'));
 let pages = structuredClone(seededPages);
 
-const tag = { id: '10000000-0000-4000-8000-000000000001', name: '随笔', slug: 'writing' };
+const tag = { id: '10000000-0000-4000-8000-000000000001', name: '随笔', translations: {'zh-CN':'随笔','zh-TW':'隨筆','en-US':'Writing'}, slug: 'writing' };
 const article = {
   id: '20000000-0000-4000-8000-000000000001', kind: 'article', sequence: 1,
   title: 'Hello World，开始记录', slug: 'hello-world', legacy_path: '/notes/hello-world',
@@ -24,6 +24,9 @@ let notes = [{ ...note }];
 let tags = [{ ...tag }];
 let links = [{ article_id: article.id, tag_id: tag.id }];
 let fail = false;
+let locales = ['zh-CN','zh-TW','en-US'];
+let extraTranslations = [];
+function translated(row) { return {...row,source_locale:'zh-CN',article_tag:links.filter(t=>t.article_id===row.id),translation:[{content_id:row.id,locale:'zh-CN',is_complete:!!row.markdown?.trim(),title:row.title??'',excerpt:row.excerpt,markdown:row.markdown,updated_at:row.updated_at},...extraTranslations.filter(t=>t.content_id===row.id)]}; }
 
 function filter(rows, url) {
   let result = rows;
@@ -46,35 +49,46 @@ createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
   res.setHeader('Content-Type', 'application/json');
   if (req.method === 'OPTIONS') { res.end(); return; }
+  if(url.pathname === '/fixture/translation') {
+    const value=await bodyOf(req);extraTranslations=extraTranslations.filter(t=>!(t.content_id===value.content_id&&t.locale===value.locale));extraTranslations.push(value);
+    const item=[...articles,...notes,...pages].find(row=>row.id===value.content_id);if(item)item.updated_at=value.updated_at;
+    res.end(JSON.stringify({...item,...value,id:value.content_id,translation:undefined,translations:translated(item).translation,tag_ids:links.filter(link=>link.article_id===item.id).map(link=>link.tag_id)}));return;
+  }
+  if (url.pathname === '/api/locales') {res.end(JSON.stringify({locales,available:["zh-CN","zh-TW","en-US"]}));return;}
+  if (url.pathname === '/api/settings/locales') {
+    if(req.method==='PUT')locales=(await bodyOf(req)).locales;
+    res.end(JSON.stringify({locales,available:['zh-CN','zh-TW','en-US']}));return;
+  }
   if (url.pathname === '/reset') {
     articles = [{ ...article }]; notes = [{ ...note }]; tags = [{ ...tag }]; pages = structuredClone(seededPages);
-    links = [{ article_id: article.id, tag_id: tag.id }]; fail = false;
+    links = [{ article_id: article.id, tag_id: tag.id }]; fail = false;extraTranslations=[];locales=['zh-CN','zh-TW','en-US'];
     res.end('{}'); return;
   }
   if (url.pathname === '/empty') { articles = []; notes = []; links = []; res.end('{}'); return; }
   if (url.pathname === '/fail') { fail = true; res.end('{}'); return; }
   if (url.pathname === '/auth/token/anonymous') { res.end(JSON.stringify({ token: 'guest' })); return; }
   if (fail) { res.statusCode = 503; res.end(JSON.stringify({ message: 'unavailable' })); return; }
-  if (url.pathname.endsWith('/rpc/save_article')) {
-    const values = await bodyOf(req);
-    const previous = values.p_updated_at ? articles.find((row) => row.id === values.p_id && row.updated_at === values.p_updated_at) : null;
-    if (values.p_updated_at && !previous) { res.statusCode = 409; res.end(JSON.stringify({ message: '文章已被更新' })); return; }
-    const saved = {
-      ...(previous ?? article), id: values.p_id, kind: 'article', sequence: previous?.sequence ?? articles.length + 1,
-      title: values.p_title, slug: values.p_slug, excerpt: values.p_excerpt,
-      markdown: values.p_markdown, cover_id: values.p_cover_id,
-      status: values.p_status, published_at: values.p_published_at,
-      updated_at: new Date().toISOString(),
-    };
-    if (previous) Object.assign(previous, saved);
-    else articles.push(saved);
-    links = links.filter((link) => link.article_id !== saved.id);
-    links.push(...values.p_tag_ids.map((tag_id) => ({ article_id: saved.id, tag_id })));
-    res.end(JSON.stringify(saved)); return;
+  if (url.pathname === '/api/content' || url.pathname.endsWith('/rpc/save_content')) {
+    const v=await bodyOf(req);const values=v.value??v.p_value;const kind=v.kind??v.p_kind;const id=v.id??v.p_id??crypto.randomUUID();
+    const collection=kind==='article'?articles:kind==='note'?notes:pages;
+    const stamp=v.updated_at??v.p_updated_at;const previous=stamp?collection.find(row=>row.id===id&&row.updated_at===stamp):null;
+    if(stamp&&!previous){res.statusCode=409;res.end(JSON.stringify({message:'内容已被更新'}));return;}
+    if(kind==='page'&&collection.some(row=>row.id!==id&&row.slug===values.slug)){res.statusCode=409;res.end(JSON.stringify({message:'页面路径已被使用，请换一个路径'}));return;}
+    const locale=values.locale??v.p_locale??'zh-CN';const base=kind==='article'?article:kind==='note'?note:seededPages[0];
+    const saved={...(previous??base),...values,id,kind,sequence:previous?.sequence??collection.length+1,updated_at:new Date().toISOString()};
+    if(locale==='zh-CN'){if(previous)Object.assign(previous,saved);else collection.push(saved);}
+    else {
+      if(!previous)collection.push({...saved,title:'',excerpt:'',markdown:''});else previous.updated_at=saved.updated_at;
+      extraTranslations=extraTranslations.filter(t=>!(t.content_id===id&&t.locale===locale));
+      extraTranslations.push({content_id:id,locale,title:values.title??'',excerpt:values.excerpt,markdown:values.markdown,updated_at:saved.updated_at});
+    }
+    if(kind==='article'){links=links.filter(link=>link.article_id!==id);links.push(...values.tag_ids.map(tag_id=>({article_id:id,tag_id})));}
+    res.end(JSON.stringify(url.pathname==='/api/content'?{item:saved}:saved));return;
   }
+  if(url.pathname.endsWith('/rpc/blog_locales')){res.end(JSON.stringify(['zh-CN','zh-TW','en-US']));return;}
 
   const table = url.pathname.split('/').pop();
-  const collections = { article: articles, note: notes, page: pages, content: [...articles, ...notes, ...pages], tag: tags, article_tag: links };
+  const collections = { article: articles, note: notes, page: pages, content: [...articles, ...notes, ...pages].map(translated), translation: [...articles,...notes,...pages].flatMap(row=>translated(row).translation), tag: tags, article_tag: links };
   let data = collections[table] ?? [];
   if (req.method === 'GET') data = filter(data, url);
   if (req.method === 'POST') {
@@ -106,6 +120,7 @@ createServer(async (req, res) => {
   }
   if (req.method === 'DELETE') {
     data = filter(data, url);
+    if (table === 'content') {const ids=new Set(data.map(row=>row.id));articles=articles.filter(row=>!ids.has(row.id));notes=notes.filter(row=>!ids.has(row.id));pages=pages.filter(row=>!ids.has(row.id));}
     if (table === 'article') articles = articles.filter((row) => !data.includes(row));
     if (table === 'page') pages = pages.filter((row) => !data.includes(row));
     if (table === 'note') notes = notes.filter((row) => !data.includes(row));
