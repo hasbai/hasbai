@@ -77,3 +77,9 @@ it('estimates temporary candidate suffixes while excluding them from summary fac
  const sources:string[]=[];const c=new ConversationContext([message('old','user','旧问题'.repeat(1200)),message('reply','assistant','旧事实'.repeat(1200)),message('current','user','现在')],card,[],DEFAULT_SETTINGS,16384,{protocol:'',inputRatio:1.2},async messages=>{sources.push(JSON.stringify(messages));return '旧事';});
  const first=await c.fit();const before=JSON.stringify(first.messages);c.appendOutput(message('body','assistant',''),'正文已经完成。',false);const suffix=[{role:'user' as const,content:'给候选'},{role:'assistant' as const,content:'将来我乘船离开。'},{role:'user' as const,content:'接着给候选'}];const frozen=c.extend(first,[{role:'assistant',content:'正文已经完成。'},...suffix]);expect(JSON.stringify(first.messages)).toBe(before);expect(frozen.messages.slice(0,first.messages.length)).toEqual(first.messages);c.contextTokens=4096;const fitted=await c.fit('',{protocol:''},suffix);expect(fitted.needsCompression).toBe(false);expect(fitted.messages.slice(-3)).toEqual(suffix);expect(sources.length).toBeGreaterThan(0);expect(sources.join('')).not.toContain('将来我乘船离开');expect(c.history.at(-1)?.content).toBe('正文已经完成。');
 });
+
+it('uses the turn snapshot for summary rules and its user task including split retries',async()=>{
+ const infer=vi.fn(async(messages:PromptMessage[])=>{expect(messages[0].content).toBe('保存的摘要规则');expect(messages[1].content).toContain('保存的压缩任务');if(messages[1].content.length>700)throw new SummaryRetry(1024);return '确认旧事';});
+ const c=new ConversationContext([message('u','user','中'.repeat(1800)),message('a','assistant','事实'.repeat(900)),message('n','user','后来')],card,[],DEFAULT_SETTINGS,2048,{protocol:'保存的正文规则',inputRatio:1.2,summaryRule:'保存的摘要规则',summaryTask:'保存的压缩任务'},infer);
+ await c.fit();expect(infer).toHaveBeenCalled();expect(c.prompt().messages[0].content).toContain('保存的正文规则');
+});

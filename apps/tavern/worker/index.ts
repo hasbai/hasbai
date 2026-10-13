@@ -8,6 +8,7 @@ import { character, installCard, jsonFile, ownedBooks, session, settings, userSe
 import { MAX_FILE_BYTES, object, parseBook, parseCard, string } from '../shared/cards';
 import { macros } from '../shared/prompt';
 import { generateCharacter } from './character-generation';
+import { readPrompts, savePrompts } from './prompts';
 export default {
  async fetch(request:Request,env:Env,ctx:Pick<ExecutionContext,'waitUntil'>):Promise<Response> {
   const url=new URL(request.url),p=url.pathname,method=request.method;
@@ -17,6 +18,13 @@ export default {
    const user=await identity(request,env),owner=user.sub;
    if(method!=='GET' && request.headers.has('Origin') && request.headers.get('Origin')!==url.origin)throw new HttpError(403,'请求来源无效');
    if(p==='/api/models' && method==='GET')return json({models:await modelOptions(env,ctx)});
+   if(p==='/api/prompts'){
+    if(method==='GET')return json({...await readPrompts(env),admin:user.admin});
+    if(method==='PUT'){
+     if(!user.admin)throw new HttpError(403,'需要酒馆管理权限');
+     return json({...await savePrompts(env,(await body(request)).texts),admin:true});
+    }
+   }
    if(p==='/api/settings'){
     if(method==='GET')return json(await userSettings(env,owner));
     if(method==='PUT'){const data=settings(await body(request));modelInput(data);await env.DB.prepare('INSERT INTO settings(owner,settings_json) VALUES(?,?) ON CONFLICT(owner) DO UPDATE SET settings_json=excluded.settings_json').bind(owner,JSON.stringify(data)).run();return json(data);}

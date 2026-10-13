@@ -1,5 +1,6 @@
 import { characterCard, emptyCharacterDraft } from '../shared/character-draft';
 import { GENERATION_DEFAULTS, DEFAULT_SYSTEM_PROMPT } from '../shared/types';
+import { DEFAULT_PROMPTS } from '../shared/prompts';
 import {test,expect,type Page} from '@playwright/test';
 const raw={spec:'chara_card_v2',spec_version:'2.0',data:{name:'岚',description:'港城旅店的主人。她守着一盏长明的灯，等待远行的旅人。',personality:'冷静、敏锐，善于倾听。',scenario:'雨夜，北方港城的一间旅店。',first_mes:'门外传来脚步声。岚放下手中的书，望向你。\n「雨很大，进来坐坐吧。」',mes_example:'',system_prompt:'',post_history_instructions:'',alternate_greetings:['清晨，窗外的海风带来潮声。'],tags:['奇幻','旅店'],creator:'测试作者',extensions:{}}};
 const character={id:'c1',name:'岚',description:raw.data.description,creator:'测试作者',tags:['奇幻','旅店'],format:'V2',hasAvatar:false,source:'',sourceUrl:'',unsupported:[],card:raw};
@@ -7,7 +8,8 @@ const settings={userName:'旅人',persona:'一位从北方归来的旅人。',sy
 const book={id:'b1',name:'北境港城',enabled:true,count:2,raw:{name:'北境港城',entries:[{keys:['港城'],content:'港城的灯塔每晚亮起。',enabled:true},{keys:[],content:'故事发生在初秋。',constant:true,enabled:true}]},unsupported:[]};
 const session={id:'s1',title:'港城的雨夜',characterName:'岚',updatedAt:1790990000000,settings,bookIds:['b1'],character:raw,generationId:null as string|null};
 const greeting={id:'m1',role:'assistant',content:raw.data.first_mes,status:'completed',ordinal:0,requestId:null,createdAt:1790990000000};
-async function fixture(page:Page,{empty=false,fail=false,delay=false,streamDelay=false,stopDelay=false,partial=false,long=false}={}) {
+async function fixture(page:Page,{empty=false,fail=false,delay=false,streamDelay=false,stopDelay=false,partial=false,long=false,promptAdmin=true}={}) {
+ let promptTexts={...DEFAULT_PROMPTS};
  const current=structuredClone(session);
  const cards=empty?[]:[structuredClone(character)],books=empty?[]:[structuredClone(book)],sessions=empty?[]:[structuredClone(current)];let messages:Record<string,unknown>[]=empty?[]:[structuredClone(greeting)];let pending='';let generationCount=0;let savedSettings=structuredClone(settings);if(long)messages=[{...greeting,content:Array.from({length:18},(_,i)=>`第${i+1}段。雨点敲着旅店的窗，岚整理好桌边的书，等待你的回答。`).join('\n\n')}];
  await page.route('**/api/**',async route=>{
@@ -15,6 +17,7 @@ async function fixture(page:Page,{empty=false,fail=false,delay=false,streamDelay
   if(fail){await route.fulfill({status:503,json:{message:'服务暂时不可用'}});return;}
   const body=req.headers()['content-type']?.includes('application/json')?req.postDataJSON()??{}:{};let data:unknown={ok:true};
   if(p==='/api/models')data={models:[{id:'rp',name:'RP 动态路由',available:true,contextTokens:16384,parameters:{topK:true,penalties:true,thinking:true,topKMax:1000}}]};
+  else if(p==='/api/prompts'){if(method==='PUT')promptTexts=body.texts;data={revision:'fixture',texts:promptTexts,admin:promptAdmin};}
   else if(p==='/api/settings'){if(method==='PUT')savedSettings=body;data=savedSettings;}
   else if(p==='/api/characters'&&method==='GET')data={characters:cards};
   else if(p==='/api/characters'&&method==='POST'){const uploaded=req.headers()['x-filename']?raw:req.postDataJSON();expect(uploaded).not.toBeNull();cards.push({...character,id:'c2',name:uploaded.data.name,description:uploaded.data.description,card:uploaded});data=cards.at(-1);}
@@ -163,4 +166,22 @@ test('manual character creation and closing a generation preserve isolation',asy
  await fixture(page);let started=false,release:(()=>void)|undefined;
  await page.route('**/api/characters/generate',async route=>{started=true;await new Promise<void>(resolve=>release=resolve);await route.fulfill({json:{card:characterCard({...emptyCharacterDraft(),name:'迟到结果',description:'描述',personality:'性格',scenario:'场景',first_mes:'开场',mes_example:'对白'})}}).catch(()=>{});});
  await page.getByRole('button',{name:'创建角色'}).click();await page.getByLabel('角色名称').fill('旧草稿');await page.getByRole('button',{name:'AI 生成',exact:true}).click();await expect.poll(()=>started).toBe(true);await page.getByRole('button',{name:'取消生成并关闭'}).click();await expect(page.getByRole('dialog')).toHaveCount(0);await page.getByRole('button',{name:'创建角色'}).click();await expect(page.getByLabel('角色名称')).toHaveValue('');release!();await page.getByLabel('角色名称').fill('手写角色');await page.getByRole('button',{name:'保存角色',exact:true}).click();await expect(page.getByRole('heading',{name:'手写角色',exact:true})).toBeVisible();
+});
+
+test('about visualizes the dialogue context and exposes the same application prompts',async({page})=>{
+ await fixture(page);await nav(page,'设置');await page.getByRole('link',{name:'关于',exact:true}).click();await expect(page).toHaveURL(/#about$/);await expect(page.getByRole('heading',{name:'关于酒馆',exact:true})).toBeVisible();
+ const stages=page.getByRole('group',{name:'查看请求阶段'});await expect(stages.getByRole('button',{name:'正文',exact:true})).toHaveAttribute('aria-pressed','true');await expect(page.getByLabel('正文协议',{exact:true})).toHaveValue(DEFAULT_PROMPTS.agent);await expect(page.getByText('跨轮上下文',{exact:true})).toHaveCount(0);await shot(page,'about.png');
+ await stages.getByRole('button',{name:'候选',exact:true}).click();await expect(page.getByRole('heading',{name:'Director 候选任务'})).toBeVisible();await expect(page.getByLabel('候选规则',{exact:true})).toHaveValue(DEFAULT_PROMPTS.director);await expect(page.getByLabel('正文协议',{exact:true})).toHaveCount(0);await page.getByText('展开 system 组成',{exact:true}).click();await expect(page.getByText('用户 System Prompt 与角色卡 system_prompt 合并',{exact:true})).toBeVisible();await shot(page,'about-context.png');
+ await page.getByLabel('候选规则',{exact:true}).fill(DEFAULT_PROMPTS.director+'保留玩家决定。');await page.getByRole('button',{name:'保存提示词'}).click();await expect(page.getByRole('status')).toHaveText('已保存，缓存逐步更新');
+ await page.getByRole('button',{name:'切换深色模式'}).last().click();await shot(page,'about-dark.png');
+ await stages.getByRole('button',{name:'压缩',exact:true}).focus();await page.keyboard.press('Enter');await expect(page.getByRole('heading',{name:'摘要规则',exact:true})).toBeVisible();await expect(page.locator('.message-stack>li')).toHaveCount(2);await expect(page.getByLabel('摘要规则',{exact:true})).toHaveValue(DEFAULT_PROMPTS.summary);
+ await page.reload();await expect(page.getByRole('heading',{name:'关于酒馆',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'切换浅色模式'}).last()).toBeVisible();await page.locator('.about-head').getByRole('link',{name:'设置',exact:true}).click();await expect(page.getByRole('heading',{name:'对话设置'})).toBeVisible();
+});
+
+test('about prompts are read only for ordinary users and preserve drafts after save failures',async({page})=>{
+ await fixture(page,{promptAdmin:false});await page.goto('/e2e/index.html#about');await expect(page.locator('.prompt-editor pre').first()).toHaveText(DEFAULT_PROMPTS.agent);await expect(page.getByRole('button',{name:'保存提示词'})).toHaveCount(0);await expect(page.locator('.prompt-editor textarea')).toHaveCount(0);
+ await page.unroute('**/api/**');await fixture(page);await page.goto('/e2e/index.html#about');await expect(page.getByLabel('正文协议',{exact:true})).toHaveValue(DEFAULT_PROMPTS.agent);
+ await page.route('**/api/prompts',async route=>{if(route.request().method()==='PUT')await route.fulfill({status:503,json:{message:'保存失败'}});else await route.fallback();});
+ await page.getByLabel('正文协议',{exact:true}).fill('保留的编辑草稿');await page.getByRole('button',{name:'保存提示词'}).click();await expect(page.getByRole('alert')).toContainText('保存失败');await expect(page.getByLabel('正文协议',{exact:true})).toHaveValue('保留的编辑草稿');await expect(page.getByRole('button',{name:'保存提示词'})).toBeEnabled();
+ await page.getByRole('button',{name:'工具',exact:true}).click();await expect(page.getByLabel('正文协议',{exact:true})).toHaveValue('保留的编辑草稿');
 });

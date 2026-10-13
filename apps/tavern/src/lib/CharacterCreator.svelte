@@ -53,9 +53,8 @@
 </script>
 
 <Dialog.Header>
- <p class="eyebrow">CREATE YOUR CHARACTER</p>
  <Dialog.Title class="creator-title">创建角色</Dialog.Title>
- <Dialog.Description>从一个想法开始，写下设定，也可以让 AI 帮你完善。</Dialog.Description>
+ <Dialog.Description>填写或生成角色信息。</Dialog.Description>
 </Dialog.Header>
  {#if generating}<p class="creator-feedback" role="status">正在完善人物设定与开场白…</p>{/if}
  {#if status}<div class="creator-feedback" role="status"><span>{status}</span>{#if previous}<Button type="button" variant="ghost" onclick={undo} disabled={locked}><Undo2 size={16} aria-hidden="true"/>撤销生成</Button>{/if}</div>{/if}
@@ -86,4 +85,4 @@
   <details class="creator-advanced"><summary>作者与高级设定</summary><div class="creator-section"><div class="creator-two-fields">{#each ['creator', 'character_version'] as key}<div class="field"><label for={`character-${key}`}>{CHARACTER_FIELDS[key as CharacterField].label}</label><Input id={`character-${key}`} bind:value={draft[key as CharacterField]}/></div>{/each}</div>{#each ['creator_notes', 'system_prompt', 'post_history_instructions'] as key}<div class="field"><label for={`character-${key}`}>{CHARACTER_FIELDS[key as CharacterField].label}</label><textarea id={`character-${key}`} bind:value={draft[key as CharacterField]} rows="3"></textarea></div>{/each}</div></details>
  </fieldset>
 </form>
-<Dialog.Footer class="creator-footer"><span class="muted">保存到你的角色库</span><div class="actions"><Button type="button" variant="outline" disabled={saving} onclick={oncancel}>{generating ? '取消生成并关闭' : '取消'}</Button><Button type="submit" form="character-form" disabled={locked}>{saving ? '保存中…' : '保存角色'}</Button></div></Dialog.Footer>
+<Dialog.Footer class="creator-footer"><div class="actions"><Button type="button" variant="outline" disabled={saving} onclick={oncancel}>{generating ? '取消生成并关闭' : '取消'}</Button><Button type="submit" form="character-form" disabled={locked}>{saving ? '保存中…' : '保存角色'}</Button></div></Dialog.Footer>

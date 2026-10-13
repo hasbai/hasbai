@@ -12,7 +12,7 @@
  async function install(id:string){if(!data)return;const provider=data.source;installing=id;error='';try{await api.request('install','POST',{source:provider,id});installed=[...installed,`${provider}:${id}`];}catch(e){error=(e as Error).message;}finally{installing='';}}
  const date=(value?:string)=>value&&Number.isFinite(Date.parse(value))?new Intl.DateTimeFormat('zh-CN',{year:'numeric',month:'short',day:'numeric',timeZone:'Asia/Shanghai'}).format(new Date(value)):'';
 </script>
-<header class="page-head"><div><p class="eyebrow">DISCOVER A STORY</p><h1>发现角色</h1></div></header>
+<header class="page-head"><div><h1>发现角色</h1></div></header>
 <form class="discover-search" onsubmit={e=>{e.preventDefault();void search();}}>
  <div class="field"><label for="source">角色来源</label><select id="source" bind:value={source} disabled={loading} onchange={changeSource}><option value="chub">Chub</option><option value="theatrelm">TheatreLM · Hugging Face</option></select></div>
  <div class="field search-grow"><label for="discover-query">关键词</label><Input id="discover-query" bind:value={query} maxlength={150} placeholder="角色名称、故事或世界"/></div><Button type="submit" disabled={loading}><Search size={16}/>{loading?'搜索中…':'搜索'}</Button>

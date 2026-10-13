@@ -1,3 +1,5 @@
+import { REPAIR_PROBLEMS } from '../shared/instructions';
+import { readPrompts } from './prompts';
 import { capabilities, modelInput, recordFeedback, type Capability } from './models';
 import { candidateDelimiter, CandidateStream } from '../shared/candidates';
 import { runRoleplay } from './gateway';
@@ -6,15 +8,15 @@ import { InferenceMetrics } from './metrics';
 import { parseBook, parseCard } from '../shared/cards';
 import {LoreIndex,embeddings} from './lore';
 import { buildPrompt, stateMessage, type PromptMessage } from '../shared/prompt';
-import { ConversationContext, summarizeWithModel, explicitContextLimit, contextLimit } from './context';
+import { ConversationContext, summarizeWithModel, explicitContextLimit, contextLimit, validSummary } from './context';
 import { sseData } from '../shared/sse';
 import { generationNotice } from '../shared/outcomes';
 import type { FinishReason, Message } from '../shared/types';
 import { HttpError, json } from './http';
 import { settings, currentMessages, message, ownedBooks } from './store';
 import type { SessionStore } from './session-store';
-import { BODY_TASK, recallRequested, draftProblems, protocolProblems, streamableEnd, projectionMatches, TOOL_CONTINUATION } from './narrative';
-import { AGENT_RULE, AGENT_TOOLS, AgentTurn, contentHash, stableJson, storyMessages, ToolCallStream, type ModelProjection, type StoryState } from './agent';
+import { recallRequested, draftProblems, protocolProblems, streamableEnd } from './narrative';
+import { AGENT_TOOLS, AgentTurn, contentHash, stableJson, stateContext, storyMessages, ToolCallStream, type ModelProjection, type StoryState } from './agent';
 export { explicitContextLimit } from './context';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext,'waitUntil'>,owner:string,id:string,data:Record<string,unknown>,username:string,store:SessionStore,onSettled:(id:string)=>Promise<void> = async()=>{},onClaim:(id:string,abort:AbortController)=>void = ()=>{},beforeClaim:()=>void=()=>{}) {
@@ -23,6 +25,10 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
  const initial=store.get();
  const existing=store.findRequest(requestId);
  if(existing)return json({message:message(existing),replayed:true});
+ const promptDocument=await readPrompts(env),texts=promptDocument.texts;
+ const contextOptions={protocol:texts.agent,cardPostOriginal:texts.cardPostOriginal,summaryRule:texts.summary,summaryTask:texts.summaryTask};
+ const repairTexts:Record<string,string>={[REPAIR_PROBLEMS.incompleteThink]:texts.repairIncompleteThink,[REPAIR_PROBLEMS.repeatedParagraph]:texts.repairRepeatedParagraph,[REPAIR_PROBLEMS.repeatedHistory]:texts.repairRepeatedHistory,[REPAIR_PROBLEMS.exposedThink]:texts.repairExposedThink};
+ const repairProblem=(value:string)=>repairTexts[value]??value;
  const capability=await capabilities(env,ctx);beforeClaim();if(request.signal.aborted||store.cancelled(requestId))throw new HttpError(409,'生成已停止');const now=Date.now();
  const regenerate=data.regenerate===true;let continuing=data.continue===true;
  if(regenerate&&continuing)throw new HttpError(400,'生成模式无效');const text=typeof data.content==='string'?data.content.trim():'';
@@ -48,13 +54,13 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
   const books=await ownedBooks(env,owner,JSON.parse(row.book_ids_json));
   const embedded=parseCard(JSON.parse(row.character_json)).data.character_book;
   lore=new LoreIndex(store.storage.sql,[...(embedded?[{id:'character',book:parseBook(embedded)}]:[]),...books.filter(b=>b.enabled).map(b=>({id:b.id,book:parseBook(JSON.parse(b.book_json),b.name)}))],(texts,signal)=>embeddings(env,texts,username,requestId,signal),abort.signal);
-  projectionContext={character:JSON.parse(row.character_json),books:books.map(b=>[b.id,b.enabled,b.book_json]),settings:JSON.parse(row.settings_json),tools:AGENT_TOOLS,rule:AGENT_RULE,bodyTask:BODY_TASK,promptVersion:5};
-  conversation=new ConversationContext([...base,...(regenerate||continuing?[]:[userMessage])],JSON.parse(row.character_json),books.filter(b=>b.enabled).map(b=>parseBook(JSON.parse(b.book_json),b.name)),settings(JSON.parse(row.settings_json)),capability.contextTokens,{protocol:AGENT_RULE,inputRatio:capability.inputRatio,state:stableJson(before),bodyTask:BODY_TASK},messages=>summarizeWithModel(env,username,requestId,settings(JSON.parse(row.settings_json)),messages,abort.signal));
+  projectionContext={character:JSON.parse(row.character_json),books:books.map(b=>[b.id,b.enabled,b.book_json]),settings:JSON.parse(row.settings_json),tools:AGENT_TOOLS,prompts:promptDocument,promptVersion:7};
+  conversation=new ConversationContext([...base,...(regenerate||continuing?[]:[userMessage])],JSON.parse(row.character_json),books.filter(b=>b.enabled).map(b=>parseBook(JSON.parse(b.book_json),b.name)),settings(JSON.parse(row.settings_json)),capability.contextTokens,{...contextOptions,inputRatio:capability.inputRatio,state:stateContext(before)},messages=>summarizeWithModel(env,username,requestId,settings(JSON.parse(row.settings_json)),messages,abort.signal));
   await conversation.restore(row.summary_json);if(continuing)conversation.resume(assistantId);
-  prompt=conversation.prompt(continuing?'继续上一条回复，从中断处接着写，不要重复已有内容。':'');
+  prompt=conversation.prompt(continuing?texts.continueReply:'');
   if(!continuing){const previous=base.at(-1),saved=previous?store.projection(previous.id):null;
    if(saved&&saved.messages[0]?.content===prompt.messages[0]?.content&&saved.key===await contentHash([projectionContext,base.map(m=>[m.id,m.content])])){
-    const tail:PromptMessage[]=[stateMessage(stableJson(before),BODY_TASK),...(regenerate?[]:[prompt.messages.at(-1)!])];
+    const tail:PromptMessage[]=[...(conversation.options.state?[stateMessage(conversation.options.state)]:[]),...(regenerate?[]:[prompt.messages.at(-1)!])];
     conversation.useProjection([...saved.messages,...tail]);prompt=conversation.prompt();
    }
   }
@@ -62,7 +68,7 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
   await owns();store.start(assistantId,regenerate||continuing?undefined:userMessage,{id:assistantId,role:'assistant',content:prefix,status:'pending',ordinal:assistantOrdinal,requestId,createdAt:messageTime+1},before);ready=true;
  }catch(error){clearInterval(stopWatcher);abort.abort();try{store.release(assistantId);}finally{await onSettled(assistantId);}if(error instanceof Error&&error.message.includes('上下文上限'))throw new HttpError(400,error.message);throw error;}
  let sourceHistory=structuredClone(conversation.history);let checkpoint=row.summary_json;
- let disconnected=false;let output=prefix;let publishedOutput=prefix;let draftRejected=false;let rawGenerated='';let repairIssues:string[]=[];let revisions=0;let finishReason:FinishReason='interrupted';let model='';let gatewayLogId:string|null=null;let metrics=new InferenceMetrics();let firstModelStarted:number|null=null;let modelRequests=0;let firstBodyAt:number|null=null;let candidates:string[]=[];let parser=new CandidateStream(candidateDelimiter());let parserFinished=false;let candidateOutcome='not-started';let bodyModel='';let bodyGatewayLogId:string|null=null;let bodyFinishedAt:number|null=null;let candidateStartedAt:number|null=null;let candidateFirstAt:number|null=null;let candidateFinishedAt:number|null=null;let bodyRequests=0;let director:DirectorAgent|undefined;let synopsisRequests=0;let synopsisSource='not-started';let synopsisCovered=0;let synopsisMetrics:ReturnType<InferenceMetrics['snapshot']>|null=null;let synopsisGatewayLogId:string|null=null;let synopsisModel='';let synopsisElapsedMs=0;let directorStartedAt:number|null=null;let bodyMetrics:ReturnType<InferenceMetrics['snapshot']>|null=null;
+ let disconnected=false;let output=prefix;let publishedOutput=prefix;let draftRejected=false;let repairIssues:string[]=[];let revisions=0;let finishReason:FinishReason='interrupted';let model='';let gatewayLogId:string|null=null;let metrics=new InferenceMetrics();let firstModelStarted:number|null=null;let modelRequests=0;let firstBodyAt:number|null=null;let candidates:string[]=[];let parser=new CandidateStream(candidateDelimiter());let parserFinished=false;let candidateOutcome='not-started';let bodyModel='';let bodyGatewayLogId:string|null=null;let bodyFinishedAt:number|null=null;let candidateStartedAt:number|null=null;let candidateFirstAt:number|null=null;let candidateFinishedAt:number|null=null;let bodyRequests=0;let director:DirectorAgent|undefined;let synopsisRequests=0;let synopsisSource='not-started';let synopsisCovered=0;let synopsisMetrics:ReturnType<InferenceMetrics['snapshot']>|null=null;let synopsisGatewayLogId:string|null=null;let synopsisModel='';let synopsisElapsedMs=0;let directorStartedAt:number|null=null;let bodyMetrics:ReturnType<InferenceMetrics['snapshot']>|null=null;
 
  let transport!:TransformStreamDefaultController<Uint8Array>,ending=false;
  const stream=new TransformStream<Uint8Array,Uint8Array>({start(controller){transport=controller;}});
@@ -80,12 +86,12 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
   try{
    await send({type:'start',messageId:assistantId,requestId});
    const opts=settings(JSON.parse(row.settings_json));
-   let continuation=continuing?'继续上一条回复，从中断处接着写，不要重复已有内容。':'';
+   let continuation=continuing?texts.continueReply:'';
    prompt=await conversation.fit(continuation);
    const saveSummary=async()=>{await owns();if(conversation.summary?.covered.includes(assistantId))return;checkpoint=conversation.summary?JSON.stringify(conversation.summary):null;const saved=store.saveSummary(assistantId,checkpoint);if(!saved){abort.abort();throw new Error('生成已停止');}if(conversation.contextTokens!==null)await recordFeedback(env,capability,{contextLimit:conversation.contextTokens});};
    await saveSummary();
    const checkpointDraft=async()=>{await owns();if(protocolProblems(output).length){draftRejected=true;publishedOutput='';if(!store.rejectDraft(assistantId))throw Error('生成已停止');}else if(!draftRejected&&!store.saveDraft(assistantId,output))throw Error('生成已停止');};
-   const syncOutput=(start:number)=>{const delta=output.slice(start);if(!delta)return;conversation.appendOutput({id:assistantId,role:'assistant',content:'',status:'completed',ordinal:0,requestId,createdAt:now},delta,continuing);continuation='接着最后一条未完成的正文续写，不重复已有内容。';};
+   const syncOutput=(start:number)=>{const delta=output.slice(start);if(!delta)return;conversation.appendOutput({id:assistantId,role:'assistant',content:'',status:'completed',ordinal:0,requestId,createdAt:now},delta,continuing);continuation=texts.continueBody;};
    // Only plain emitted prose may become story memory; legacy candidate protocol stays opaque.
    const storyWire=(raw:string,start:number):PromptMessage=>output.slice(start).trim()===raw.replace(/\r\n?/g,'\n').trim()?conversation.storyFragment(raw):{role:'assistant',content:raw};
    attempts:for(revisions=0;revisions<=1;revisions++){
@@ -94,13 +100,13 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
      // A rejected legacy partial is regenerated from its original before-state.
      const ordinal=store.findMessage(assistantId)!.ordinal;sourceHistory=sourceHistory.filter(m=>m.ordinal<ordinal);committedBase=committedBase.filter(m=>m.ordinal<ordinal);prefix='';publishedOutput='';continuing=false;await owns();if(!store.saveOutput(assistantId,''))throw Error('生成已停止');
     }
-    continuation=continuing?'继续上一条回复，从中断处接着写，不要重复已有内容。':'';
-    await owns();output=prefix;draftRejected=false;agent=new AgentTurn(beforeState,committedBase);toolTranscript.length=0;store.saveSteps(assistantId,[]);rawGenerated='';parser=new CandidateStream(candidateDelimiter());parserFinished=false;
+    continuation=continuing?texts.continueReply:'';
+    await owns();output=prefix;draftRejected=false;agent=new AgentTurn(beforeState,committedBase);toolTranscript.length=0;store.saveSteps(assistantId,[]);parser=new CandidateStream(candidateDelimiter());parserFinished=false;
     const previous=conversation;
     conversation=new ConversationContext(structuredClone(sourceHistory),previous.card,previous.books,previous.settings,previous.contextTokens,previous.options,previous.infer);
     await conversation.restore(checkpoint);if(continuing)conversation.resume(assistantId);
     prompt=await conversation.fit(continuation);
-    const repair:PromptMessage={role:'user',content:'本消息是仅用于本次待生成回复的应用修订指令；回复完成后失效，不是用户剧情输入，不应再次执行。上一份未发布草稿被拒绝，已丢弃其剧情和暂存state。从本次用户实际输入与此前确认事实重新写，保持角色身份，只写角色自身可控行动。只输出纯角色正文，不输出分析、think/thinking标签、拒稿原因或审核。须修正的问题（数据）：'+stableJson(repairIssues)+'\n仅依据本次用户实际输入和此前确认事实，避免复演上述旧步骤。'};
+    const repair:PromptMessage={role:'user',content:texts.repair+stableJson(repairIssues.map(repairProblem))};
     toolTranscript.push(repair);prompt=conversation.extend(prompt,[repair]);
     if(prompt.needsCompression)prompt=await conversation.fit(continuation,conversation.options,toolTranscript);
    }
@@ -131,7 +137,7 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
     const choice=event.choices?.[0];if(typeof choice?.finish_reason==='string'&&choice.finish_reason){if(upstreamReason&&upstreamReason!==choice.finish_reason){finishReason='interrupted';throw new Error('conflicting finish');}upstreamReason=choice.finish_reason;}
     toolCalls.push(choice?.delta?.tool_calls);
     const delta=choice?.delta?.content;
-    if(typeof delta==='string') {requestOutput+=delta;rawGenerated+=delta;output+=parser.push(delta);if(Date.now()-draftSavedAt>=1000){await checkpointDraft();draftSavedAt=Date.now();}await streamOutput();}
+    if(typeof delta==='string') {requestOutput+=delta;output+=parser.push(delta);if(Date.now()-draftSavedAt>=1000){await checkpointDraft();draftSavedAt=Date.now();}await streamOutput();}
 
    }
    await checkpointDraft();
@@ -143,13 +149,13 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
     await owns();const results=agent.execute(calls,recalled);if(!store.saveSteps(assistantId,agent.steps))throw new Error('生成已停止');
     const toolMessage=storyWire(requestOutput,storyAtStart);
     toolMessage.tool_calls=calls;
-    const additions:PromptMessage[]=[toolMessage,...results,{role:'user',content:TOOL_CONTINUATION}];
+    const additions:PromptMessage[]=[toolMessage,...results];
     if(storyAtStart&&!toolTranscript.length)toolTranscript.push(conversation.storyFragment(output.slice(0,storyAtStart)));toolTranscript.push(...additions);prompt=conversation.extend(prompt,additions);
     if(prompt.needsCompression)prompt=await conversation.fit(continuation,conversation.options,toolTranscript);await saveSummary();continue;
    }
    if(toolCalls.size)throw new Error('工具终态无效');
    if(upstreamReason==='length'){if(!requestOutput.length)throw new Error('模型续写没有进展');
-    const additions:PromptMessage[]=[storyWire(requestOutput,storyAtStart),{role:'user',content:'接着最后一条未完成的正文续写，不重复已有内容。'}];toolTranscript.push(...additions);
+    const additions:PromptMessage[]=[storyWire(requestOutput,storyAtStart),{role:'user',content:texts.continueBody}];toolTranscript.push(...additions);
     syncOutput(storyAtStart);prompt=conversation.extend(prompt,additions);if(prompt.needsCompression)prompt=await conversation.fit(continuation,conversation.options,toolTranscript);await saveSummary();continue;}
    const parsed=parser.finish();parserFinished=true;output+=parsed.body;await streamOutput();
    if(abort.signal.aborted)throw new Error('aborted');
@@ -168,7 +174,10 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
    await owns();if(!store.saveOutput(assistantId,publishedOutput))throw Error('生成已停止');
    await send({type:'candidates_pending',messageId:assistantId});
    const committedHistory=storyMessages([...store.messages().filter(m=>m.id!==assistantId),{id:assistantId,role:'assistant',content:output,status:'completed',ordinal:store.findMessage(assistantId)!.ordinal,requestId,createdAt:now}]);
-   if(projectionMatches(rawGenerated,output.slice(prefix.length)))storyProjection={key:await contentHash([projectionContext,committedHistory.map(m=>[m.id,m.content])]),messages:[...prompt.messages,{role:'assistant',content:requestOutput}]};
+   // Persist only confirmed story, never the request's state snapshots or control turns.
+   const summary=await validSummary(checkpoint,committedHistory);
+   const canonical=buildPrompt(conversation.card,conversation.books,committedHistory.slice(summary?.covered.length??0),opts,null,'',{...contextOptions,inputRatio:capability.inputRatio,summary:summary?.text});
+   storyProjection={key:await contentHash([projectionContext,committedHistory.map(m=>[m.id,m.content])]),messages:canonical.messages};
    await owns();
    candidateStartedAt=Date.now();candidateOutcome='generating';
    try{
@@ -181,22 +190,22 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
     let fallback:ConversationContext|undefined;
     const rebuild=async(limit:number|null)=>{
      if(!fallback){
-      fallback=new ConversationContext(structuredClone(committedHistory.filter(m=>m.id!==assistantId&&(!continuing||m.ordinal<store.findMessage(assistantId)!.ordinal))),conversation.card,conversation.books,opts,limit,{...conversation.options,state:stableJson(agent.state)},synopsisOptions.infer);
+      fallback=new ConversationContext(structuredClone(committedHistory.filter(m=>m.id!==assistantId&&(!continuing||m.ordinal<store.findMessage(assistantId)!.ordinal))),conversation.card,conversation.books,opts,limit,{...contextOptions,inputRatio:capability.inputRatio},synopsisOptions.infer);
       await fallback.restore(conversation.summary?JSON.stringify(conversation.summary):null);
      }
      fallback.contextTokens=limit;
      let rebuilt=await fallback.fit();
-     let tail:PromptMessage[]=[{role:'assistant',content:output},directorTask(agent.state)];
-     while(fallback.extend(rebuilt,tail).needsCompression){const before=rebuilt.estimatedTokens;await fallback.compress();rebuilt=await fallback.fit();if(rebuilt.estimatedTokens>=before)throw Error('完整正文与候选任务超过上下文');tail=[{role:'assistant',content:output},directorTask(agent.state)];}
+     let tail:PromptMessage[]=[{role:'assistant',content:output},directorTask(agent.state,texts.director)];
+     while(fallback.extend(rebuilt,tail).needsCompression){const before=rebuilt.estimatedTokens;await fallback.compress();rebuilt=await fallback.fit();if(rebuilt.estimatedTokens>=before)throw Error('完整正文与候选任务超过上下文');tail=[{role:'assistant',content:output},directorTask(agent.state,texts.director)];}
      synopsisOptions.contextTokens=fallback.contextTokens;if(director)director.contextTokens=fallback.contextTokens;
      return [...rebuilt.messages,...tail];
     };
     const prefixIntact=!continuing&&stableJson(prompt.messages.slice(0,attemptPrefix.length))===stableJson(attemptPrefix);
-    if(prefixIntact)director=new DirectorAgent(prompt.messages,requestOutput,agent.state,conversation.contextTokens,capability.inputRatio);
+    if(prefixIntact)director=new DirectorAgent(prompt.messages,requestOutput,agent.state,conversation.contextTokens,capability.inputRatio,texts.director);
     else{
      // The body may have compressed its own fragments. Include the full visible draft once.
      const rebuilt=await rebuild(conversation.contextTokens);
-     director=new DirectorAgent(rebuilt.slice(0,-2),output,agent.state,fallback!.contextTokens,capability.inputRatio);
+     director=new DirectorAgent(rebuilt.slice(0,-2),output,agent.state,fallback!.contextTokens,capability.inputRatio,texts.director);
     }
     directorStartedAt=Date.now();candidates=await director.run(async messages=>{
      modelRequests++;

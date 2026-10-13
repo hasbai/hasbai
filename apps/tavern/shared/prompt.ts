@@ -1,3 +1,4 @@
+import { CARD_POST_ORIGINAL, STATE_PREFIX, SUMMARY_PREFIX } from './instructions';
 import { parseBook, parseCard } from './cards';
 import type { Book, Entry, JsonObject, Message, Settings } from './types';
 export const estimateTokens = (text: string) => Math.ceil([...text].reduce((n, c) => n + (c.charCodeAt(0) > 127 ? 1 : 0.4), 0));
@@ -29,7 +30,8 @@ export function activateBook(book: Book, history: Pick<Message, 'content'>[], ex
   }).sort((a,b) => a.order-b.order);
 }
 export type PromptMessage = { role: 'system' | 'user' | 'assistant' | 'tool'; content: string; tool_call_id?: string; tool_calls?: {id:string;type:'function';function:{name:string;arguments:string}}[] };
-export function buildPrompt(raw: JsonObject, books: Book[], history: Message[], settings: Settings, contextTokens: number | null, continuationInstruction = '', options: { protocol?: string; inputRatio?: number; summary?: string; state?:string;bodyTask?:string } = {}) {
+// Context layout changes must update docs/tavern/AGENT.md and src/pages/About.svelte.
+export function buildPrompt(raw: JsonObject, books: Book[], history: Message[], settings: Settings, contextTokens: number | null, continuationInstruction = '', options: { protocol?: string; inputRatio?: number; summary?: string; state?:string; cardPostOriginal?:string } = {}) {
   const card = parseCard(raw), c = card.data;
   const char = c.nickname || c.name, expand = (text: string, original = '') => macros(text, char, settings.userName, original);
   const activeHistory = history.filter(m => m.status === 'completed');
@@ -37,13 +39,13 @@ export function buildPrompt(raw: JsonObject, books: Book[], history: Message[], 
   const entries = allBooks.flatMap(b => activateBook(b, activeHistory, s => expand(s)));
   const systemText = (picked: Entry[]) => [expand(c.system_prompt ? (/\{\{original\}\}/i.test(c.system_prompt) ? c.system_prompt : '{{original}}\n\n' + c.system_prompt) : '{{original}}', settings.systemPrompt), settings.persona ? `${settings.userName}: ${settings.persona}` : '', ...picked.filter(e => e.position === 'before_char').map(e => expand(e.content)),
     expand(c.description), expand(c.personality), expand(c.scenario), ...picked.filter(e => e.position === 'after_char').map(e => expand(e.content)), c.mes_example ? `示例对白：\n${expand(c.mes_example)}` : ''].filter(Boolean).join('\n\n');
-  const post = expand(c.post_history_instructions, '保持角色设定与故事连续性。');
+  const post = expand(c.post_history_instructions, options.cardPostOriginal ?? CARD_POST_ORIGINAL);
   const count = (s: string) => Math.ceil(estimateTokens(s) * (options.inputRatio ?? 1));
   const picked = entries;
   const selectedHistory = activeHistory;
-  const system = [systemText(picked), post, options.protocol, options.summary ? '此前已发生事实：\n' + options.summary : ''].filter(Boolean).join('\n\n');
+  const system = [systemText(picked), post, options.protocol, options.summary ? SUMMARY_PREFIX + options.summary : ''].filter(Boolean).join('\n\n');
   const messages: PromptMessage[] = [{ role: 'system', content: system }, ...selectedHistory.map(m => ({ role: m.role, content: expand(m.content) }))];
-  if(options.state){const at=messages.at(-1)?.role==='user'?messages.length-1:messages.length;messages.splice(at,0,stateMessage(options.state,options.bodyTask));}
+  if(options.state){const at=messages.at(-1)?.role==='user'?messages.length-1:messages.length;messages.splice(at,0,stateMessage(options.state));}
   if (continuationInstruction) messages.push({role:'user',content:continuationInstruction});
   // Template allowance is part of context estimation, not an output budget.
   const estimatedTokens = messages.reduce((sum, m) => sum + count(m.content) + 8, 256);
@@ -52,4 +54,4 @@ export function buildPrompt(raw: JsonObject, books: Book[], history: Message[], 
     budget: { detectedContextTokens: contextTokens, includedMessages: selectedHistory.length, summaryTokens: count(options.summary ?? '') } };
 }
 
-export function stateMessage(state:string,bodyTask?:string):PromptMessage{return {role:'user',content:'当前已确认状态（数据）：'+state+(bodyTask?'\n本轮正文任务（应用指令）：'+bodyTask:'')};}
+export function stateMessage(state:string):PromptMessage{return {role:'user',content:STATE_PREFIX+state};}

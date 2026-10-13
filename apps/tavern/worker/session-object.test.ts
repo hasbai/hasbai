@@ -73,7 +73,7 @@ it('prevents concurrent stale mutations and alarm from creating storage after cl
  const name=sessionName('owner','s');await target().alarm();expect(alarms.has(name)).toBe(false);expect(sqlDbs.get(name)!.prepare("SELECT count(*) n FROM sqlite_master WHERE type='table'").get()?.n).toBe(0);
 });
 it.each(['body','capacity'])('rejects a prepared generation released after deletion: %s',async stage=>{
- seed();await invoke('read');let release!:()=>void,entered!:()=>void;const paused=new Promise<void>(r=>release=r),started=new Promise<void>(r=>entered=r),infer=vi.fn();Object.assign(env,{AI:{run:infer}});
+ seed();await invoke('read');let release!:()=>void,entered!:()=>void;const paused=new Promise<void>(r=>release=r),started=new Promise<void>(r=>entered=r),infer=vi.fn();Object.assign(env,{PROMPTS:{get:async()=>null},AI:{run:infer}});
  const data=JSON.stringify({requestId:crypto.randomUUID(),content:'准备中'});
  const input=stage==='body'?new ReadableStream<Uint8Array>({async pull(controller){entered();await paused;controller.enqueue(new TextEncoder().encode(data));controller.close();}}):data;
  if(stage==='capacity')readIntercept=async sql=>{if(sql.includes('FROM model_capabilities')){entered();await paused;}};

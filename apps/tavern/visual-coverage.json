@@ -58,6 +58,12 @@
         "page-states",
         "model-controls"
       ]
+    },
+    {
+      "source": "src/pages/About.svelte",
+      "scenarios": [
+        "about"
+      ]
     }
   ],
   "scenarios": [
@@ -345,6 +351,25 @@
             "character-generation-error.png",
             "character-generated.png",
             "character-create-dark.png"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "about",
+      "kind": "screenshot",
+      "evidence": [
+        {
+          "spec": "e2e/tavern.spec.ts",
+          "test": "about visualizes the dialogue context and exposes the same application prompts",
+          "projects": [
+            "iphone",
+            "desktop"
+          ],
+          "snapshots": [
+            "about.png",
+            "about-context.png",
+            "about-dark.png"
           ]
         }
       ]

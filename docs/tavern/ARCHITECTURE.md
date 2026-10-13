@@ -10,6 +10,7 @@
 | 发现 | 输入关键词、选择公开来源。按热度/近期热门/发布或更新时间/评分排序，选择分类与自定义标签。分页、查看作者/源页面、安装角色；安装相同内容去重，不自动覆盖本地编辑 |
 | 世界书 | 独立 JSON 导入/导出、查看编辑原文、条目数量、启用/停用，给会话选择世界书；内嵌角色书自动生效 |
 | 对话 | 会话列表、角色与用户 persona。右侧用户气泡、无气泡角色正文、单行自动伸展输入、圆形发送/停止、回答末尾操作。持久化历史、重试、重新生成、编辑历史并派生新会话、导出 JSONL、删除会话 |
+| 关于 | 从设置进入；按用例同时切换上下文流程与 KV 提示词。登录用户可查看；管理员可在线编辑保存 |
 | 设置 | RP模型、默认关闭思考、采样参数、用户名称/persona、系统提示、主题；模型路由由服务端固定，不接受客户端覆盖 |
 
 当前不执行外来 JS/Lua、正则替换脚本或扩展工具，不提供多人群聊、图像生成、语音或全量 SillyTavern 插件兼容。未知扩展和资源留在原始卡及导出中；兼容导入不等于执行全部扩展。不会提供伪造角色推荐、示例历史、评分或人数。只有 e2e 独立夹具有合成内容。
@@ -62,6 +63,26 @@ sessions 保存会话目录、可靠世界书引用与迁移占用哨兵。messa
 
 重新生成追加助手版本，旧内容保留；显示最新结果，包括失败/部分回复，Prompt/state 使用有效成功版本。编辑历史创建新会话并复制到编辑点，原会话保留。用户停止或故障后可显式继续原前缀，length 则按同一 UUID 自动续写。正常正文后独立 Director 的协议和失败隔离见[MODELS](MODELS.md#续聊候选内容与-ui)。
 
+## 应用提示词
+
+Cloudflare KV 绑定 `PROMPTS`，namespace `tavern-prompts`。
+单 key `dialogue-v1` 保存 `{revision,texts}`，包含正文、候选、压缩、续写、修订与角色卡创作文本。
+字段与默认值在 `shared/prompts.ts`，工具 schema、消息角色、发送顺序及响应 schema 保留在代码中。
+
+`GET /api/prompts` 读取配置并返回签名权限对应的 `admin`。
+`PUT /api/prompts` 需要 `manage:tavern`，校验完整文本字段后保存新 revision。
+保存成功直接返回写入内容；页面保留失败草稿。
+缺 key 使用默认值但不自动写入；读取失败或内容损坏报错。
+
+每回合只读取一次 KV，正文、工具、续写、修订、摘要和 Director 重建共用该快照。
+投影指纹包含快照，配置改变后旧投影失效。
+
+角色卡生成也单次读取配置。私人设置与既有会话设置快照按原规则保留。
+KV 使用自身缓存，不叠加进程缓存；更新最终一致，页面提示“已保存，缓存逐步更新”。
+[Cloudflare KV 一致性](https://developers.cloudflare.com/kv/concepts/how-kv-works/)
+
+关于页面和对话架构必须同步维护，规则见[开发入口](README.md#同步维护)。
+
 ## 对话与发现 UI
 
 - 复用北极小站雪花 SVG，不生成另一套品牌标识。
@@ -72,6 +93,7 @@ sessions 保存会话目录、可靠世界书引用与迁移占用哨兵。messa
 
 ## API 清单
 
+- GET/PUT /api/prompts：登录读取、管理员更新全站应用提示词。
 - GET /health：service 与 Worker version，不含配置或密钥。
 - POST /api/characters/generate {brief,draft}：生成可编辑 CCv2 草稿；
 - GET/POST /api/characters；GET/PATCH/DELETE /api/characters/:id；GET /api/characters/:id/export；GET /api/characters/:id/avatar。
