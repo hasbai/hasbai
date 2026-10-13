@@ -7,6 +7,6 @@
     "./config": "./src/config.ts"
   },
   "dependencies": {
-    "@auth0/auth0-spa-js": "^2.25.0"
+    "@auth0/auth0-spa-js": "catalog:"
   }
 }

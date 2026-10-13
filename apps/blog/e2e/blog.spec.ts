@@ -61,12 +61,19 @@ test('SSR, direct Data API navigation, skeleton, canonical URLs and reading stat
   await expect(page).toHaveScreenshot('home-dark.png', { fullPage: true });
   await page.getByRole('button', { name: '切换浅色' }).click();
 
+  let releaseArticles!: () => void;
+  const articlesPending = new Promise<void>((resolve) => { releaseArticles = resolve; });
   await page.route(/\/rest\/v1\/article\?/, async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 450));
+    await articlesPending;
     await route.continue();
   });
   const navigate = page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '文章' }).click();
-  await expect(page.getByLabel('正在打开页面')).toBeVisible();
+  try {
+    await expect(page.getByLabel('正在打开页面')).toBeVisible();
+  } finally {
+    releaseArticles();
+    await navigate.catch(() => {});
+  }
   await navigate;
   await expect(page.getByRole('heading', { name: '文章', exact: true })).toBeVisible();
   await expect(page).toHaveTitle('文章 · 北极小站');
