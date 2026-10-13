@@ -24,3 +24,20 @@ pnpm dev:tavern   # 酒馆，5176
 Zboard/Tavern 的本地 Worker API 启动方式见各应用文档。根 `pnpm build`、`pnpm typecheck`、`pnpm test` 默认代理财务；其他应用用 `pnpm --filter <应用名> <脚本>`。
 
 开发前从 [AGENTS](AGENTS.md) 选择应用；查设计、数据与验收规则从[文档导航](docs/README.md)进入。四个应用均由 Cloudflare Workers Builds 自动发布，GitHub Actions 负责 PR 验收；本地检查和交付流程以[测试规范](docs/TESTING.md)为准。
+
+## Codex 本地环境
+
+配置位于 [.codex/environments/environment.toml](.codex/environments/environment.toml)。在 Codex 本地环境设置中选择 `Hasbai`。
+新工作树自动检查 Node 24、固定 pnpm 版本，并安装 workspace 依赖。
+现有工作区可运行 `node scripts/local-environment.mjs setup`。
+
+快捷操作提供环境摘要、依赖安装、四应用启动和类型检查。
+Zboard 与酒馆的 API 操作先构建，再启动本地 Worker。
+操作复用博客已固定的 workerd，以支持两应用的兼容日期。
+两者共用 8787，须分别启动。
+API 命令为 `node scripts/local-environment.mjs api <zboard|tavern>`。
+类型检查不替代[提交前检查](docs/TESTING.md#运行)。
+
+清理脚本只删除各应用的 `dist`、`dist-e2e`、`coverage` 和 `.svelte-kit`。
+依赖缓存、凭据、本地数据库及测试和截图证据保留。
+设置和清理脚本不复制凭据、不迁移数据库，也不启动服务或部署。

@@ -1,0 +1,73 @@
+version = 1
+name = "Hasbai"
+
+[setup]
+script = "node scripts/local-environment.mjs setup"
+
+[cleanup]
+script = "node scripts/local-environment.mjs cleanup"
+
+[[actions]]
+name = "环境摘要"
+icon = "tool"
+command = "node scripts/local-environment.mjs info"
+
+[[actions]]
+name = "安装依赖"
+icon = "tool"
+command = "node scripts/local-environment.mjs setup"
+
+[[actions]]
+name = "财务 · 启动 5173"
+icon = "run"
+command = "pnpm dev"
+
+[[actions]]
+name = "博客 · 启动 5174"
+icon = "run"
+command = "pnpm dev:blog"
+
+[[actions]]
+name = "Zboard · 启动 5175"
+icon = "run"
+command = "pnpm dev:zboard"
+
+[[actions]]
+name = "酒馆 · 启动 5176"
+icon = "run"
+command = "pnpm dev:tavern"
+
+[[actions]]
+name = "Zboard · 本地 API 8787"
+icon = "run"
+command = "node scripts/local-environment.mjs api zboard"
+
+[[actions]]
+name = "酒馆 · 本地 API 8787"
+icon = "run"
+command = "node scripts/local-environment.mjs api tavern"
+
+[[actions]]
+name = "财务 · 类型检查"
+icon = "test"
+command = "pnpm --filter financial typecheck"
+
+[[actions]]
+name = "博客 · 类型检查"
+icon = "test"
+command = "pnpm --filter blog typecheck"
+
+[[actions]]
+name = "Zboard · 类型检查"
+icon = "test"
+command = "pnpm --filter zboard typecheck"
+
+[[actions]]
+name = "酒馆 · 类型检查"
+icon = "test"
+command = "pnpm --filter tavern typecheck"
+
+[[actions]]
+name = "清理构建产物"
+icon = "tool"
+command = "node scripts/local-environment.mjs cleanup"
