@@ -28,6 +28,7 @@
     "@tiptap/pm": "catalog:",
     "@tiptap/starter-kit": "catalog:",
     "hono": "catalog:",
+    "i18next": "catalog:",
     "svelte": "catalog:",
     "tw-animate-css": "catalog:",
     "zod": "catalog:"

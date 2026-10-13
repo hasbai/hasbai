@@ -297,6 +297,7 @@ main { min-height: 70vh; padding-top: 72px; }
   .page-bleed { height: 90px; }
   main { padding-top: 0; padding-bottom: 80px; }
   .site-header { top: 0; }
+  .editor-page { padding-top: 76px; }
   .header-inner { width: 100%; min-height: 0; display: block; }
   .wordmark { display: none; }
   .header-actions { position: fixed; top: 14px; right: 14px; }
@@ -349,3 +350,5 @@ main { min-height: 70vh; padding-top: 72px; }
   .hero-exit-bg, .hero-exit-text, .hero-exit-meta { animation: none !important; }
   .background-texture { display: none; }
 }
+
+.language-switch{max-width:100px;border:0;background:transparent;color:var(--muted-foreground);font-size:12px;min-height:40px;border-radius:8px;padding:4px;cursor:pointer}.language-switch:focus-visible{outline:2px solid var(--ring)}

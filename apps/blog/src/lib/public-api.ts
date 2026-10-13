@@ -6,10 +6,14 @@ export const anonymousAuthUrl =
 let browserToken: Promise<string> | undefined;
 let browserTokenUntil = 0;
 /** A short-lived, public guest JWT; no session, secret, or backend proxy. */
-export function publicRepository() {
+export function publicRepository(locale = "zh-CN") {
   let pending: Promise<string> | undefined;
   const token = () => {
-    if (typeof window !== "undefined" && browserToken && Date.now() < browserTokenUntil)
+    if (
+      typeof window !== "undefined" &&
+      browserToken &&
+      Date.now() < browserTokenUntil
+    )
       return browserToken;
     const request = (pending ??= fetch(
       `${env.PUBLIC_ANONYMOUS_AUTH_URL || anonymousAuthUrl}/token/anonymous`,
@@ -29,5 +33,5 @@ export function publicRepository() {
     }
     return request;
   };
-  return repository(token, env.PUBLIC_DATA_API_URL || dataApiUrl);
+  return repository(token, env.PUBLIC_DATA_API_URL || dataApiUrl, locale);
 }

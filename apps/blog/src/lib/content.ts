@@ -1,8 +1,23 @@
 import { stripFrontmatter } from "@hasbai/markdown/metadata";
+import { localizedPath } from "./locales";
 import { z } from "zod";
 
 export const site = { name: "北极小站", origin: "https://hasbai.xyz" };
-export type Tag = { id: string; name: string; slug: string };
+export type Tag = {
+  id: string;
+  name: string;
+  slug: string;
+  translations?: Record<string, string>;
+};
+export type Translation = {
+  is_complete?: boolean;
+  content_id: string;
+  locale: string;
+  title: string;
+  excerpt: string;
+  markdown: string;
+  updated_at: string;
+};
 export type ImageRecord = {
   id: string;
   name: string;
@@ -14,6 +29,12 @@ export type ImageRecord = {
 export type Content = {
   id: string;
   kind: "article" | "note" | "page";
+  translations?: Translation[];
+  tag_ids?: string[];
+  locale?: string;
+  source_locale?: string;
+  translation_updated_at?: string;
+  translation_warning?: string;
   excerpt: string;
   markdown: string;
   cover_id: string | null;
@@ -41,8 +62,21 @@ export type Page = Content & {
 export type Writing = Article | Note;
 export type StudioContent = Writing | Page;
 export const reservedPageSlugs = [
-  "articles", "notes", "timeline", "tags", "contents", "studio",
-  "auth", "api", "images", "assets",
+  "articles",
+  "notes",
+  "timeline",
+  "tags",
+  "contents",
+  "studio",
+  "auth",
+  "api",
+  "images",
+  "assets",
+  "en",
+  "zh",
+  "en-us",
+  "zh-cn",
+  "zh-tw",
 ];
 
 export const slugSchema = z
@@ -53,6 +87,7 @@ export const pageSlugSchema = slugSchema.refine(
   "该路径已用于网站功能，请换一个路径",
 );
 const commonFields = {
+  locale: z.string().min(2).max(35).default("zh-CN"),
   excerpt: z.string().max(600),
   markdown: z.string().max(1048576),
   cover_id: z.string().uuid().nullable(),
@@ -60,11 +95,22 @@ const commonFields = {
   published_at: z.string().nullable(),
 };
 function publicationCheck(
-  value: { status: "draft" | "published"; markdown: string; published_at: string | null },
+  value: {
+    status: "draft" | "published";
+    markdown: string;
+    published_at: string | null;
+  },
   ctx: z.RefinementCtx,
 ) {
-  if (value.status === "published" && (!value.markdown.trim() || !value.published_at))
-    ctx.addIssue({ code: "custom", message: "发布前请填写正文", path: ["markdown"] });
+  if (
+    value.status === "published" &&
+    (!value.markdown.trim() || !value.published_at)
+  )
+    ctx.addIssue({
+      code: "custom",
+      message: "发布前请填写正文",
+      path: ["markdown"],
+    });
 }
 export const articleSchema = z
   .object({
@@ -74,21 +120,28 @@ export const articleSchema = z
     ...commonFields,
   })
   .superRefine(publicationCheck);
-export const pageSchema = z.object({
-  title: z.string().trim().min(1, "请填写标题").max(240),
-  slug: pageSlugSchema,
-  ...commonFields,
-}).superRefine(publicationCheck);
-export function pagePath(page: Pick<Page, "slug">) {
-  return `/${encodeURIComponent(page.slug)}`;
+export const pageSchema = z
+  .object({
+    title: z.string().trim().min(1, "请填写标题").max(240),
+    slug: pageSlugSchema,
+    ...commonFields,
+  })
+  .superRefine(publicationCheck);
+export function pagePath(page: Pick<Page, "slug"> & { locale?: string }) {
+  return localizedPath(`/${encodeURIComponent(page.slug)}`, page.locale);
 }
 export const noteSchema = z.object(commonFields).superRefine(publicationCheck);
 
-export function articlePath(article: Pick<Article, "slug">) {
-  return `/articles/${encodeURIComponent(article.slug)}`;
+export function articlePath(
+  article: Pick<Article, "slug"> & { locale?: string },
+) {
+  return localizedPath(
+    `/articles/${encodeURIComponent(article.slug)}`,
+    article.locale,
+  );
 }
-export function notePath(note: Pick<Note, "sequence">) {
-  return `/notes/${note.sequence}`;
+export function notePath(note: Pick<Note, "sequence"> & { locale?: string }) {
+  return localizedPath(`/notes/${note.sequence}`, note.locale);
 }
 export function writingPath(writing: Writing) {
   return writing.kind === "article" ? articlePath(writing) : notePath(writing);
@@ -107,7 +160,12 @@ export function dateLabel(value: string | null) {
     : "草稿";
 }
 export function yearLabel(value: string | null) {
-  return value ? new Intl.DateTimeFormat("en", { timeZone: "Asia/Shanghai", year: "numeric" }).format(new Date(value)) : "草稿";
+  return value
+    ? new Intl.DateTimeFormat("en", {
+        timeZone: "Asia/Shanghai",
+        year: "numeric",
+      }).format(new Date(value))
+    : "草稿";
 }
 export function readMinutes(markdown: string) {
   return Math.max(1, Math.ceil(markdown.replace(/\s/g, "").length / 450));

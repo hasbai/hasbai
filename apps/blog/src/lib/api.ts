@@ -1,16 +1,35 @@
 import { env } from "$env/dynamic/public";
 import { createDataClient, dataApiUrl } from "@hasbai/data";
-import type { Article, Content, Note, Page, Tag } from "./content";
+import { defaultLocale } from "./locales";
+import type { Translation } from "./content";
+import type { Article, Content, Note, Page, Tag, StudioContent } from "./content";
 import { articleSchema, noteSchema, pageSchema } from "./content";
 
-const articleSummary =
-  "id,kind,sequence,title,slug,legacy_path,excerpt,cover_id,status,published_at,created_at,updated_at";
-const noteSummary =
-  "id,kind,sequence,excerpt,cover_id,status,published_at,created_at,updated_at";
-
+const metadata =
+  "id,kind,source_locale,sequence,slug,legacy_path,cover_id,status,published_at,created_at,updated_at";
+export function localize<T extends Content>(
+  row: T & { translation?: Translation[] },
+  locale: string,
+): T {
+  const translations = (row.translation ?? []).filter(t=>row.status==="draft" || (t.is_complete !== false && (t.markdown===undefined || !!t.markdown.trim())));
+  const selected =
+    translations.find((t) => t.locale === locale) ??
+    translations.find((t) => t.locale === defaultLocale) ??
+    translations.find((t) => t.locale === row.source_locale) ??
+    translations[0];
+  return Object.assign({}, row, {
+    translation: undefined,
+    title: selected?.title ?? "",
+    excerpt: selected?.excerpt ?? "",
+    markdown: selected?.markdown ?? "",
+    locale: selected?.locale ?? locale,
+    translation_updated_at: selected?.updated_at,
+  });
+}
 export function repository(
   token?: () => Promise<string>,
   url = env.PUBLIC_DATA_API_URL || dataApiUrl,
+  locale = defaultLocale,
 ) {
   const db = createDataClient(url, "public", token);
   async function read<T>(
@@ -21,172 +40,178 @@ export function repository(
     return result.data as T;
   }
 
+  const columns = (body = true) =>
+    `${metadata},translation(content_id,locale,title,excerpt,is_complete,updated_at${body ? ",markdown" : ""})`;
+  async function one<T extends Content>(
+    kind: string | undefined,
+    key: string,
+    value: string | number,
+    published = false,
+  ) {
+    let q = db.from("content").select(columns()).eq(key, value);
+    if (kind) q = q.eq("kind", kind);
+    if (published)
+      q = q
+        .eq("status", "published")
+        .lte("published_at", new Date().toISOString());
+    const row = await read<(T & { translation?: Translation[] }) | null>(
+      q.maybeSingle(),
+    );
+    return row ? localize(row, locale) : null;
+  }
+  async function list<T extends Content>(
+    kind: string,
+    page = 1,
+    limit = 12,
+    studio = false,
+    tag?: string,
+  ) {
+    let q = db
+      .from("content")
+      .select(columns(false))
+      .eq("kind", kind)
+      .order(kind === "page" ? "updated_at" : "published_at", {
+        ascending: false,
+        nullsFirst: false,
+      })
+      .order("id");
+    if (!studio)
+      q = q
+        .eq("status", "published")
+        .lte("published_at", new Date().toISOString());
+    if (tag) {
+      const links = await read<{ article_id: string }[]>(
+        db.from("article_tag").select("article_id").eq("tag_id", tag),
+      );
+      if (!links.length) return [] as T[];
+      q = q.in(
+        "id",
+        links.map((link) => link.article_id),
+      );
+    }
+    return (
+      await read<(T & { translation?: Translation[] })[]>(
+        q.range((page - 1) * limit, page * limit),
+      )
+    ).map((row) => localize(row, locale));
+  }
+  const tags = async () =>
+    (
+      await read<
+        { id: string; slug: string; translations: Record<string, string> }[]
+      >(db.from("tag").select("id,slug,translations").order("slug"))
+    ).map((tag) => ({
+      ...tag,
+      name:
+        tag.translations?.[locale] ||
+        tag.translations?.[defaultLocale] ||
+        Object.values(tag.translations ?? {})[0] ||
+        tag.slug,
+    }));
+  async function save<T extends Content>(
+    kind: string,
+    value: unknown,
+    id?: string,
+    updatedAt?: string,
+  ) {
+    const parsed = (kind === "article" ? articleSchema : kind === "page" ? pageSchema : noteSchema).safeParse(value);
+    if(!parsed.success) throw new Error(parsed.error.issues[0].message);
+    const fields=parsed.data;
+    if (typeof window !== "undefined") {
+      const response = await fetch("/api/content", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + (await token!()),
+        },
+        body: JSON.stringify({
+          kind,
+          value: fields,
+          id,
+          updated_at: updatedAt,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message || "保存失败");
+      return result.item as T;
+    }
+    const saved = await read<Content>(
+      db
+        .rpc("save_content", {
+          p_id: id ?? crypto.randomUUID(),
+          p_kind: kind,
+          p_updated_at: updatedAt ?? null,
+          p_locale: fields.locale,
+          p_value: fields,
+        })
+        .single(),
+    );
+    return (await one<T>(kind, "id", saved.id))!;
+  }
   return {
     db,
-    tags: () => read<Tag[]>(db.from("tag").select("id,name,slug").order("name")),
-    async articles({
+    tags,
+    async snapshot(id: string) {
+      const row = await read<StudioContent & {translation: Translation[];article_tag:{tag_id:string}[]}>(db.from('content').select(`${columns()},article_tag(tag_id)`).eq('id',id).single());
+      return Object.assign(localize(row,locale),{article_tag:undefined,translations:row.translation,tag_ids:row.article_tag.map(t=>t.tag_id)});
+    },
+    locales: () => read<string[]>(db.rpc("blog_locales")),
+    articles: ({
       tag,
       page = 1,
       limit = 12,
       studio = false,
-    }: { tag?: string; page?: number; limit?: number; studio?: boolean } = {}) {
-      let q = db
-        .from("article")
-        .select(articleSummary)
-        .order("published_at", { ascending: false, nullsFirst: false })
-        .order("id");
-      if (!studio)
-        q = q
-          .eq("status", "published")
-          .lte("published_at", new Date().toISOString());
-      if (tag) {
-        const links = await read<{ article_id: string }[]>(
-          db.from("article_tag").select("article_id").eq("tag_id", tag),
-        );
-        if (!links.length) return [] as Article[];
-        q = q.in(
-          "id",
-          links.map((link) => link.article_id),
-        );
-      }
-      return read<Article[]>(q.range((page - 1) * limit, page * limit));
-    },
-    async notes({ page = 1, limit = 12, studio = false }: { page?: number; limit?: number; studio?: boolean } = {}) {
-      let q = db
-        .from("note")
-        .select(noteSummary)
-        .order("published_at", { ascending: false, nullsFirst: false })
-        .order("id");
-      if (!studio)
-        q = q
-          .eq("status", "published")
-          .lte("published_at", new Date().toISOString());
-      return read<Note[]>(q.range((page - 1) * limit, page * limit));
-    },
-    async pages({ page = 1, limit = 12 }: { page?: number; limit?: number } = {}) {
-      return read<Page[]>(db.from("page")
-        .select("id,kind,title,slug,excerpt,cover_id,status,published_at,created_at,updated_at")
-        .order("updated_at", { ascending: false }).order("id")
-        .range((page - 1) * limit, page * limit));
-    },
-    page: (id: string) => read<Page | null>(
-      db.from("page").select("*").eq("id", id).maybeSingle(),
-    ),
-    pageBySlug: (slug: string) => read<Page | null>(
-      db.from("page").select("*").eq("slug", slug)
-        .eq("status", "published").lte("published_at", new Date().toISOString()).maybeSingle(),
-    ),
-    content: (id: string) =>
-      read<Content | null>(
-        db
-          .from("content")
-          .select("id,kind,excerpt,markdown,cover_id,status,published_at,created_at,updated_at")
-          .eq("id", id)
-          .maybeSingle(),
-      ),
-    article: (id: string) =>
-      read<Article | null>(
-        db.from("article").select("*").eq("id", id).maybeSingle(),
-      ),
+    }: {
+      tag?: string;
+      page?: number;
+      limit?: number;
+      studio?: boolean;
+    } = {}) => list<Article>("article", page, limit, studio, tag),
+    notes: ({
+      page = 1,
+      limit = 12,
+      studio = false,
+    }: { page?: number; limit?: number; studio?: boolean } = {}) =>
+      list<Note>("note", page, limit, studio),
+    pages: ({ page = 1, limit = 12 }: { page?: number; limit?: number } = {}) =>
+      list<Page>("page", page, limit, true),
+    page: (id: string) => one<Page>("page", "id", id),
+    pageBySlug: (slug: string) => one<Page>("page", "slug", slug, true),
+    content: (id: string) => one<Content>(undefined, "id", id),
+    article: (id: string) => one<Article>("article", "id", id),
     articleBySlug: (slug: string) =>
-      read<Article | null>(
-        db
-          .from("article")
-          .select("*")
-          .eq("slug", slug)
-          .eq("status", "published")
-          .lte("published_at", new Date().toISOString())
-          .maybeSingle(),
-      ),
+      one<Article>("article", "slug", slug, true),
     articleByLegacyPath: (path: string) =>
-      read<Article | null>(
-        db
-          .from("article")
-          .select("*")
-          .eq("legacy_path", path)
-          .eq("status", "published")
-          .lte("published_at", new Date().toISOString())
-          .maybeSingle(),
-      ),
-    note: (id: string) =>
-      read<Note | null>(db.from("note").select("*").eq("id", id).maybeSingle()),
+      one<Article>("article", "legacy_path", path, true),
+    note: (id: string) => one<Note>("note", "id", id),
     noteBySequence: (sequence: number) =>
-      read<Note | null>(
-        db
-          .from("note")
-          .select("*")
-          .eq("sequence", sequence)
-          .eq("status", "published")
-          .lte("published_at", new Date().toISOString())
-          .maybeSingle(),
+      one<Note>("note", "sequence", sequence, true),
+    translations: (id: string) =>
+      read<Translation[]>(
+        db.from("translation").select("*").eq("content_id", id).order("locale"),
       ),
     tagsForArticle: async (id: string) => {
-      const [links, tags] = await Promise.all([
+      const [links, all] = await Promise.all([
         read<{ tag_id: string }[]>(
           db.from("article_tag").select("tag_id").eq("article_id", id),
         ),
-        read<Tag[]>(db.from("tag").select("id,name,slug").order("name")),
+        tags(),
       ]);
       const ids = new Set(links.map((link) => link.tag_id));
-      return tags.filter((tag) => ids.has(tag.id));
+      return all.filter((tag) => ids.has(tag.id));
     },
-    async saveArticle(value: unknown, id?: string, updatedAt?: string) {
-      const { tag_ids, ...fields } = articleSchema.parse(value);
-      return read<Article>(
-        db.rpc("save_article", {
-          p_id: id ?? crypto.randomUUID(),
-          p_updated_at: updatedAt ?? null,
-          p_title: fields.title,
-          p_slug: fields.slug,
-          p_excerpt: fields.excerpt,
-          p_markdown: fields.markdown,
-          p_cover_id: fields.cover_id,
-          p_status: fields.status,
-          p_published_at: fields.published_at,
-          p_tag_ids: tag_ids,
-        }).single(),
-      );
-    },
-    async saveNote(value: unknown, id?: string, updatedAt?: string) {
-      const fields = noteSchema.parse(value);
-      const payload = {
-        ...fields,
-        updated_at: new Date().toISOString(),
-        ...(id ? {} : { id: crypto.randomUUID() }),
-      };
-      const q = id
-        ? db
-            .from("note")
-            .update(payload)
-            .eq("id", id)
-            .eq("updated_at", updatedAt!)
-            .select("*")
-        : db.from("note").insert(payload).select("*");
-      const rows = await read<Note[]>(q);
-      if (!rows.length) throw new Error("手记已被更新，请重新打开后编辑");
-      return rows[0];
-    },
-    async savePage(value: unknown, id?: string, updatedAt?: string) {
-      const fields = pageSchema.parse(value);
-      const payload = { ...fields, updated_at: new Date().toISOString(),
-        ...(id ? {} : { id: crypto.randomUUID() }) };
-      const q = id
-        ? db.from("page").update(payload).eq("id", id).eq("updated_at", updatedAt!).select("*")
-        : db.from("page").insert(payload).select("*");
-      const result = await q;
-      if (result.error) {
-        if (result.error.code === "23505") throw new Error("页面路径已被使用，请换一个路径");
-        throw new Error(result.error.message);
-      }
-      const rows = result.data as Page[];
-      if (!rows.length) throw new Error("页面已被更新，请重新打开后编辑");
-      return rows[0];
-    },
-    async remove(kind: "article" | "note" | "page", id: string, updatedAt: string) {
+    saveArticle: (value: unknown, id?: string, updatedAt?: string) =>
+      save<Article>("article", value, id, updatedAt),
+    saveNote: (value: unknown, id?: string, updatedAt?: string) =>
+      save<Note>("note", value, id, updatedAt),
+    savePage: (value: unknown, id?: string, updatedAt?: string) =>
+      save<Page>("page", value, id, updatedAt),
+    async remove(kind: string, id: string, updatedAt: string) {
       const rows = await read<{ id: string }[]>(
         db
-          .from(kind)
+          .from("content")
           .delete()
+          .eq("kind", kind)
           .eq("id", id)
           .eq("updated_at", updatedAt)
           .select("id"),
@@ -197,9 +222,9 @@ export function repository(
       read<Tag>(
         db
           .from("tag")
-          .insert({ name: name.trim(), slug })
+          .insert({ translations: { [defaultLocale]: name.trim() }, slug })
           .select("*")
           .single(),
-      ),
+      ).then((tag) => ({ ...tag, name })),
   };
 }

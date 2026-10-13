@@ -10,17 +10,27 @@ SvelteKit 负责 SSR 页面，Hono 负责 `/api/**` 与 `/images/**` 接口。`h
 
 ## 数据与权限
 
-`0002_content_inheritance.sql` 将 `public.content` 作为 PostgreSQL 继承父表，`public.article` 与 `public.note` 为子表。父表保存 UUID、类型、Markdown、摘要、封面、发布状态和时间；文章另有标题、全站唯一 slug 与独立数字序列，手记没有标题或标签，使用自己的数字序列。`public.article_tag` 直接关联文章与 `public.tag`。
+`0010_translations.sql` 直接移除 PostgreSQL 表继承。`public.content` 保存语言无关的元数据：UUID、类型、原文语言、slug、序号、封面、发布状态和时间。文章、手记及独立页面共用这张表。`kind`、`status` 和 `source_locale` 使用 PostgreSQL enum。
 
-旧文章、图片及标签 UUID 不变，旧分类 URL 存入文章 `legacy_path` 供永久重定向。跨分类重名 slug 追加文章 UUID 前缀消歧。`0002` 先保留旧分类列和 `tag_ids` 以兼容旧 Worker，部署新 Worker 并核验后由 `0004_remove_category.sql` 移除 `public.category`、`article.category_id` 与 `article.tag_ids`。父表查询用于 `/contents/:id`，写入始终指向具体子表；PostgreSQL 继承不自动将父表写入路由到子表，也不跨子表继承主键唯一性。
+`public.translation` 保存 title、excerpt、markdown 和更新时间。`(content_id, locale)` 是主键；locale 使用 enum。修改和手动翻译直接覆盖该语言行，不保存多版本。元数据和所有语言正文共享发布状态；匿名 RLS 只允许读取已发布且发布时间已到的内容。
 
-公开路径为 `/articles/:title`（参数取文章 slug）、`/notes/:sequence` 与 `/contents/:id`（按 `kind` 重定向到规范路径）。首页混排最近的文章和手记，时间线按发布时间聚合。独立页面 `public.page` 继承 `content`。类型为 `page`，有标题与唯一根路径 slug（例如 `/about`、`/privacy`、`/terms`），没有文章序号或标签。
+迁移保留原有 UUID、slug、序号、发布时间、正文和标签关系。已有正文登记为 zh-CN。`public.tag.translations` 直接保存语言到名称的 JSONB 映射；保留 zh-CN 名称作为回退。`public.article_tag` 关联 content 与 tag。财务对象不受此迁移影响。
 
-后台“独立页面”可创建、编辑、发布、撤回和删除，沿用 `updated_at` 冲突检测。根路径只接受小写字母、数字、连字符，禁止占用 articles、notes、timeline、tags、contents、studio、auth、api、images、assets。页面不进入首页、文章、手记或时间线；主导航固定只展示“关于”，页脚只有政策入口和版权。`/contents/:id` 同样支持 page 重定向。正文唯一存储为 Markdown，服务端和客户端使用同一安全 Markdown 渲染器。
+公开路径仍为 `/articles/:slug`、`/notes/:sequence` 和独立页面根路径。`/contents/:id` 和 legacy_path 永久重定向到规范链接。页面 slug 不得占用功能路径或语言前缀；独立页面不进入首页和时间线。
 
-文章保存使用 `save_article` Data API RPC，在一个数据库事务内写文章与标签关系，并用 id/updated_at 判断冲突；手记、独立页面和删除仍使用标准 PostgREST 写入。文章和手记创建时客户端生成 UUID。
+所有公开页面及编辑室支持 locale 前缀。默认 zh-CN 可以省略前缀；en 映射到 en-US，zh 映射到 zh-CN，zh-Hant 映射到 zh-TW。新增语言的短码按已启用语言列表匹配。内容按请求语言、zh-CN、原文语言、已有译文的顺序回退，并返回实际正文语言。
 
-UI 失败保留输入。发布要求正文和发布时间；匿名 RLS 仅放行已发布且发布时间已到的内容。`content`、`article`、`note`、`page` 与 `article_tag` 分别设置 RLS 与 GRANT；superadmin 写具体子表和关联表，anonymous 无写权限、无 financial schema 访问权。
+前端 UI 使用 i18next，默认提供简体中文、繁体中文及英文词典。SSR 按请求解析语言，翻译函数显式指定语言，不修改共享实例的当前语言。日期和站内导航沿用界面语言；正文标记实际语言。
+
+Worker 的 BLOG_SETTINGS 绑定保存 KV 键 `blog:supported-locales`。默认列表是 zh-CN、zh-TW、en-US。编辑室可以启用或禁用已注册语言，zh-CN 必须保留。新增语言先扩展数据库 locale enum，再在编辑室启用。禁用语言保留已有译文。
+
+`save_content` RPC 在同一事务内写元数据、当前语言正文及文章标签。保存使用 content.updated_at 检查冲突。编辑室通过 `/api/content` 保存；MCP 使用同一服务端保存服务。公开读取仍直连 Data API。
+
+发布后服务端自动补齐启用列表中的缺失译文，已有完整译文保持原样。空正文视为缺失，公开读取回退到完整译文。翻译失败保留已保存原文，并返回待补语言。修改时可在编辑器选择目标语言和已保存的来源语言，手动翻译并直接覆盖目标正文。未保存的修改需先保存。
+
+`save_translation` RPC 核对来源及目标译文的 updated_at。自动补译补齐缺失行和空正文；手动翻译拒绝覆盖调用期间被编辑的目标行。两种写入都会更新 content.updated_at，删除内容会级联删除译文。
+
+AI 调用使用 custom Gateway 的 `dynamic/translate` 动态路由（`custom/translate`），其 provider 为 custom-codex。请求使用 compat/chat/completions，模型由网关配置决定。推理 Secret `AIG_TRANSLATE_RUN_TOKEN` 只在 Worker 中使用。服务端要求 JSON 输出，拒绝截断、无效和空正文响应；提示词要求保留 Markdown、代码、公式和链接。[Cloudflare 动态路由](https://developers.cloudflare.com/ai-gateway/features/dynamic-routing/usage/)
 
 Neon 网关要求 JWT，包括匿名访问。访客直接调用 Neon Auth `/token/anonymous` 获取短期 `role=anonymous` JWT，再直接读取 Data API；不登录、不经博客 API 代理、不使用数据库密钥。SSR 同样调用这两个公开端点。公开页使用 SvelteKit 通用 `+page.ts` load，水合后的页间跳转直接从浏览器请求匿名令牌与 Data API，不再获取 `__data.json`；导航期间立即显示骨架，关闭 hover 预取。
 
@@ -42,7 +52,7 @@ R2 bucket `image`，key 精确等于 image.id UUID。metadata 包括 name、sha2
 
 匿名请求使用 `publicRepository()` 的匿名 JWT，列表和详情限定发布状态与发布时间。管理员 Token 使用共享 `packages/auth/server` 验证签名、issuer、audience、有效期和用户身份，再检查 `blog.all:all`。无效 Token 返回 401；普通用户仍只读公开内容。
 
-管理员可调用 `create_content`、`update_content`、`delete_content`，管理文章、手记和独立页面。写入复用现有 schema、repository 和文章原子 RPC。修改和删除要求最近读取的 `updated_at`；文章详情返回 `tag_ids`。
+管理员可调用 `create_content`、`update_content`、`delete_content`，管理文章、手记和独立页面。写入复用统一 content/translation schema、repository 和原子 RPC。修改和删除要求最近读取的 `updated_at`；文章详情返回 `tag_ids`。
 
 管理员还可新建、修改、删除标签；已被文章引用的标签不能直接删除。数据库继续执行 GRANT/RLS。
 
@@ -68,6 +78,8 @@ YAML 的 SSR 解析固定使用依赖提供的浏览器 ESM 入口，避免 Node
 
 ## 迁移与发布
 
-迁移在 `database/blog`；测试 SQL 的写入事务回滚。`0002`/`0003` 先保留旧字段兼容旧 Worker，新 Worker 自动部署并核验后 `0004` 才删除分类和旧标签数组列。`0005` 增加独立页面约束/权限；`0006`–`0009` 是特定内容版本的名称/政策迁移，不能当通用初始化脚本重放。正文冲突整体回滚，保留 UUID 与用户内容，详细历史见[DELIVERY](history/DELIVERY.md)。
+迁移在 `database/blog`；测试 SQL 的写入事务回滚。历史 `0002`–`0004` 完成继承和分类清理；当前 `0010` 直接替换为统一内容及翻译表。
 
-Worker 使用 `wrangler.jsonc` 的 R2 `image` 绑定和两个自定义域名。Workers Builds 从 `apps/blog` 执行 `pnpm build`，本地构建亦包含实际 workerd `/api/version` 启动验证；自动 Build 与线上 SSR 仍须单独核验。统一检查、隔离 Neon 迁移、Linux 基线与 PR 交付见[TESTING](../TESTING.md)。
+`0005` 增加独立页面约束/权限；`0006`–`0009` 是特定内容版本的名称/政策迁移，不能当通用初始化脚本重放。正文冲突整体回滚，保留 UUID 与用户内容，详细历史见[DELIVERY](history/DELIVERY.md)。
+
+Worker 使用 `wrangler.jsonc` 的 R2 image、KV BLOG_SETTINGS 绑定和两个自定义域名。Workers Builds 从 `apps/blog` 执行 `pnpm build`，本地构建亦包含实际 workerd `/api/version` 启动验证；自动 Build 与线上 SSR 仍须单独核验。统一检查、隔离 Neon 迁移、Linux 基线与 PR 交付见[TESTING](../TESTING.md)。
