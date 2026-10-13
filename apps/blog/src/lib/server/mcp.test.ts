@@ -49,7 +49,7 @@ it("initializes and discovers only read-only tools without opening the database"
 it.each(["article", "note", "page"])("limits %s lists, omits body and uses anonymous credentials", async (kind) => {
   rows = Array.from({ length: 3 }, (_, n) => ({ id, kind, title: "公开", slug: "about", sequence: n + 1,
     status: "published", published_at: "2020-01-01T00:00:00Z", excerpt: "摘要" }));
-  const body = await call("list_content", { kind, limit: 2, page: 2 }, "Bearer admin-jwt");
+  const body = await call("list_content", { kind, limit: 2, page: 2 });
   expect(body.result.structuredContent.items).toHaveLength(2);
   expect(body.result.structuredContent.has_more).toBe(true);
   expect(body.result.structuredContent.items[0].url).toMatch(/^https:\/\/hasbai.xyz\//);
@@ -63,10 +63,10 @@ it.each(["article", "note", "page"])("limits %s lists, omits body and uses anony
   expect(sent.url.searchParams.get("limit")).toBe("3");
 });
 
-it.each(["draft", "future"])("cannot read %s content with a caller administrator token", async (state) => {
+it.each(["draft", "future"])("anonymous callers cannot read %s content", async (state) => {
   rows = [{ id, kind: "article", slug: "hidden", markdown: "隐藏正文", status: state === "draft" ? "draft" : "published",
     published_at: state === "future" ? "2999-01-01T00:00:00Z" : "2020-01-01T00:00:00Z" }];
-  const body = await call("get_content", { kind: "article", id }, "Bearer admin-jwt");
+  const body = await call("get_content", { kind: "article", id });
   expect(body.result.structuredContent.item).toBeNull();
   expect(requests[0].authorization).toBe("Bearer guest-jwt");
   expect(requests[0].url.searchParams.get("status")).toBe("eq.published");
@@ -105,7 +105,7 @@ it.each([{ limit: 51 }, { page: 0 }, { kind: "image" }, { query: " " }, { query:
 it("rejects invalid IDs, unknown tools and oversized bodies", async () => {
   expect((await call("get_content", { kind: "article", id: "../private" })).result.isError).toBe(true);
   expect((await call("publish_content", {})).result.isError).toBe(true);
-  expect((await blogHttp.request("/api/mcp", { method: "POST", body: "x".repeat(65537) }, {})).status).toBe(413);
+  expect((await blogHttp.request("/api/mcp", { method: "POST", body: "x".repeat(8 * 1024 * 1024 + 1) }, {})).status).toBe(413);
   expect(requests).toEqual([]);
 });
 

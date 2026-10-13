@@ -23,7 +23,7 @@ blogHttp.use("/api/mcp", cors({
   allowHeaders: ["Content-Type", "MCP-Protocol-Version", "MCP-Session-Id", "Authorization"],
   exposeHeaders: ["MCP-Protocol-Version"],
 }));
-blogHttp.use("/api/mcp", bodyLimit({ maxSize: 64 * 1024 }));
+blogHttp.use("/api/mcp", bodyLimit({ maxSize: 8 * 1024 * 1024 }));
 blogHttp.post("/api/mcp", (c) => handleMcp(c.req.raw));
 blogHttp.all("/api/mcp", (c) => c.json({ jsonrpc: "2.0", id: null,
   error: { code: -32000, message: "Method not allowed" } }, 405, { Allow: "POST, OPTIONS" }));

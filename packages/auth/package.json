@@ -4,9 +4,11 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./config": "./src/config.ts"
+    "./config": "./src/config.ts",
+    "./server": "./src/server.ts"
   },
   "dependencies": {
-    "@auth0/auth0-spa-js": "catalog:"
+    "@auth0/auth0-spa-js": "catalog:",
+    "jose": "catalog:"
   }
 }

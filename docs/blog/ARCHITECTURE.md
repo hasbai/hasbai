@@ -34,15 +34,21 @@ R2 bucket `image`，key 精确等于 image.id UUID。metadata 包括 name、sha2
 
 ## MCP
 
-`/api/mcp` 提供公开只读的 Streamable HTTP MCP。Hono 路由使用标准 MCP SDK，响应为 JSON。每个请求新建 server 和 transport，完成后关闭；不使用会话或独立 SSE 流。
+`/api/mcp` 提供 Streamable HTTP MCP，匿名公开读取，管理员携带 Bearer Token 管理内容。Hono 路由使用标准 MCP SDK，响应为 JSON。每个请求新建 server 和 transport，完成后关闭；不使用会话或独立 SSE 流。
 
 - `list_content`：按类型分页，可搜索标题、摘要和正文。列表只返回摘要与规范网址，每页最多 50 条。
 - `get_content`：按类型和 UUID 读取 Markdown 正文与规范网址。
 - `list_tags`：读取公开标签。
 
-所有工具固定使用 `publicRepository()` 的匿名 JWT。列表和详情还限定发布状态与发布时间，不转发调用方 Token。MCP 不提供编辑、发布、删除或图片上传工具。现有管理员接口和数据库权限保持原规则。
+匿名请求使用 `publicRepository()` 的匿名 JWT，列表和详情限定发布状态与发布时间。管理员 Token 使用共享 `packages/auth/server` 验证签名、issuer、audience、有效期和用户身份，再检查 `manage:blog`。无效 Token 返回 401；普通用户仍只读公开内容。
 
-Cloudflare MCP Portal 的目标配置为“北极小站”，域名 `mcp.hasbai.xyz`，公开访问。上游为 `https://hasbai.xyz/api/mcp`，认证方式为 `unauthenticated`。既有 Eastmoney Portal 迁到 `eastmoney-mcp.hasbai.xyz`，保留服务与访问策略。API 创建 Portal 后须设置 proxied CNAME，指向 `gateway.agents.cloudflare.com`。完成部署后再同步工具并核验实际调用，不能只核验资源创建。[官方配置说明](https://developers.cloudflare.com/cloudflare-one/access-controls/ai-controls/mcp-portals/)
+管理员可调用 `create_content`、`update_content`、`delete_content`，管理文章、手记和独立页面。写入复用现有 schema、repository 和文章原子 RPC。修改和删除要求最近读取的 `updated_at`；文章详情返回 `tag_ids`。
+
+管理员还可新建、修改、删除标签；已被文章引用的标签不能直接删除。数据库继续执行 GRANT/RLS。
+
+Cloudflare MCP Portal 的目标配置为“北极小站”，域名 `mcp.hasbai.xyz`，公开访问。上游为 `https://hasbai.xyz/api/mcp`，认证方式为 `unauthenticated`。公开 Portal 只发现三个读取工具，不存储管理员 Token。管理员携带 Token 直连博客 MCP；Portal 的逐用户管理授权尚未实现。
+
+既有 Eastmoney Portal 迁到 `eastmoney-mcp.hasbai.xyz`，保留服务与访问策略。API 创建 Portal 后须设置 proxied CNAME，指向 `gateway.agents.cloudflare.com`。完成部署后再同步工具并核验实际调用，不能只核验资源创建。[官方配置说明](https://developers.cloudflare.com/cloudflare-one/access-controls/ai-controls/mcp-portals/)
 
 ## 编辑和阅读
 

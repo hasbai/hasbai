@@ -263,6 +263,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 26.5.1
+      jose:
+        specifier: 'catalog:'
+        version: 6.2.12
       shadcn-svelte:
         specifier: 'catalog:'
         version: 1.7.0(svelte@5.57.0)
@@ -512,6 +515,9 @@ importers:
       '@auth0/auth0-spa-js':
         specifier: 'catalog:'
         version: 2.25.0
+      jose:
+        specifier: 'catalog:'
+        version: 6.2.12
 
   packages/data:
     dependencies:

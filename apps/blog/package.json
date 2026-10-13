@@ -39,6 +39,7 @@
     "@sveltejs/vite-plugin-svelte": "catalog:",
     "@tailwindcss/vite": "catalog:",
     "@types/node": "catalog:",
+    "jose": "catalog:",
     "shadcn-svelte": "catalog:",
     "svelte-check": "catalog:",
     "tailwindcss": "catalog:",
