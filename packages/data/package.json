@@ -6,6 +6,6 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@neondatabase/postgrest-js": "0.2.0-beta"
+    "@neondatabase/postgrest-js": "catalog:"
   }
 }

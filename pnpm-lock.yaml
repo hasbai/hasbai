@@ -4,6 +4,186 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+catalogs:
+  default:
+    '@auth0/auth0-spa-js':
+      specifier: 2.25.0
+      version: 2.25.0
+    '@fontsource-variable/inter':
+      specifier: 5.3.0
+      version: 5.3.0
+    '@internationalized/date':
+      specifier: 3.12.4
+      version: 3.12.4
+    '@lucide/svelte':
+      specifier: 1.45.0
+      version: 1.45.0
+    '@neondatabase/postgrest-js':
+      specifier: 0.2.0-beta
+      version: 0.2.0-beta
+    '@playwright/test':
+      specifier: 1.63.0
+      version: 1.63.0
+    '@sveltejs/adapter-cloudflare':
+      specifier: 7.2.9
+      version: 7.2.9
+    '@sveltejs/kit':
+      specifier: 2.70.3
+      version: 2.70.3
+    '@sveltejs/vite-plugin-svelte':
+      specifier: 7.3.0
+      version: 7.3.0
+    '@tailwindcss/vite':
+      specifier: 4.3.3
+      version: 4.3.3
+    '@tanstack/svelte-query':
+      specifier: 6.1.48
+      version: 6.1.48
+    '@terrastruct/d2':
+      specifier: 0.1.33
+      version: 0.1.33
+    '@testing-library/svelte':
+      specifier: 5.4.2
+      version: 5.4.2
+    '@tiptap/core':
+      specifier: 3.31.3
+      version: 3.31.3
+    '@tiptap/extension-image':
+      specifier: 3.31.3
+      version: 3.31.3
+    '@tiptap/extension-table':
+      specifier: 3.31.3
+      version: 3.31.3
+    '@tiptap/markdown':
+      specifier: 3.31.3
+      version: 3.31.3
+    '@tiptap/pm':
+      specifier: 3.31.3
+      version: 3.31.3
+    '@tiptap/starter-kit':
+      specifier: 3.31.3
+      version: 3.31.3
+    '@types/node':
+      specifier: 26.5.1
+      version: 26.5.1
+    '@vitest/coverage-v8':
+      specifier: 5.0.0
+      version: 5.0.0
+    bits-ui:
+      specifier: 2.19.2
+      version: 2.19.2
+    clsx:
+      specifier: 2.1.1
+      version: 2.1.1
+    decimal.js:
+      specifier: 10.6.0
+      version: 10.6.0
+    dompurify:
+      specifier: 3.4.16
+      version: 3.4.16
+    fflate:
+      specifier: 0.8.3
+      version: 0.8.3
+    jose:
+      specifier: 6.2.12
+      version: 6.2.12
+    jsdom:
+      specifier: 30.0.1
+      version: 30.0.1
+    katex:
+      specifier: 0.16.47
+      version: 0.16.47
+    markmap-lib:
+      specifier: 0.18.12
+      version: 0.18.12
+    markmap-view:
+      specifier: 0.18.12
+      version: 0.18.12
+    mermaid:
+      specifier: 11.17.2
+      version: 11.17.2
+    pg:
+      specifier: 8.23.0
+      version: 8.23.0
+    prettier:
+      specifier: 3.9.6
+      version: 3.9.6
+    prettier-plugin-svelte:
+      specifier: 4.1.1
+      version: 4.1.1
+    rehype-katex:
+      specifier: 7.0.1
+      version: 7.0.1
+    rehype-sanitize:
+      specifier: 6.0.0
+      version: 6.0.0
+    rehype-stringify:
+      specifier: 10.0.1
+      version: 10.0.1
+    remark-directive:
+      specifier: 4.0.0
+      version: 4.0.0
+    remark-frontmatter:
+      specifier: 5.0.0
+      version: 5.0.0
+    remark-gfm:
+      specifier: 4.0.1
+      version: 4.0.1
+    remark-math:
+      specifier: 6.0.0
+      version: 6.0.0
+    remark-parse:
+      specifier: 11.0.0
+      version: 11.0.0
+    remark-rehype:
+      specifier: 11.1.2
+      version: 11.1.2
+    shadcn-svelte:
+      specifier: 1.7.0
+      version: 1.7.0
+    svelte:
+      specifier: 5.57.0
+      version: 5.57.0
+    svelte-check:
+      specifier: 4.7.6
+      version: 4.7.6
+    tailwind-merge:
+      specifier: 3.7.0
+      version: 3.7.0
+    tailwind-variants:
+      specifier: 3.3.1
+      version: 3.3.1
+    tailwindcss:
+      specifier: 4.3.3
+      version: 4.3.3
+    tw-animate-css:
+      specifier: 1.4.0
+      version: 1.4.0
+    typescript:
+      specifier: 6.0.3
+      version: 6.0.3
+    unified:
+      specifier: 11.0.5
+      version: 11.0.5
+    vite:
+      specifier: 8.3.0
+      version: 8.3.0
+    vitest:
+      specifier: 5.0.0
+      version: 5.0.0
+    wrangler:
+      specifier: 4.148.0
+      version: 4.148.0
+    yaml:
+      specifier: 2.9.1
+      version: 2.9.1
+    zod:
+      specifier: 4.6.4
+      version: 4.6.4
+
+overrides:
+  workerd: 1.20261009.1
+
 importers:
 
   .: {}
@@ -23,86 +203,86 @@ importers:
         specifier: workspace:*
         version: link:../../packages/ui
       '@lucide/svelte':
-        specifier: ^1.45.0
+        specifier: 'catalog:'
         version: 1.45.0(svelte@5.57.0)
       '@tiptap/core':
-        specifier: 3.31.3
+        specifier: 'catalog:'
         version: 3.31.3(@tiptap/pm@3.31.3)
       '@tiptap/extension-image':
-        specifier: 3.31.3
+        specifier: 'catalog:'
         version: 3.31.3(@tiptap/core@3.31.3(@tiptap/pm@3.31.3))
       '@tiptap/extension-table':
-        specifier: 3.31.3
+        specifier: 'catalog:'
         version: 3.31.3(@tiptap/core@3.31.3(@tiptap/pm@3.31.3))(@tiptap/pm@3.31.3)
       '@tiptap/markdown':
-        specifier: 3.31.3
+        specifier: 'catalog:'
         version: 3.31.3(@tiptap/core@3.31.3(@tiptap/pm@3.31.3))(@tiptap/pm@3.31.3)
       '@tiptap/pm':
-        specifier: 3.31.3
+        specifier: 'catalog:'
         version: 3.31.3
       '@tiptap/starter-kit':
-        specifier: 3.31.3
+        specifier: 'catalog:'
         version: 3.31.3
       svelte:
-        specifier: ^5.57.0
+        specifier: 'catalog:'
         version: 5.57.0
       tw-animate-css:
-        specifier: ^1.4.0
+        specifier: 'catalog:'
         version: 1.4.0
       zod:
-        specifier: ^4.6.4
+        specifier: 'catalog:'
         version: 4.6.4
     devDependencies:
       '@playwright/test':
-        specifier: 1.63.0
+        specifier: 'catalog:'
         version: 1.63.0
       '@sveltejs/adapter-cloudflare':
-        specifier: 7.2.9
-        version: 7.2.9(@sveltejs/kit@2.70.3(@sveltejs/vite-plugin-svelte@7.3.0(svelte@5.57.0)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1)))(svelte@5.57.0)(typescript@6.0.3)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1)))(wrangler@4.131.1(@types/node@26.5.1))
+        specifier: 'catalog:'
+        version: 7.2.9(@sveltejs/kit@2.70.3(@sveltejs/vite-plugin-svelte@7.3.0(svelte@5.57.0)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1)))(svelte@5.57.0)(typescript@6.0.3)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1)))(wrangler@4.148.0(@types/node@26.5.1))
       '@sveltejs/kit':
-        specifier: 2.70.3
+        specifier: 'catalog:'
         version: 2.70.3(@sveltejs/vite-plugin-svelte@7.3.0(svelte@5.57.0)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1)))(svelte@5.57.0)(typescript@6.0.3)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1))
       '@sveltejs/vite-plugin-svelte':
-        specifier: ^7.3.0
+        specifier: 'catalog:'
         version: 7.3.0(svelte@5.57.0)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1))
       '@tailwindcss/vite':
-        specifier: ^4.3.3
+        specifier: 'catalog:'
         version: 4.3.3(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1))
       '@types/node':
-        specifier: ^26.5.1
+        specifier: 'catalog:'
         version: 26.5.1
       shadcn-svelte:
-        specifier: ^1.7.0
+        specifier: 'catalog:'
         version: 1.7.0(svelte@5.57.0)
       svelte-check:
-        specifier: ^4.7.6
+        specifier: 'catalog:'
         version: 4.7.6(picomatch@4.0.7)(svelte@5.57.0)(typescript@6.0.3)
       tailwindcss:
-        specifier: ^4.3.3
+        specifier: 'catalog:'
         version: 4.3.3
       typescript:
-        specifier: ^6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
       vite:
-        specifier: ^8.3.0
+        specifier: 'catalog:'
         version: 8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1)
       vitest:
-        specifier: 5.0.0
+        specifier: 'catalog:'
         version: 5.0.0(@types/node@26.5.1)(@vitest/coverage-v8@5.0.0)(jsdom@30.0.1)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1))
       workerd:
         specifier: 1.20261009.1
         version: 1.20261009.1
       wrangler:
-        specifier: ^4.131.1
-        version: 4.131.1(@types/node@26.5.1)
+        specifier: 'catalog:'
+        version: 4.148.0(@types/node@26.5.1)
       yaml:
-        specifier: 2.9.1
+        specifier: 'catalog:'
         version: 2.9.1
 
   apps/financial:
     dependencies:
       '@auth0/auth0-spa-js':
-        specifier: ^2.25.0
+        specifier: 'catalog:'
         version: 2.25.0
       '@hasbai/auth':
         specifier: workspace:*
@@ -114,96 +294,96 @@ importers:
         specifier: workspace:*
         version: link:../../packages/ui
       '@lucide/svelte':
-        specifier: ^1.45.0
+        specifier: 'catalog:'
         version: 1.45.0(svelte@5.57.0)
       '@neondatabase/postgrest-js':
-        specifier: 0.2.0-beta
+        specifier: 'catalog:'
         version: 0.2.0-beta
       '@tailwindcss/vite':
-        specifier: ^4.3.3
+        specifier: 'catalog:'
         version: 4.3.3(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1))
       '@tanstack/svelte-query':
-        specifier: ^6.1.48
+        specifier: 'catalog:'
         version: 6.1.48(svelte@5.57.0)
       bits-ui:
-        specifier: ^2.19.2
+        specifier: 'catalog:'
         version: 2.19.2(@internationalized/date@3.12.4)(@sveltejs/kit@2.70.3(@sveltejs/vite-plugin-svelte@7.3.0(svelte@5.57.0)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1)))(svelte@5.57.0)(typescript@6.0.3)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1)))(svelte@5.57.0)
       clsx:
-        specifier: ^2.1.1
+        specifier: 'catalog:'
         version: 2.1.1
       decimal.js:
-        specifier: ^10.6.0
+        specifier: 'catalog:'
         version: 10.6.0
       svelte:
-        specifier: ^5.57.0
+        specifier: 'catalog:'
         version: 5.57.0
       tailwind-merge:
-        specifier: ^3.7.0
+        specifier: 'catalog:'
         version: 3.7.0
       tailwind-variants:
-        specifier: ^3.3.1
+        specifier: 'catalog:'
         version: 3.3.1(tailwind-merge@3.7.0)(tailwindcss@4.3.3)
       tailwindcss:
-        specifier: ^4.3.3
+        specifier: 'catalog:'
         version: 4.3.3
       tw-animate-css:
-        specifier: ^1.4.0
+        specifier: 'catalog:'
         version: 1.4.0
       zod:
-        specifier: ^4.6.4
+        specifier: 'catalog:'
         version: 4.6.4
     devDependencies:
       '@fontsource-variable/inter':
-        specifier: ^5.3.0
+        specifier: 'catalog:'
         version: 5.3.0
       '@internationalized/date':
-        specifier: ^3.12.0
+        specifier: 'catalog:'
         version: 3.12.4
       '@playwright/test':
-        specifier: 1.63.0
+        specifier: 'catalog:'
         version: 1.63.0
       '@sveltejs/vite-plugin-svelte':
-        specifier: ^7.3.0
+        specifier: 'catalog:'
         version: 7.3.0(svelte@5.57.0)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1))
       '@testing-library/svelte':
-        specifier: ^5.4.2
+        specifier: 'catalog:'
         version: 5.4.2(svelte@5.57.0)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1))(vitest@5.0.0)
       '@types/node':
-        specifier: ^26.5.1
+        specifier: 'catalog:'
         version: 26.5.1
       '@vitest/coverage-v8':
-        specifier: 5.0.0
+        specifier: 'catalog:'
         version: 5.0.0(vitest@5.0.0)
       jsdom:
-        specifier: ^30.0.1
+        specifier: 'catalog:'
         version: 30.0.1
       pg:
-        specifier: ^8.23.0
+        specifier: 'catalog:'
         version: 8.23.0
       prettier:
-        specifier: ^3.9.6
+        specifier: 'catalog:'
         version: 3.9.6
       prettier-plugin-svelte:
-        specifier: ^4.1.1
+        specifier: 'catalog:'
         version: 4.1.1(prettier@3.9.6)(svelte@5.57.0)
       shadcn-svelte:
-        specifier: ^1.6.1
+        specifier: 'catalog:'
         version: 1.7.0(svelte@5.57.0)
       svelte-check:
-        specifier: ^4.7.6
+        specifier: 'catalog:'
         version: 4.7.6(picomatch@4.0.7)(svelte@5.57.0)(typescript@6.0.3)
       typescript:
-        specifier: ^6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
       vite:
-        specifier: ^8.3.0
+        specifier: 'catalog:'
         version: 8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1)
       vitest:
-        specifier: ^5.0.0
+        specifier: 'catalog:'
         version: 5.0.0(@types/node@26.5.1)(@vitest/coverage-v8@5.0.0)(jsdom@30.0.1)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1))
       wrangler:
-        specifier: ^4.131.1
-        version: 4.131.1(@types/node@26.5.1)
+        specifier: 'catalog:'
+        version: 4.148.0(@types/node@26.5.1)
 
   apps/tavern:
     dependencies:
@@ -214,51 +394,51 @@ importers:
         specifier: workspace:*
         version: link:../../packages/ui
       '@lucide/svelte':
-        specifier: ^1.45.0
+        specifier: 'catalog:'
         version: 1.45.0(svelte@5.57.0)
       '@tailwindcss/vite':
-        specifier: ^4.3.3
+        specifier: 'catalog:'
         version: 4.3.3(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1))
       fflate:
-        specifier: ^0.8.2
+        specifier: 'catalog:'
         version: 0.8.3
       jose:
-        specifier: ^6.1.0
+        specifier: 'catalog:'
         version: 6.2.12
       svelte:
-        specifier: ^5.57.0
+        specifier: 'catalog:'
         version: 5.57.0
       tailwindcss:
-        specifier: ^4.3.3
+        specifier: 'catalog:'
         version: 4.3.3
       tw-animate-css:
-        specifier: ^1.4.0
+        specifier: 'catalog:'
         version: 1.4.0
     devDependencies:
       '@playwright/test':
-        specifier: 1.63.0
+        specifier: 'catalog:'
         version: 1.63.0
       '@sveltejs/vite-plugin-svelte':
-        specifier: ^7.3.0
+        specifier: 'catalog:'
         version: 7.3.0(svelte@5.57.0)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1))
       '@types/node':
-        specifier: ^26.5.1
+        specifier: 'catalog:'
         version: 26.5.1
       svelte-check:
-        specifier: ^4.7.6
+        specifier: 'catalog:'
         version: 4.7.6(picomatch@4.0.7)(svelte@5.57.0)(typescript@6.0.3)
       typescript:
-        specifier: ^6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
       vite:
-        specifier: ^8.3.0
+        specifier: 'catalog:'
         version: 8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1)
       vitest:
-        specifier: 5.0.0
+        specifier: 'catalog:'
         version: 5.0.0(@types/node@26.5.1)(@vitest/coverage-v8@5.0.0)(jsdom@30.0.1)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1))
       wrangler:
-        specifier: ^4.131.1
-        version: 4.131.1(@types/node@26.5.1)
+        specifier: 'catalog:'
+        version: 4.148.0(@types/node@26.5.1)
 
   apps/zboard:
     dependencies:
@@ -269,140 +449,140 @@ importers:
         specifier: workspace:*
         version: link:../../packages/ui
       '@lucide/svelte':
-        specifier: ^1.45.0
+        specifier: 'catalog:'
         version: 1.45.0(svelte@5.57.0)
       '@tailwindcss/vite':
-        specifier: ^4.3.3
+        specifier: 'catalog:'
         version: 4.3.3(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1))
       jose:
-        specifier: ^6.1.0
+        specifier: 'catalog:'
         version: 6.2.12
       svelte:
-        specifier: ^5.57.0
+        specifier: 'catalog:'
         version: 5.57.0
       tailwindcss:
-        specifier: ^4.3.3
+        specifier: 'catalog:'
         version: 4.3.3
       tw-animate-css:
-        specifier: ^1.4.0
+        specifier: 'catalog:'
         version: 1.4.0
       yaml:
-        specifier: 2.9.1
+        specifier: 'catalog:'
         version: 2.9.1
     devDependencies:
       '@playwright/test':
-        specifier: 1.63.0
+        specifier: 'catalog:'
         version: 1.63.0
       '@sveltejs/vite-plugin-svelte':
-        specifier: ^7.3.0
+        specifier: 'catalog:'
         version: 7.3.0(svelte@5.57.0)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1))
       '@types/node':
-        specifier: ^26.5.1
+        specifier: 'catalog:'
         version: 26.5.1
       svelte-check:
-        specifier: ^4.7.6
+        specifier: 'catalog:'
         version: 4.7.6(picomatch@4.0.7)(svelte@5.57.0)(typescript@6.0.3)
       typescript:
-        specifier: ^6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
       vite:
-        specifier: ^8.3.0
+        specifier: 'catalog:'
         version: 8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1)
       vitest:
-        specifier: 5.0.0
+        specifier: 'catalog:'
         version: 5.0.0(@types/node@26.5.1)(@vitest/coverage-v8@5.0.0)(jsdom@30.0.1)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1))
       wrangler:
-        specifier: ^4.131.1
-        version: 4.131.1(@types/node@26.5.1)
+        specifier: 'catalog:'
+        version: 4.148.0(@types/node@26.5.1)
 
   packages/auth:
     dependencies:
       '@auth0/auth0-spa-js':
-        specifier: ^2.25.0
+        specifier: 'catalog:'
         version: 2.25.0
 
   packages/data:
     dependencies:
       '@neondatabase/postgrest-js':
-        specifier: 0.2.0-beta
+        specifier: 'catalog:'
         version: 0.2.0-beta
 
   packages/markdown:
     dependencies:
       '@terrastruct/d2':
-        specifier: ^0.1.33
+        specifier: 'catalog:'
         version: 0.1.33
       dompurify:
-        specifier: ^3.4.16
+        specifier: 'catalog:'
         version: 3.4.16
       katex:
-        specifier: ^0.16.47
+        specifier: 'catalog:'
         version: 0.16.47
       markmap-lib:
-        specifier: ^0.18.12
+        specifier: 'catalog:'
         version: 0.18.12(markmap-common@0.18.9)
       markmap-view:
-        specifier: ^0.18.12
+        specifier: 'catalog:'
         version: 0.18.12(markmap-common@0.18.9)
       mermaid:
-        specifier: ^11.17.2
+        specifier: 'catalog:'
         version: 11.17.2
       rehype-katex:
-        specifier: ^7.0.1
+        specifier: 'catalog:'
         version: 7.0.1
       rehype-sanitize:
-        specifier: ^6.0.0
+        specifier: 'catalog:'
         version: 6.0.0
       rehype-stringify:
-        specifier: ^10.0.1
+        specifier: 'catalog:'
         version: 10.0.1
       remark-directive:
-        specifier: ^4.0.0
+        specifier: 'catalog:'
         version: 4.0.0
       remark-frontmatter:
-        specifier: ^5.0.0
+        specifier: 'catalog:'
         version: 5.0.0
       remark-gfm:
-        specifier: ^4.0.1
+        specifier: 'catalog:'
         version: 4.0.1
       remark-math:
-        specifier: ^6.0.0
+        specifier: 'catalog:'
         version: 6.0.0
       remark-parse:
-        specifier: ^11.0.0
+        specifier: 'catalog:'
         version: 11.0.0
       remark-rehype:
-        specifier: ^11.1.2
+        specifier: 'catalog:'
         version: 11.1.2
       svelte:
         specifier: ^5.57.0
         version: 5.57.0
       unified:
-        specifier: ^11.0.5
+        specifier: 'catalog:'
         version: 11.0.5
       yaml:
-        specifier: 2.9.1
+        specifier: 'catalog:'
         version: 2.9.1
 
   packages/ui:
     dependencies:
       '@lucide/svelte':
-        specifier: ^1.45.0
+        specifier: 'catalog:'
         version: 1.45.0(svelte@5.57.0)
       bits-ui:
-        specifier: ^2.19.2
+        specifier: 'catalog:'
         version: 2.19.2(@internationalized/date@3.12.4)(@sveltejs/kit@2.70.3(@sveltejs/vite-plugin-svelte@7.3.0(svelte@5.57.0)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1)))(svelte@5.57.0)(typescript@6.0.3)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1)))(svelte@5.57.0)
       clsx:
-        specifier: ^2.1.1
+        specifier: 'catalog:'
         version: 2.1.1
       svelte:
         specifier: ^5.57.0
         version: 5.57.0
       tailwind-merge:
-        specifier: ^3.7.0
+        specifier: 'catalog:'
         version: 3.7.0
       tailwind-variants:
-        specifier: ^3.3.1
+        specifier: 'catalog:'
         version: 3.3.1(tailwind-merge@3.7.0)(tailwindcss@4.3.3)
 
 packages:
@@ -467,31 +647,19 @@ packages:
     resolution: {integrity: sha512-jxQYkj8dSIzc0cD6cMMNdOc1UVjqSqu8BZdor5s8cGjW2I8BjODt/kWPVdY+u9zj3ms75Q5qaZgnxUad83+eAg==}
     engines: {node: '>=22.0.0'}
 
-  '@cloudflare/unenv-preset@2.16.1':
-    resolution: {integrity: sha512-ECxObrMfyTl5bhQf/lZCXwo5G6xX9IAUo+nDMKK4SZ8m4Jvvxp52vilxyySSWh2YTZz8+HQ07qGH/2rEom1vDw==}
+  '@cloudflare/unenv-preset@2.16.2':
+    resolution: {integrity: sha512-JBP1+Z7ZSNG/d4mRP+y8VC5dka3tZVMLEZRvS+rzQ4DGV1EoxRFQckcJTTkXbHSQiTj0DtNI01Zwb/V2fX0mvQ==}
     peerDependencies:
       unenv: 2.0.0-rc.24
-      workerd: '>1.20260305.0 <2.0.0-0'
+      workerd: 1.20261009.1
     peerDependenciesMeta:
       workerd:
         optional: true
-
-  '@cloudflare/workerd-darwin-64@1.20260911.1':
-    resolution: {integrity: sha512-785eaY1bkR1cm4Z/PCUeteZYmTMe6lre2zz63/GdGGimsoMsKxgl4brFPRukim8iv28EyD1XoCB/VPYF20BERA==}
-    engines: {node: '>=16'}
-    cpu: [x64]
-    os: [darwin]
 
   '@cloudflare/workerd-darwin-64@1.20261009.1':
     resolution: {integrity: sha512-7iCi0o7InfEVHPd/gDTlC/KZKu11w+r3askU9Xr0ai8+qp4sDxI+jETS9kyZfemXOLG34VeN9ALJ0XfcAydjJA==}
     engines: {node: '>=16'}
     cpu: [x64]
-    os: [darwin]
-
-  '@cloudflare/workerd-darwin-arm64@1.20260911.1':
-    resolution: {integrity: sha512-WU4bFqEN0H7ndGWxoedegv95DmNVBtv0ncXcHG9nYFTUI78sxEb0qoT3U6Ga4hyBkzsJFBX/zvVBIGX3qKldGA==}
-    engines: {node: '>=16'}
-    cpu: [arm64]
     os: [darwin]
 
   '@cloudflare/workerd-darwin-arm64@1.20261009.1':
@@ -500,22 +668,10 @@ packages:
     cpu: [arm64]
     os: [darwin]
 
-  '@cloudflare/workerd-linux-64@1.20260911.1':
-    resolution: {integrity: sha512-0Y2gy62oxQxWa38qinSPE6zNL5+JmumJtDY9AWW1HB8KHuATxN71o5MGzmVFfB8PwZsiHfUd2Sv7O22krCOrhw==}
-    engines: {node: '>=16'}
-    cpu: [x64]
-    os: [linux]
-
   '@cloudflare/workerd-linux-64@1.20261009.1':
     resolution: {integrity: sha512-nSHH1unqREYAnoesLi5X+oa9tNty6/QHHhnnZDLQAo3eLrD0dekXeeV718asSacf5m5vLEnuGE7Dt5FMCfqzxQ==}
     engines: {node: '>=16'}
     cpu: [x64]
-    os: [linux]
-
-  '@cloudflare/workerd-linux-arm64@1.20260911.1':
-    resolution: {integrity: sha512-kttNPnx1r2lCqFUoMH62z7CqGV+j4QBbw5fdtaz4pzOrzBv0AWkNATt7onFUe+SwP8zhcepMtbm2F4kKzTf6VA==}
-    engines: {node: '>=16'}
-    cpu: [arm64]
     os: [linux]
 
   '@cloudflare/workerd-linux-arm64@1.20261009.1':
@@ -523,12 +679,6 @@ packages:
     engines: {node: '>=16'}
     cpu: [arm64]
     os: [linux]
-
-  '@cloudflare/workerd-windows-64@1.20260911.1':
-    resolution: {integrity: sha512-5iO/YfoBDOgO3CrHdkiiVP8SL3O2jC+c6Ux3d378TSPKLhU5+CgHjtE/ZSodWQrzr4FzFRqdW8S7n5nbyD1MHQ==}
-    engines: {node: '>=16'}
-    cpu: [x64]
-    os: [win32]
 
   '@cloudflare/workerd-windows-64@1.20261009.1':
     resolution: {integrity: sha512-PMPVTlpyKu/v3Iqix36swEZUdzCFv/yMOQ2bqZy4gR5D5aX6fxu5bZqHNSjBcYDAQ+73wzP+Mxpgg690Da3aQQ==}
@@ -2539,8 +2689,8 @@ packages:
   micromark@4.0.2:
     resolution: {integrity: sha512-zpe98Q6kvavpCr1NPVSCMebCKfD7CA2NqZ+rykeNhONIJBpc1tFKt9hucLGwha3jNTNI8lHpctWJWoimVF4PfA==}
 
-  miniflare@5.20260911.0-alpha:
-    resolution: {integrity: sha512-CRieJmvHx+7rNqnA5SKdsYsER6rfkUIE/jruIUw+fLhsQ4sORfuMtr3+FQzsQ9/y8lhk061V4Fl1DFdHiyBB6g==}
+  miniflare@5.20261006.0-alpha:
+    resolution: {integrity: sha512-UP3qIeQKHba59GHxBqD8H2GateacluT4vrjIpqEgH78kCSUxdu8jA0f7MH7ftRSAnnB1oOvEsDtav3xevQDbpQ==}
     engines: {node: '>=22.0.0'}
 
   mri@1.2.0:
@@ -3016,8 +3166,8 @@ packages:
     resolution: {integrity: sha512-R+RODBqp6i2pPflGdq+xIOUkl+RNfGgHwoinecKu/JCuf2uO06cOKoDbI2P7Dn6KcswdKwrczbU6IYJ6K8X+wg==}
     engines: {node: '>=18.17'}
 
-  undici@7.29.0:
-    resolution: {integrity: sha512-IDxfleLmmbSskfWSUATiN1nfn2rDuvnMOqb5CWR92iIfojA0Ud+ulOAAEQ57LPr9rWmsreUyf5lwyao+7GNNVw==}
+  undici@7.29.1:
+    resolution: {integrity: sha512-RYONW2MeafgYlkVOKYKkA/Ag7BmXqgIWCa8t1m0JcxrQg9pI9lEqRhAOruOBCbAohOa/gkCF+iPi9hrgvTzu6Q==}
     engines: {node: '>=20.18.1'}
 
   undici@8.10.2:
@@ -3196,11 +3346,6 @@ packages:
     engines: {node: '>=8'}
     hasBin: true
 
-  workerd@1.20260911.1:
-    resolution: {integrity: sha512-vRr8QdBxueQOZJO1hRCI73EZlix87IAyBAcSyI3rA1VB+6oxjw3oaqzYnIV8C4IOPtUgihbdMAgzkb5GM4V7DQ==}
-    engines: {node: '>=16'}
-    hasBin: true
-
   workerd@1.20261009.1:
     resolution: {integrity: sha512-jqNj6vQULdBRqEXCrxeBlICX6jk+4LVXprcCODfXQTLnSXaAcq/SDE16M+z4KmktiCHFWKZwDF0yvNP/zObsCQ==}
     engines: {node: '>=16'}
@@ -3210,12 +3355,12 @@ packages:
     resolution: {integrity: sha512-+TvsA6VAVoMC3XDKR5MoC/qlLqDixEfOBysDEKnPIPou/NvoPWCAuXHXMsswwlvmEuvX56lQjvELLyLuzTKvRw==}
     engines: {node: '>=12'}
 
-  wrangler@4.131.1:
-    resolution: {integrity: sha512-1u5FMdJAn6UOcL02cVsIITcnHrk6mC7N+RF10EkVhPL18R/o9g5BZb4PCjByL+3AsRP5wQpppCIPHhYPRmIJwg==}
+  wrangler@4.148.0:
+    resolution: {integrity: sha512-wgbll8cA/7qOMJSoYQuJrw9M9lmedGzYtg6wvUK2p/7G1KaE88jFmQ/CvtQzVUF9C8PQtC4Y5p9vbpAsJGAlpA==}
     engines: {node: '>=22.0.0'}
     hasBin: true
     peerDependencies:
-      '@cloudflare/workers-types': ^5.20260911.1
+      '@cloudflare/workers-types': ^5.20261006.1
     peerDependenciesMeta:
       '@cloudflare/workers-types':
         optional: true
@@ -3330,37 +3475,22 @@ snapshots:
 
   '@cloudflare/kv-asset-handler@0.5.0': {}
 
-  '@cloudflare/unenv-preset@2.16.1(unenv@2.0.0-rc.24)(workerd@1.20260911.1)':
+  '@cloudflare/unenv-preset@2.16.2(unenv@2.0.0-rc.24)(workerd@1.20261009.1)':
     dependencies:
       unenv: 2.0.0-rc.24
     optionalDependencies:
-      workerd: 1.20260911.1
-
-  '@cloudflare/workerd-darwin-64@1.20260911.1':
-    optional: true
+      workerd: 1.20261009.1
 
   '@cloudflare/workerd-darwin-64@1.20261009.1':
-    optional: true
-
-  '@cloudflare/workerd-darwin-arm64@1.20260911.1':
     optional: true
 
   '@cloudflare/workerd-darwin-arm64@1.20261009.1':
     optional: true
 
-  '@cloudflare/workerd-linux-64@1.20260911.1':
-    optional: true
-
   '@cloudflare/workerd-linux-64@1.20261009.1':
     optional: true
 
-  '@cloudflare/workerd-linux-arm64@1.20260911.1':
-    optional: true
-
   '@cloudflare/workerd-linux-arm64@1.20261009.1':
-    optional: true
-
-  '@cloudflare/workerd-windows-64@1.20260911.1':
     optional: true
 
   '@cloudflare/workerd-windows-64@1.20261009.1':
@@ -3733,12 +3863,12 @@ snapshots:
     dependencies:
       acorn: 8.18.0
 
-  '@sveltejs/adapter-cloudflare@7.2.9(@sveltejs/kit@2.70.3(@sveltejs/vite-plugin-svelte@7.3.0(svelte@5.57.0)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1)))(svelte@5.57.0)(typescript@6.0.3)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1)))(wrangler@4.131.1(@types/node@26.5.1))':
+  '@sveltejs/adapter-cloudflare@7.2.9(@sveltejs/kit@2.70.3(@sveltejs/vite-plugin-svelte@7.3.0(svelte@5.57.0)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1)))(svelte@5.57.0)(typescript@6.0.3)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1)))(wrangler@4.148.0(@types/node@26.5.1))':
     dependencies:
       '@cloudflare/workers-types': 4.20260702.1
       '@sveltejs/kit': 2.70.3(@sveltejs/vite-plugin-svelte@7.3.0(svelte@5.57.0)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1)))(svelte@5.57.0)(typescript@6.0.3)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1))
       worktop: 0.8.0-next.18
-      wrangler: 4.131.1(@types/node@26.5.1)
+      wrangler: 4.148.0(@types/node@26.5.1)
 
   '@sveltejs/kit@2.70.3(@sveltejs/vite-plugin-svelte@7.3.0(svelte@5.57.0)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1)))(svelte@5.57.0)(typescript@6.0.3)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1))':
     dependencies:
@@ -5459,12 +5589,12 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  miniflare@5.20260911.0-alpha(@types/node@26.5.1):
+  miniflare@5.20261006.0-alpha(@types/node@26.5.1):
     dependencies:
       '@cspotcode/source-map-support': 0.8.1
       sharp: 0.35.4(@types/node@26.5.1)
-      undici: 7.29.0
-      workerd: 1.20260911.1
+      undici: 7.29.1
+      workerd: 1.20261009.1
       ws: 8.21.0
       youch: 4.1.0-beta.10
     transitivePeerDependencies:
@@ -6022,7 +6152,7 @@ snapshots:
 
   undici@6.29.0: {}
 
-  undici@7.29.0: {}
+  undici@7.29.1: {}
 
   undici@8.10.2: {}
 
@@ -6170,14 +6300,6 @@ snapshots:
       siginfo: 2.0.0
       stackback: 0.0.2
 
-  workerd@1.20260911.1:
-    optionalDependencies:
-      '@cloudflare/workerd-darwin-64': 1.20260911.1
-      '@cloudflare/workerd-darwin-arm64': 1.20260911.1
-      '@cloudflare/workerd-linux-64': 1.20260911.1
-      '@cloudflare/workerd-linux-arm64': 1.20260911.1
-      '@cloudflare/workerd-windows-64': 1.20260911.1
-
   workerd@1.20261009.1:
     optionalDependencies:
       '@cloudflare/workerd-darwin-64': 1.20261009.1
@@ -6191,16 +6313,16 @@ snapshots:
       mrmime: 2.0.1
       regexparam: 3.0.0
 
-  wrangler@4.131.1(@types/node@26.5.1):
+  wrangler@4.148.0(@types/node@26.5.1):
     dependencies:
       '@cloudflare/kv-asset-handler': 0.5.0
-      '@cloudflare/unenv-preset': 2.16.1(unenv@2.0.0-rc.24)(workerd@1.20260911.1)
+      '@cloudflare/unenv-preset': 2.16.2(unenv@2.0.0-rc.24)(workerd@1.20261009.1)
       blake3-wasm: 2.1.5
       esbuild: 0.28.1
-      miniflare: 5.20260911.0-alpha(@types/node@26.5.1)
+      miniflare: 5.20261006.0-alpha(@types/node@26.5.1)
       path-to-regexp: 6.3.0
       unenv: 2.0.0-rc.24
-      workerd: 1.20260911.1
+      workerd: 1.20261009.1
     optionalDependencies:
       fsevents: 2.3.3
     transitivePeerDependencies:

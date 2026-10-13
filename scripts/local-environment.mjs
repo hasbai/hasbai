@@ -2,17 +2,15 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createRequire } from 'node:module';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const apps = ['financial', 'blog', 'zboard', 'tavern'];
 const pnpm = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
 const expectedPnpm = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).packageManager.split('@')[1];
 
-function run(command, args, capture = false, env = process.env) {
+function run(command, args, capture = false) {
   const result = spawnSync(command, args, {
     cwd: root, encoding: 'utf8', stdio: capture ? 'pipe' : 'inherit',
-    env,
     shell: process.platform === 'win32' && command.endsWith('.cmd'),
   });
   if (result.error || result.status !== 0) throw new Error(`${command} ${args.join(' ')} failed.`);
@@ -21,6 +19,9 @@ function run(command, args, capture = false, env = process.env) {
 
 function info() {
   console.log(`Node ${process.version}; pnpm ${run(pnpm, ['--version'], true)} (required ${expectedPnpm})`);
+  const manifest = join(root, 'apps/financial/node_modules/wrangler/package.json');
+  const wrangler = existsSync(manifest) ? JSON.parse(readFileSync(manifest, 'utf8')).version : 'not installed; run setup';
+  console.log(`Wrangler ${wrangler}; dependency versions: pnpm-workspace.yaml catalog`);
   console.log(run('git', ['status', '--short', '--branch'], true));
   for (const [index, app] of apps.entries()) {
     console.log(`${app}: apps/${app}; port ${5173 + index}; docs/${app}/README.md`);
@@ -48,11 +49,8 @@ try {
     case 'api': {
       const app = process.argv[3];
       if (!['zboard', 'tavern'].includes(app)) throw new Error('API app must be zboard or tavern.');
-      // Reuse Blog's pinned newer runtime: Wrangler's bundled workerd predates these compatibility dates.
-      const runtime = createRequire(new URL('../apps/blog/package.json', import.meta.url))('workerd').default;
       run(pnpm, ['--filter', app, 'build']);
-      run(pnpm, ['--dir', `apps/${app}`, 'exec', 'wrangler', 'dev', '--port', '8787', '--local'], false,
-        { ...process.env, MINIFLARE_WORKERD_PATH: runtime });
+      run(pnpm, ['--dir', `apps/${app}`, 'exec', 'wrangler', 'dev', '--port', '8787', '--local']);
       break;
     }
     case 'cleanup': {

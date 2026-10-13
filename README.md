@@ -33,7 +33,6 @@ Zboard/Tavern 的本地 Worker API 启动方式见各应用文档。根 `pnpm bu
 
 快捷操作提供环境摘要、依赖安装、四应用启动和类型检查。
 Zboard 与酒馆的 API 操作先构建，再启动本地 Worker。
-操作复用博客已固定的 workerd，以支持两应用的兼容日期。
 两者共用 8787，须分别启动。
 API 命令为 `node scripts/local-environment.mjs api <zboard|tavern>`。
 类型检查不替代[提交前检查](docs/TESTING.md#运行)。
@@ -41,3 +40,11 @@ API 命令为 `node scripts/local-environment.mjs api <zboard|tavern>`。
 清理脚本只删除各应用的 `dist`、`dist-e2e`、`coverage` 和 `.svelte-kit`。
 依赖缓存、凭据、本地数据库及测试和截图证据保留。
 设置和清理脚本不复制凭据、不迁移数据库，也不启动服务或部署。
+
+外部直接依赖在 `pnpm-workspace.yaml` 的 `catalog` 统一固定版本。
+各应用和共享包使用 `catalog:` 引用；共享包的 peer 兼容范围保留。
+
+Wrangler 固定 `4.148.0`，workerd override 固定 `1.20261009.1`。
+此组合复用本机缓存；升级 Wrangler 时复核或撤销 override。
+变更后须验证真实 Worker 启动和会话运行时。
+安装使用 pnpm 全局内容缓存，不复制其他工作树的 `node_modules`。

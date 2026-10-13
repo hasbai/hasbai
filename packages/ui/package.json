@@ -34,11 +34,11 @@
     "./notice/index.js": "./src/components/notice/index.ts"
   },
   "dependencies": {
-    "bits-ui": "^2.19.2",
-    "clsx": "^2.1.1",
-    "tailwind-merge": "^3.7.0",
-    "tailwind-variants": "^3.3.1",
-    "@lucide/svelte": "^1.45.0"
+    "bits-ui": "catalog:",
+    "clsx": "catalog:",
+    "tailwind-merge": "catalog:",
+    "tailwind-variants": "catalog:",
+    "@lucide/svelte": "catalog:"
   },
   "peerDependencies": {
     "svelte": "^5.57.0"
