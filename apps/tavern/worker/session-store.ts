@@ -1,4 +1,3 @@
-import { draftProblems } from './narrative';
 import type { FinishReason, Message } from '../shared/types';
 import { HttpError } from './http';
 import type { Summary } from './context';
@@ -65,9 +64,6 @@ export class SessionStore {
  directory(){return this.rows<SessionRow & Record<string,SqlStorageValue>>('SELECT * FROM sessions WHERE id=?',this.id)[0];}
  idle(){const r=this.get();if(r.generation_id)throw new HttpError(409,'请先停止生成');return r;}
  private recoverDrafts(assistantId?:string,reason:FinishReason='interrupted'){
-  // Recovery must recheck a final partial: the process may have died before validation.
-  const drafts=this.rows<{message_id:string;content:string}>("SELECT d.message_id,d.content FROM generation_drafts d JOIN messages m ON m.id=d.message_id WHERE m.session_id=? AND m.status IN ('pending','aborted')"+(assistantId?' AND m.id=?':''),this.id,...(assistantId?[assistantId]:[]));
-  for(const draft of drafts)if(draftProblems(draft.content).length)this.discardDraft(draft.message_id);
   this.write("UPDATE messages SET content=COALESCE((SELECT content FROM generation_drafts WHERE message_id=messages.id),content),status='aborted',finish_reason=CASE WHEN status='aborted' AND finish_reason IS NOT NULL THEN finish_reason ELSE ? END,candidates_json=NULL WHERE session_id=? AND (status='pending' OR (status='aborted' AND EXISTS(SELECT 1 FROM generation_drafts WHERE message_id=messages.id)))"+(assistantId?' AND id=?':''),reason,this.id,...(assistantId?[assistantId]:[]));
   this.write('DELETE FROM generation_drafts WHERE message_id IN (SELECT id FROM messages WHERE session_id=?'+(assistantId?' AND id=?':'')+')',this.id,...(assistantId?[assistantId]:[]));
  }
@@ -90,10 +86,8 @@ export class SessionStore {
  pending(assistantId:string){return this.owns(assistantId)&&this.findMessage(assistantId)?.status==='pending';}
  saveSummary(assistantId:string,summary:string|null){if(!this.pending(assistantId))return false;return this.write('UPDATE sessions SET summary_json=? WHERE id=? AND generation_id=? AND EXISTS(SELECT 1 FROM messages WHERE id=? AND status=\'pending\')',summary,this.id,assistantId,assistantId)>0;}
  saveOutput(assistantId:string,content:string){if(!this.pending(assistantId))return false;return this.write("UPDATE messages SET content=? WHERE id=? AND session_id=? AND status='pending'",content,assistantId,this.id)>0;}
- /** Private checkpoint: pending API messages never expose unaudited drafts. */
+ /** Private checkpoint: pending API messages do not expose in-progress drafts. */
  saveDraft(assistantId:string,content:string){if(!this.owns(assistantId))return false;this.write('INSERT INTO generation_drafts VALUES(?,?) ON CONFLICT(message_id) DO UPDATE SET content=excluded.content',assistantId,content);return true;}
- /** Persist rejection before any later cleanup can fail; old versions remain untouched. */
- rejectDraft(assistantId:string){return this.transaction(()=>{if(!this.owns(assistantId))return false;this.write("INSERT INTO generation_drafts VALUES(?,?) ON CONFLICT(message_id) DO UPDATE SET content=excluded.content",assistantId,'');this.write("UPDATE turn_snapshots SET steps_json='[]' WHERE message_id=?",assistantId);return true;});}
  discardDraft(assistantId:string){this.write('DELETE FROM generation_drafts WHERE message_id=?',assistantId);}
  finish(assistantId:string,output:string,status:Message['status'],finishReason:FinishReason,candidates:string[],state?:StoryState,projection?:ModelProjection){return this.transaction(()=>{
   if(this.owns(assistantId)){

@@ -1,3 +1,4 @@
+import { readPrompts } from './prompts';
 import { DEFAULT_SETTINGS, type Character, type JsonObject, type Message, type Session, type Settings, type Worldbook } from '../shared/types';
 import { importCard, parseBook, parseCard, string, strings } from '../shared/cards';
 import { normalizeSettings } from '../shared/settings';
@@ -14,7 +15,7 @@ export function worldbook(row:BookRow):Worldbook {const b=parseBook(JSON.parse(r
 export function settings(value:unknown):Settings {
  try { return normalizeSettings(value); } catch (e) { throw new HttpError(400,(e as Error).message); }
 }
-export async function userSettings(env:Env,owner:string) {const r=await env.DB.prepare('SELECT settings_json FROM settings WHERE owner=?').bind(owner).first<{settings_json:string}>();return r?settings(JSON.parse(r.settings_json)):{...DEFAULT_SETTINGS};}
+export async function userSettings(env:Env,owner:string) {const r=await env.DB.prepare('SELECT settings_json FROM settings WHERE owner=?').bind(owner).first<{settings_json:string}>();const raw=r?JSON.parse(r.settings_json):{};if(raw.systemPrompt===undefined)raw.systemPrompt=(await readPrompts(env)).texts.systemTemplate;return settings(raw);}
 export async function getSession(env:Env,owner:string,id:string) {const r=await env.DB.prepare('SELECT * FROM sessions WHERE owner=? AND id=?').bind(owner,id).first<SessionRow>(); if (!r) throw new HttpError(404,'会话不存在');return r;}
 export async function getMessages(env:Env,id:string) { const r=await env.DB.prepare('SELECT * FROM messages WHERE session_id=? ORDER BY ordinal,created_at,id').bind(id).all<MessageRow>();return r.results.map(message);}
 /** Regenerated assistants share the same ordinal; newest version is displayed, including partial/error outcomes. */
