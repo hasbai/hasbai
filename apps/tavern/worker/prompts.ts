@@ -9,7 +9,7 @@ export function promptTexts(value:unknown):PromptTexts {
 }
 export async function readPrompts(env:Pick<Env,'PROMPTS'>):Promise<PromptDocument>{
  const raw=await env.PROMPTS.get(PROMPT_KEY);
- if(raw===null)return {revision:'defaults-v1',texts:{...DEFAULT_PROMPTS}};
+ if(raw===null)return {revision:'defaults-v2',texts:{...DEFAULT_PROMPTS}};
  try{
   const data=JSON.parse(raw);
   if(typeof data.revision!=='string'||!data.revision)throw Error('revision');

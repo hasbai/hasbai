@@ -236,7 +236,7 @@
       "evidence": [
         {
           "spec": "e2e/tavern.spec.ts",
-          "test": "partial reply survives reopening and explicit continuation appends saved content",
+          "test": "partial reply remains an explicit error with no continuation action",
           "projects": [
             "iphone",
             "desktop"

@@ -1,6 +1,6 @@
 # Tavern · 酒馆
 
-私人角色扮演对话：标准角色卡/世界书、在线搜卡安装、持久会话、流式生成、停止、续写、重新生成与编辑分支。模型请求固定服务端 AI Gateway `default` / `dynamic/rp`。
+私人角色扮演对话：标准角色卡/世界书、在线搜卡安装、持久会话、流式生成、停止、重新生成与编辑分支。模型请求固定服务端 AI Gateway `default` / `dynamic/rp`。
 
 仓库根 `pnpm dev:tavern` 启动前端；本地 API 在此目录 `pnpm exec wrangler dev --port 8787`。独立 Worker/D1/私有 R2 与每会话 SQLite DO，共用北极小站登录。
 
