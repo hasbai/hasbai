@@ -13,7 +13,6 @@
     languageName,
   } from "$lib/locales";
   import { translateUI } from "$lib/i18n";
-  import { goto } from "$app/navigation";
   import { site } from "$lib/content";
   let { children } = $props();
   const locale = $derived(
@@ -24,6 +23,8 @@
     "blog-languages",
     () => page.data.available ?? ["zh-CN", "zh-TW", "en-US"],
   );
+  const languages = $derived(page.data.locales ?? ["zh-CN", "zh-TW", "en-US"]);
+  const languageLabels: Record<string, string> = { "zh-CN": "简", "zh-TW": "繁", "en-US": "EN" };
   const t = (text: string) => translateUI(locale, text);
   const link = (path: string) =>
     localizedPath(path, locale, page.data.available);
@@ -77,17 +78,6 @@
 </svelte:head>
 <a class="skip" href="#main">{t("跳转至正文")}</a>
 <BackgroundEffect />
-{#if page.route.id === "/[slug=pageSlug]" || page.url.pathname.startsWith("/articles/") || /^\/notes\/\d+$/.test(page.url.pathname)}
-  <div class="page-bleed" aria-hidden="true">
-    <svg viewBox="0 0 1440 120" preserveAspectRatio="none"
-      ><path d="M-20 18 C260 19 330 12 570 18 S980 23 1460 15" /><path
-        d="M-20 43 C220 40 350 49 610 40 S1030 33 1460 44"
-      /><path d="M-20 68 C300 71 380 59 650 66 S1040 74 1460 65" /><path
-        d="M-20 93 C270 89 410 101 720 92 S1110 87 1460 96"
-      /></svg
-    >
-  </div>
-{/if}
 <header class:scrolled class="site-header">
   <div class="header-inner wrap">
     <a class="wordmark" href={link("/")} aria-label={site.name + t("首页")}
@@ -102,25 +92,23 @@
         >{/each}
     </nav>
     <div class="header-actions">
-      <select
+      <nav
         class="language-switch"
         aria-label={t("语言")}
-        value={locale}
-        onchange={(event) =>
-          goto(
-            localizedPath(
-              page.url.pathname,
-              event.currentTarget.value,
-              page.data.available,
-            ) +
-              page.url.search +
-              page.url.hash,
-          )}
+        style:--language-count={languages.length}
+        style:--language-index={Math.max(0, languages.indexOf(locale))}
       >
-        {#each page.data.locales ?? ["zh-CN", "zh-TW", "en-US"] as language}<option
-            value={language}>{languageName(language)}</option
-          >{/each}
-      </select>
+        <span class="language-indicator" aria-hidden="true"></span>
+        {#each languages as language}
+          <a
+            href={localizedPath(page.url.pathname, language, page.data.available) + page.url.search + page.url.hash}
+            lang={language}
+            aria-label={languageName(language)}
+            aria-current={locale === language ? "page" : undefined}
+            title={languageName(language)}
+          >{languageLabels[language] ?? languageName(language)}</a>
+        {/each}
+      </nav>
       <Button
         variant="ghost"
         size="icon"
