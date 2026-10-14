@@ -340,7 +340,7 @@ test("multilingual routes, fallback, language settings and translation editing",
   const ssr = await request.get("/en/articles/hello-world");
   expect(ssr.status()).toBe(200);
   expect(await ssr.text()).toContain("Hello World, a new beginning");
-  await page.goto("/en/articles/hello-world");
+  await page.goto("/en/articles/hello-world?source=language#reading");
   await expect(
     page.getByRole("heading", { name: english.title }),
   ).toBeVisible();
@@ -348,13 +348,24 @@ test("multilingual routes, fallback, language settings and translation editing",
   await expect(
     page.getByRole("link", { name: "Articles", exact: true }).first(),
   ).toHaveAttribute("href", "/en-US/articles");
+  const languageSwitch = page.getByRole("navigation", { name: "Language", exact: true });
+  await expect(languageSwitch.getByRole("link")).toHaveText(["简", "繁", "EN"]);
+  await expect(languageSwitch.getByRole("link", { name: "English", exact: true })).toHaveAttribute("aria-current", "page");
+  for (const action of await page.locator('.header-actions [data-slot="button"]').all()) {
+    const box = await action.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.width).toBe(44);
+    expect(box!.height).toBe(44);
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await expect(page).toHaveScreenshot("english-article.png", {
     fullPage: true,
   });
-  await page.getByLabel("Language", { exact: true }).selectOption("zh-TW");
+  await page.getByRole("navigation", { name: "Language", exact: true }).getByRole("link", { name: "繁體中文" }).click();
   await expect(
     page.getByRole("heading", { name: "Hello World，开始记录" }),
   ).toBeVisible();
+  await expect(page).toHaveURL(/\/zh-TW\/articles\/hello-world\?source=language#reading$/);
   await expect(page.getByRole("status")).toHaveText("正在顯示简体中文原文");
   await expect(page).toHaveScreenshot("traditional-article.png", {
     fullPage: true,
@@ -410,8 +421,17 @@ test("multilingual routes, fallback, language settings and translation editing",
   await expect(
     page.getByRole("textbox", { name: "Body", exact: true }),
   ).toContainText("New translation body.");
-  // A cancelled language change retains the actual selected language and dirty input.
+  // Both header navigation and editor language changes retain dirty input when cancelled.
   await page.getByLabel('Article URL').fill('unsaved-path');
+  const editorUrl = page.url();
+  const headerDiscard = new Promise<void>(resolve => page.once('dialog', async dialog => {
+    await dialog.dismiss();
+    resolve();
+  }));
+  await page.getByRole('navigation', { name: 'Language', exact: true }).getByRole('link', { name: '简体中文', exact: true }).click();
+  await headerDiscard;
+  await expect(page).toHaveURL(editorUrl);
+  await expect(page.getByLabel('Article URL')).toHaveValue('unsaved-path');
   page.once('dialog',dialog=>dialog.dismiss());
   await page.getByLabel('Content language').selectOption('zh-CN');
   await expect(page.getByLabel('Content language')).toHaveValue('en-US');
