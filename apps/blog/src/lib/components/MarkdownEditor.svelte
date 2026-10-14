@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { useNotifications } from "@hasbai/ui/notice";
+  const notifications = useNotifications();
   import { ui } from "$lib/i18n";
   const t = ui();
   import { onMount } from "svelte";
@@ -45,7 +47,7 @@
   let previewHtml = $state("");
   let previewLoading = $state(false);
   const extended = $derived(hasMarkdownExtensions(value));
-  let error = $state("");
+  let linkError = $state("");
   let linkOpen = $state(false);
   let linkUrl = $state("");
   onMount(() => {
@@ -103,7 +105,7 @@
       })
       .catch(() => {
         if (current) {
-          error = t("预览失败");
+          notifications.show(t("预览失败"), "error");
           previewLoading = false;
         }
       });
@@ -132,7 +134,6 @@
     const file = (event.currentTarget as HTMLInputElement).files?.[0];
     if (!file) return;
     busy = true;
-    error = "";
     try {
       const image = await upload(file);
       editor
@@ -141,16 +142,17 @@
         .setImage({ src: image.src, alt: image.name, title: image.name })
         .run();
     } catch (e) {
-      error = e instanceof Error ? e.message : t("上传失败");
+      notifications.show(e instanceof Error ? t(e.message) : t("上传失败"), "error");
     } finally {
       busy = false;
       fileInput.value = "";
     }
   }
   function addLink() {
+    linkError = "";
     if (!editor) return;
     if (linkUrl && !/^https?:\/\//i.test(linkUrl)) {
-      error = t("请输入 http 或 https 链接");
+      linkError = t("请输入 http 或 https 链接");
       return;
     }
     editor
@@ -160,7 +162,6 @@
       .setLink({ href: linkUrl })
       .run();
     linkOpen = false;
-    error = "";
   }
 </script>
 
@@ -322,8 +323,9 @@
       variant="ghost"
       onclick={() => (linkOpen = false)}>{t("取消")}</Button
     >
+    {#if linkError}<p class="error" role="alert">{linkError}</p>{/if}
   </div>{/if}
-{#if error}<p class="error py-3" role="alert">{error}</p>{/if}{#if busy}<p
+{#if busy}<p
     class="meta py-3"
     role="status"
   >

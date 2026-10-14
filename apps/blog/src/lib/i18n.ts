@@ -14,6 +14,12 @@ void instance.init({
   interpolation: { escapeValue: false },
 });
 export function translateUI(locale: string, text: string, options?: TOptions) {
+  const warningPrefix = "原文已保存，以下语言待翻译：";
+  if (text.startsWith(warningPrefix))
+    return instance.t(warningPrefix + "{{languages}}", {
+      ...options, lng: locale, defaultValue: warningPrefix + "{{languages}}",
+      languages: text.slice(warningPrefix.length),
+    });
   return instance.t(text, { ...options, lng: locale, defaultValue: text });
 }
 export function ui() {

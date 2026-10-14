@@ -23,7 +23,6 @@
 
 <section class="wrap collection note-collection">
   <div class="collection-heading entrance">
-    <span class="eyebrow">NOTES</span>
     <h1>{t("手记")}</h1>
   </div>
   {#if notes.length}
@@ -42,7 +41,7 @@
                 href={link(notePath(note))}
               >
                 <span class="note-banner"
-                  ><span>NOTE №{note.sequence}</span><svg
+                  ><svg
                     class="note-banner-wave"
                     viewBox="0 0 800 80"
                     preserveAspectRatio="none"

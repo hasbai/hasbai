@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { useNotifications } from "@hasbai/ui/notice";
+  const notifications = useNotifications();
   import { ui, links, dates } from "$lib/i18n";
   const t = ui();
   const dateLabel = dates();
@@ -9,6 +11,10 @@
   import { notePath, site, type Note } from "$lib/content";
   import { ArrowLeft } from "@lucide/svelte";
   let { note, html }: { note: Note; html: string } = $props();
+  $effect(() => {
+    if (note.locale && note.locale !== page.data.locale)
+      return notifications.show(t("正在显示{{language}}原文", { language: languageName(note.locale) }), "warning");
+  });
 </script>
 
 <svelte:head>
@@ -21,14 +27,7 @@
   <a class="back-link" href={link("/notes")}
     ><ArrowLeft size={16} /> {t("手记")}</a
   >
-  {#if note.locale && note.locale !== page.data.locale}<p
-      class="meta"
-      role="status"
-    >
-      {t("正在显示{{language}}原文", { language: languageName(note.locale) })}
-    </p>{/if}
   <header class="reader-head note-reader-head">
-    <span class="eyebrow">LETTER №{note.sequence}</span>
     <h1 class="serif">{t("手记")}</h1>
     <time datetime={note.published_at ?? ""}
       >{dateLabel(note.published_at)}</time

@@ -54,7 +54,6 @@
 
 <section class="wrap recent-section" id="recent">
   <div class="section-intro" use:reveal>
-    <span class="eyebrow">RECENT WRITING</span>
     <div><h2 class="serif">{t("近期笔墨")}</h2></div>
   </div>
   {#if data.recent.length}

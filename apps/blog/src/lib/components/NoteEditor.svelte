@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { Notice, useNotifications } from "@hasbai/ui/notice";
+  const notifications = useNotifications();
   import { ui, links } from "$lib/i18n";
   const t = ui();
   const link = links();
@@ -37,7 +39,6 @@
   let saving = $state(false);
   let uploading = $state(false);
   let error = $state("");
-  let notice = $state("");
   let baseline = $state("");
   let deleting = $state(false);
   let coverInput = $state<HTMLInputElement>();
@@ -101,7 +102,7 @@
     const version = translations.find((v) => v.locale === next);
     markdown = version?.markdown ?? "";
     baseline = JSON.stringify(payload());
-    notice = version ? "" : t("缺少此语言的译文");
+    if (!version) notifications.show(t("缺少此语言的译文"));
     return true;
   }
   async function manualTranslate() {
@@ -131,9 +132,9 @@
       publishedAt = result.item.published_at;
       translations = result.item.translations ?? [{content_id:original!.id,locale,title:result.item.title ?? "",excerpt:result.item.excerpt,markdown:result.item.markdown,updated_at:result.item.translation_updated_at}];
       changeLanguage(locale, true);
-      notice = t("翻译已覆盖保存");
+      notifications.show(t("翻译已保存"), "success");
     } catch (e) {
-      error = e instanceof Error ? t(e.message) : t("翻译失败");
+      notifications.show(e instanceof Error ? t(e.message) : t("翻译失败"), "error");
     } finally {
       translating = false;
     }
@@ -143,7 +144,6 @@
     if (saving || uploading || translating) return;
     saving = true;
     error = "";
-    notice = "";
     const previousStatus = status;
     const previousPublished = publishedAt;
     status = nextStatus;
@@ -162,14 +162,16 @@
       publishedAt = note.published_at;
       translations = note.translations ?? [{content_id:note.id,locale,title:"",excerpt:note.excerpt,markdown:note.markdown,updated_at:note.translation_updated_at ?? note.updated_at}];
       baseline = JSON.stringify(payload());
-      notice = status === "published" ? t("已发布") : t("草稿已保存");
-      notice = original?.translation_warning || notice;
+      notifications.show(
+        original.translation_warning ? t(original.translation_warning) : status === "published" ? t("已发布") : t("草稿已保存"),
+        original.translation_warning ? "warning" : "success",
+      );
       saving = false;
       if (!id) await goto("/studio/notes/" + note.id, { replaceState: true });
     } catch (e) {
       status = previousStatus;
       publishedAt = previousPublished;
-      error = e instanceof Error ? t(e.message) : t("保存失败");
+      notifications.show(e instanceof Error ? t(e.message) : t("保存失败"), "error");
     } finally {
       saving = false;
     }
@@ -195,7 +197,7 @@
       if (!response.ok) throw new Error(result.message || t("上传失败"));
       coverId = result.id;
     } catch (e) {
-      error = e instanceof Error ? t(e.message) : t("上传失败");
+      notifications.show(e instanceof Error ? t(e.message) : t("上传失败"), "error");
     } finally {
       uploading = false;
       if (coverInput) coverInput.value = "";
@@ -211,7 +213,7 @@
       saving = false;
       await goto("/studio");
     } catch (e) {
-      error = e instanceof Error ? t(e.message) : t("删除失败");
+      notifications.show(e instanceof Error ? t(e.message) : t("删除失败"), "error");
       saving = false;
     }
   }
@@ -236,8 +238,7 @@
           ? t("正在保存…")
           : dirty
             ? t("未保存")
-            : notice ||
-              (status === "published" ? t("已发布") : t("草稿"))}</span
+            : (status === "published" ? t("已发布") : t("草稿"))}</span
       >
       {#if original?.status === "published"}<Button
           variant="ghost"
@@ -259,18 +260,14 @@
   </div>
   {#if loading}<div class="empty" role="status">{t("正在打开手记…")}</div>
   {:else if error && !baseline}<div class="empty">
-      <p class="error" role="alert">{error}</p>
+      <Notice variant="error">{error}</Notice>
       <Button onclick={load}>{t("重试")}</Button>
     </div>
   {:else}
-    {#if error}<p class="error my-5" role="alert">{error}</p>{/if}
     <div
       class="grid items-start gap-12 py-8 lg:grid-cols-[minmax(0,1fr)_248px]"
     >
       <div class="min-w-0">
-        <span class="eyebrow"
-          >LETTER {original ? `№${original.sequence}` : "/ NEW"}</span
-        >
         <h1 class="serif mt-4 text-4xl">{t("手记")}</h1>
         <div class="mt-7">
           {#key locale}<MarkdownEditor

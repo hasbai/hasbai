@@ -69,8 +69,7 @@
 }
 .wrap { width: min(1040px, calc(100% - 48px)); margin-inline: auto; }
 .serif { font-family: var(--font-serif); }
-.meta, .eyebrow { font-size: 12px; color: var(--muted-foreground); letter-spacing: .08em; }
-.eyebrow { font-size: 11px; letter-spacing: .24em; font-weight: 500; }
+.meta { font-size: 12px; color: var(--muted-foreground); letter-spacing: .08em; }
 .skip { position: absolute; z-index: 100; top: -80px; left: 16px; padding: 12px; background: var(--card); }
 .skip:focus { top: 8px; }
 
@@ -295,6 +294,7 @@ main { min-height: 70vh; padding-top: 72px; }
 }
 
 @media (max-width: 780px) {
+  :root { --notification-bottom: 76px; }
   main { padding-top: 0; padding-bottom: 80px; }
   .site-header { top: 0; }
   .editor-page { padding-top: 76px; }

@@ -11,31 +11,47 @@
   "pages": [
     {
       "source": "src/routes/+page.svelte",
-      "scenarios": ["reading"]
+      "scenarios": [
+        "reading"
+      ]
     },
     {
       "source": "src/routes/articles/+page.svelte",
-      "scenarios": ["reading"]
+      "scenarios": [
+        "reading"
+      ]
     },
     {
       "source": "src/routes/articles/[title]/+page.svelte",
-      "scenarios": ["reading", "markdown-extensions", "multilingual"]
+      "scenarios": [
+        "reading",
+        "markdown-extensions",
+        "multilingual"
+      ]
     },
     {
       "source": "src/routes/notes/+page.svelte",
-      "scenarios": ["reading"]
+      "scenarios": [
+        "reading"
+      ]
     },
     {
       "source": "src/routes/notes/[sequence=positiveInteger]/+page.svelte",
-      "scenarios": ["reading"]
+      "scenarios": [
+        "reading"
+      ]
     },
     {
       "source": "src/routes/timeline/+page.svelte",
-      "scenarios": ["reading"]
+      "scenarios": [
+        "reading"
+      ]
     },
     {
       "source": "src/routes/tags/[tag]/+page.svelte",
-      "scenarios": ["reading"]
+      "scenarios": [
+        "reading"
+      ]
     },
     {
       "source": "src/routes/[category]/[title]/+page.svelte",
@@ -51,35 +67,55 @@
     },
     {
       "source": "src/routes/studio/+page.svelte",
-      "scenarios": ["writing", "editor-access", "multilingual"]
+      "scenarios": [
+        "writing",
+        "editor-access",
+        "multilingual"
+      ]
     },
     {
       "source": "src/routes/studio/new/+page.svelte",
-      "scenarios": ["writing"]
+      "scenarios": [
+        "writing"
+      ]
     },
     {
       "source": "src/routes/studio/[id]/+page.svelte",
-      "scenarios": ["writing", "markdown-extensions", "multilingual"]
+      "scenarios": [
+        "writing",
+        "markdown-extensions",
+        "multilingual"
+      ]
     },
     {
       "source": "src/routes/studio/notes/new/+page.svelte",
-      "scenarios": ["writing"]
+      "scenarios": [
+        "writing"
+      ]
     },
     {
       "source": "src/routes/studio/notes/[id]/+page.svelte",
-      "scenarios": ["writing"]
+      "scenarios": [
+        "writing"
+      ]
     },
     {
       "source": "src/routes/[slug=pageSlug]/+page.svelte",
-      "scenarios": ["pages"]
+      "scenarios": [
+        "pages"
+      ]
     },
     {
       "source": "src/routes/studio/pages/new/+page.svelte",
-      "scenarios": ["pages"]
+      "scenarios": [
+        "pages"
+      ]
     },
     {
       "source": "src/routes/studio/pages/[id]/+page.svelte",
-      "scenarios": ["pages"]
+      "scenarios": [
+        "pages"
+      ]
     }
   ],
   "scenarios": [
@@ -90,7 +126,10 @@
         {
           "spec": "e2e/blog.spec.ts",
           "test": "SSR, direct Data API navigation, skeleton, canonical URLs and reading states",
-          "projects": ["iphone", "desktop"],
+          "projects": [
+            "iphone",
+            "desktop"
+          ],
           "snapshots": [
             "home.png",
             "home-dark.png",
@@ -115,8 +154,15 @@
         {
           "spec": "e2e/blog.spec.ts",
           "test": "editor writes articles and titleless notes through Data API",
-          "projects": ["iphone", "desktop"],
-          "snapshots": ["studio.png", "editor.png", "note-editor.png"]
+          "projects": [
+            "iphone",
+            "desktop"
+          ],
+          "snapshots": [
+            "studio.png",
+            "editor.png",
+            "note-editor.png"
+          ]
         }
       ]
     },
@@ -127,7 +173,10 @@
         {
           "spec": "e2e/blog.spec.ts",
           "test": "standalone pages stay out of feeds and support editable paths",
-          "projects": ["iphone", "desktop"],
+          "projects": [
+            "iphone",
+            "desktop"
+          ],
           "snapshots": [
             "privacy.png",
             "privacy-dark.png",
@@ -145,8 +194,14 @@
         {
           "spec": "e2e/blog.spec.ts",
           "test": "ordinary logged-in users can read published content but cannot enter the editor",
-          "projects": ["iphone", "desktop"],
-          "snapshots": ["studio-denied.png", "studio-denied-dark.png"]
+          "projects": [
+            "iphone",
+            "desktop"
+          ],
+          "snapshots": [
+            "studio-denied.png",
+            "studio-denied-dark.png"
+          ]
         }
       ]
     },
@@ -157,7 +212,10 @@
         {
           "spec": "e2e/blog.spec.ts",
           "test": "Markdown extensions render safely and survive editor preview and save",
-          "projects": ["iphone", "desktop"],
+          "projects": [
+            "iphone",
+            "desktop"
+          ],
           "snapshots": [
             "markdown-extensions.png",
             "markdown-extensions-dark.png",
@@ -173,12 +231,18 @@
         {
           "spec": "e2e/blog.spec.ts",
           "test": "multilingual routes, fallback, language settings and translation editing",
-          "projects": ["iphone", "desktop"],
+          "projects": [
+            "iphone",
+            "desktop"
+          ],
           "snapshots": [
             "english-article.png",
             "traditional-article.png",
             "language-settings.png",
-            "english-editor.png"
+            "english-editor.png",
+            "translation-notification.png",
+            "translation-notification-dark.png",
+            "translation-error-notification.png"
           ]
         }
       ]

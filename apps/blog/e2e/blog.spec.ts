@@ -84,6 +84,7 @@ test('SSR, direct Data API navigation, skeleton, canonical URLs and reading stat
   await page.getByRole('link', { name: /Hello World，开始记录/ }).click();
   await expect(page).toHaveURL(/\/articles\/hello-world$/);
   await expect(page.locator('link[rel=canonical]')).toHaveAttribute('href', 'https://hasbai.xyz/articles/hello-world');
+  await expect(page.locator('main')).not.toContainText(/ARTICLE \/|LETTER №|RECENT WRITING|THE WRITING ROOM/);
   await expect(page).toHaveScreenshot('article.png', { fullPage: true });
   await page.getByRole('button', { name: '切换深色' }).click();
   await expect(page.locator('article.reading')).toHaveCSS('opacity', '1');
@@ -206,7 +207,9 @@ test('standalone pages stay out of feeds and support editable paths', async ({ p
   await expect(page.getByLabel('页面路径')).toBeFocused();
   await page.getByLabel('页面路径').fill('privacy');
   await page.getByRole('button', { name: '发布页面', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('页面路径已被使用');
+  await expect(page.getByRole('region', { name: '消息提示' }).getByRole('alert')).toContainText('页面路径已被使用');
+  await expect(page.locator('main')).not.toContainText('页面路径已被使用');
+  await page.getByRole('button', { name: '关闭提示' }).click();
   await expect(page.getByLabel('标题', { exact: true })).toHaveValue('自定义页面');
   await page.getByLabel('页面路径').fill('custom-page');
   await expect(page).toHaveScreenshot('page-editor.png', { fullPage: true });
@@ -219,7 +222,7 @@ test('standalone pages stay out of feeds and support editable paths', async ({ p
   await page.getByRole('button', { name: '更新页面', exact: true }).click();
   await expect(page.getByRole('link', { name: '查看', exact: true })).toHaveAttribute('href', '/changed-page');
   await page.getByLabel('标题', { exact: true }).fill('未保存的标题');
-  await expect(page.getByRole('status')).toHaveText('未保存');
+  await expect(page.locator('main').getByRole('status')).toHaveText('未保存');
   const discard = page.waitForEvent('dialog');
   page.once('dialog', (dialog) => dialog.dismiss());
   await page.getByRole('link', { name: '编辑室', exact: true }).click();
@@ -366,7 +369,8 @@ test("multilingual routes, fallback, language settings and translation editing",
     page.getByRole("heading", { name: "Hello World，开始记录" }),
   ).toBeVisible();
   await expect(page).toHaveURL(/\/zh-TW\/articles\/hello-world\?source=language#reading$/);
-  await expect(page.getByRole("status")).toHaveText("正在顯示简体中文原文");
+  await expect(page.getByRole("region", { name: "訊息提示" }).getByRole("status")).toHaveText("正在顯示简体中文原文");
+  await expect(page.locator("main")).not.toContainText("正在顯示简体中文原文");
   await expect(page).toHaveScreenshot("traditional-article.png", {
     fullPage: true,
   });
@@ -414,6 +418,7 @@ test("multilingual routes, fallback, language settings and translation editing",
     );
     await route.fulfill({ json: { item: await response.json() } });
   });
+  await page.clock.install();
   await page.getByRole("button", { name: "Translate now" }).click();
   await expect(page.getByLabel("Title", { exact: true })).toHaveValue(
     "Translated again",
@@ -421,6 +426,29 @@ test("multilingual routes, fallback, language settings and translation editing",
   await expect(
     page.getByRole("textbox", { name: "Body", exact: true }),
   ).toContainText("New translation body.");
+  const notifications = page.getByRole("region", { name: "Notifications" });
+  await expect(notifications.getByRole("status")).toHaveText("Translation saved");
+  await expect(page.locator("main")).not.toContainText("Translation saved");
+  await expect(notifications).toHaveCSS("position", "fixed");
+  if (page.viewportSize()!.width <= 780) {
+    const noticeBox = (await notifications.boundingBox())!;
+    const navBox = (await page.getByRole("navigation", { name: "Main navigation" }).boundingBox())!;
+    expect(noticeBox.y + noticeBox.height).toBeLessThanOrEqual(navBox.y - 8);
+  }
+  await notifications.hover();
+  await expect(page).toHaveScreenshot("translation-notification.png", { fullPage: false });
+  await page.getByRole("button", { name: "Switch to dark" }).click();
+  await notifications.hover();
+  await expect(page).toHaveScreenshot("translation-notification-dark.png", { fullPage: false });
+  await page.getByRole("button", { name: "Switch to light" }).click();
+  await page.getByRole("button", { name: "Dismiss notification" }).click();
+  await expect(notifications).toHaveCount(0);
+  await page.route("**/api/translate", route => route.fulfill({ status: 503, json: { message: "翻译失败" } }));
+  await page.getByRole("button", { name: "Translate now" }).click();
+  await expect(notifications.getByRole("alert")).toHaveText("Translation failed");
+  await expect(page.getByLabel("Title", { exact: true })).toHaveValue("Translated again");
+  await expect(page).toHaveScreenshot("translation-error-notification.png", { fullPage: false });
+  await page.getByRole("button", { name: "Dismiss notification" }).click();
   // Both header navigation and editor language changes retain dirty input when cancelled.
   await page.getByLabel('Article URL').fill('unsaved-path');
   const editorUrl = page.url();
@@ -449,6 +477,29 @@ test("multilingual routes, fallback, language settings and translation editing",
   await expect(page.getByLabel('Title',{exact:true})).toHaveValue('并发编辑标题');
   await expect(page.getByLabel('Article URL')).toHaveValue('concurrent-path');
   await expect(page.getByRole('textbox',{name:'Body',exact:true})).toContainText('并发正文');
-  await expect(page.getByRole('status').first()).toHaveText('Draft saved');
+  await expect(page.getByRole('region', { name: 'Notifications' }).getByRole('status')).toHaveText('Draft saved');
+  await expect(page.locator('main').getByRole('status')).toHaveText('Draft');
+  await notifications.hover();
+  await page.clock.runFor(6000);
+  await expect(notifications).toBeVisible();
+  await page.getByRole('button', { name: 'Dismiss notification' }).focus();
+  await page.mouse.move(0, 0);
+  await page.clock.runFor(6000);
+  await expect(notifications).toBeVisible();
+  await page.getByLabel('Title', { exact: true }).focus();
+  await page.clock.runFor(5100);
+  await expect(notifications).toHaveCount(0);
+  await page.route('**/api/content', async route => {
+    const saved = await (await route.fetch()).json();
+    await route.fulfill({ json: { ...saved, item: { ...saved.item,
+      translation_warning: '原文已保存，以下语言待翻译：zh-TW, en-US',
+    } } });
+  });
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await expect(notifications.getByRole('status')).toHaveText('Original saved. Translation pending: zh-TW, en-US');
+  await page.clock.runFor(6000);
+  await expect(notifications).toBeVisible();
+  await page.getByRole('button', { name: 'Dismiss notification' }).click();
+  await expect(notifications).toHaveCount(0);
 
 });

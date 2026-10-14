@@ -2,6 +2,8 @@
   import "../app.css";
   import { onMount, setContext } from "svelte";
   import { navigating, page } from "$app/state";
+  import { Notifications, createNotifications } from "@hasbai/ui/notice";
+  createNotifications();
   import { Button } from "@hasbai/ui/button";
   import { Sun, Moon, PenLine } from "@lucide/svelte";
   import SnowflakeMark from "$lib/components/SnowflakeMark.svelte";
@@ -157,3 +159,5 @@
   </div>
   <span class="footer-mark">© {new Date().getFullYear()} HASBAI</span>
 </footer>
+
+<Notifications label={t("消息提示")} closeLabel={t("关闭提示")} />

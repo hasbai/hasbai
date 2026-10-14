@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { Notice, useNotifications } from "@hasbai/ui/notice";
+  const notifications = useNotifications();
   import { ui, links } from "$lib/i18n";
   const t = ui();
   const link = links();
@@ -52,7 +54,6 @@
   let saving = $state(false);
   let uploading = $state(false);
   let error = $state("");
-  let notice = $state("");
   let baseline = $state("");
   let creatingTag = $state(false);
   let termName = $state("");
@@ -136,7 +137,7 @@
     excerpt = version?.excerpt ?? "";
     markdown = version?.markdown ?? "";
     baseline = JSON.stringify(payload());
-    notice = version ? "" : t("缺少此语言的译文");
+    if (!version) notifications.show(t("缺少此语言的译文"));
     return true;
   }
   async function manualTranslate() {
@@ -169,9 +170,9 @@
       savedTagIds = [...tagIds];
       translations = result.item.translations ?? [{content_id:original!.id,locale,title:result.item.title ?? "",excerpt:result.item.excerpt,markdown:result.item.markdown,updated_at:result.item.translation_updated_at}];
       changeLanguage(locale, true);
-      notice = t("翻译已覆盖保存");
+      notifications.show(t("翻译已保存"), "success");
     } catch (e) {
-      error = e instanceof Error ? t(e.message) : t("翻译失败");
+      notifications.show(e instanceof Error ? t(e.message) : t("翻译失败"), "error");
     } finally {
       translating = false;
     }
@@ -190,7 +191,6 @@
     }
     saving = true;
     error = "";
-    notice = "";
     const previousStatus = status;
     const previousPublished = publishedAt;
     status = nextStatus;
@@ -214,8 +214,10 @@
       translations = article.translations ?? [{content_id:article.id,locale,title:(article as Article & {title?:string}).title ?? "",excerpt:article.excerpt,markdown:article.markdown,updated_at:article.translation_updated_at ?? article.updated_at}];
       savedTagIds = [...tagIds];
       baseline = JSON.stringify(payload());
-      notice = status === "published" ? t("已发布") : t("草稿已保存");
-      notice = original?.translation_warning || notice;
+      notifications.show(
+        original.translation_warning ? t(original.translation_warning) : status === "published" ? t("已发布") : t("草稿已保存"),
+        original.translation_warning ? "warning" : "success",
+      );
       saving = false;
       if (!id)
         await goto(
@@ -225,7 +227,7 @@
     } catch (e) {
       status = previousStatus;
       publishedAt = previousPublished;
-      error = e instanceof Error ? t(e.message) : t("保存失败");
+      notifications.show(e instanceof Error ? t(e.message) : t("保存失败"), "error");
     } finally {
       saving = false;
     }
@@ -253,7 +255,7 @@
     try {
       coverId = (await upload(file)).id;
     } catch (e) {
-      error = e instanceof Error ? t(e.message) : t("上传失败");
+      notifications.show(e instanceof Error ? t(e.message) : t("上传失败"), "error");
     } finally {
       uploading = false;
       if (coverInput) coverInput.value = "";
@@ -270,7 +272,7 @@
       termName = "";
       termSlug = "";
     } catch (e) {
-      error = e instanceof Error ? t(e.message) : t("保存失败");
+      notifications.show(e instanceof Error ? t(e.message) : t("保存失败"), "error");
     } finally {
       saving = false;
     }
@@ -286,7 +288,7 @@
       saving = false;
       await goto("/studio");
     } catch (e) {
-      error = e instanceof Error ? t(e.message) : t("删除失败");
+      notifications.show(e instanceof Error ? t(e.message) : t("删除失败"), "error");
       saving = false;
     }
   }
@@ -310,8 +312,7 @@
           ? t("正在保存…")
           : dirty
             ? t("未保存")
-            : notice ||
-              (status === "published" ? t("已发布") : t("草稿"))}</span
+            : (status === "published" ? t("已发布") : t("草稿"))}</span
       >{#if original?.status === "published"}<Button
           variant="ghost"
           href={localizedPath(
@@ -338,10 +339,9 @@
   {#if loading}<div class="empty" role="status">
       {t("正在打开{{kind}}…",{kind:label})}
     </div>{:else if error && !baseline}<div class="empty">
-      <p class="error" role="alert">{error}</p>
+      <Notice variant="error">{error}</Notice>
       <Button onclick={load}>{t("重试")}</Button>
     </div>{:else}
-    {#if error}<p class="error my-5" role="alert">{error}</p>{/if}
     <div
       class="grid items-start gap-12 py-8 lg:grid-cols-[minmax(0,1fr)_248px]"
     >
