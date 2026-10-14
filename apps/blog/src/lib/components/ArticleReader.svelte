@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { useNotifications } from "@hasbai/ui/notice";
+  const notifications = useNotifications();
   import { ui, links, dates } from "$lib/i18n";
   const t = ui();
   const dateLabel = dates();
@@ -17,6 +19,10 @@
   import { ArrowLeft } from "@lucide/svelte";
   let { article, html, tags }: { article: Article; html: string; tags: Tag[] } =
     $props();
+  $effect(() => {
+    if (article.locale && article.locale !== page.data.locale)
+      return notifications.show(t("正在显示{{language}}原文", { language: languageName(article.locale) }), "warning");
+  });
 </script>
 
 <svelte:head>
@@ -37,18 +43,7 @@
   <a class="back-link" href={link("/articles")}
     ><ArrowLeft size={16} /> {t("文章")}</a
   >
-  {#if article.locale && article.locale !== page.data.locale}<p
-      class="meta"
-      role="status"
-    >
-      {t("正在显示{{language}}原文", {
-        language: languageName(article.locale),
-      })}
-    </p>{/if}
   <header class="reader-head">
-    <span class="eyebrow"
-      >ARTICLE / {String(article.sequence).padStart(3, "0")}</span
-    >
     <h1 class="article-title">{article.title}</h1>
     <div class="reader-meta">
       <time datetime={article.published_at ?? ""}

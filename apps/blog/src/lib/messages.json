@@ -165,7 +165,6 @@
     "正在翻译…": "Translating…",
     "未翻译": "Not translated",
     "已翻译": "Translated",
-    "翻译已覆盖保存": "Translation replaced and saved",
     "先保存修改再翻译": "Save changes before translating",
     "语言设置已保存": "Language settings saved",
     "源语言": "Source language",
@@ -194,7 +193,11 @@
     "AI 翻译失败，请重试": "AI translation failed. Try again.",
     "原文已更新，请重新翻译": "The source changed. Translate again.",
     "译文已更新，请重新打开": "The translation changed. Reopen it.",
-    "删除这个{{kind}}？": "Delete this {{kind}}?"
+    "删除这个{{kind}}？": "Delete this {{kind}}?",
+    "翻译已保存": "Translation saved",
+    "消息提示": "Notifications",
+    "关闭提示": "Dismiss notification",
+    "原文已保存，以下语言待翻译：{{languages}}": "Original saved. Translation pending: {{languages}}"
   },
   "traditional": {
     "首页": "首頁",
@@ -362,7 +365,6 @@
     "正在翻译…": "正在翻譯…",
     "未翻译": "尚未翻譯",
     "已翻译": "已翻譯",
-    "翻译已覆盖保存": "翻譯已覆蓋儲存",
     "先保存修改再翻译": "先儲存修改再翻譯",
     "语言设置已保存": "語言設定已儲存",
     "源语言": "來源語言",
@@ -391,6 +393,10 @@
     "AI 翻译失败，请重试": "AI 翻譯失敗，請重試",
     "原文已更新，请重新翻译": "原文已更新，請重新翻譯",
     "译文已更新，请重新打开": "譯文已更新，請重新開啟",
-    "删除这个{{kind}}？": "刪除這個{{kind}}？"
+    "删除这个{{kind}}？": "刪除這個{{kind}}？",
+    "翻译已保存": "翻譯已儲存",
+    "消息提示": "訊息提示",
+    "关闭提示": "關閉提示",
+    "原文已保存，以下语言待翻译：{{languages}}": "原文已儲存，以下語言待翻譯：{{languages}}"
   }
 }

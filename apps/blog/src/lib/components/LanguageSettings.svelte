@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { useNotifications } from "@hasbai/ui/notice";
+  const notifications = useNotifications();
   import { getContext, onMount } from "svelte";
   import type { BlogAuth } from "$lib/auth.svelte";
   import { ui } from "$lib/i18n";
@@ -13,8 +15,6 @@
   let available = $state<string[]>([]);
   let locales = $state<string[]>([]);
   let busy = $state(false);
-  let error = $state("");
-  let notice = $state("");
   let tags = $state<Tag[]>([]);
   let selected = $state("");
   let names = $state<Record<string, string>>({});
@@ -39,19 +39,17 @@
         locales = config.locales;
         tags = await api.tags();
       } catch (e) {
-        error = e instanceof Error ? e.message : t("加载失败");
+        notifications.show(e instanceof Error ? t(e.message) : t("加载失败"), "error");
       }
     })();
   });
   async function save() {
     busy = true;
-    error = "";
-    notice = "";
     try {
       await request("PUT", { locales });
-      notice = t("语言设置已保存");
+      notifications.show(t("语言设置已保存"), "success");
     } catch (e) {
-      error = e instanceof Error ? e.message : t("保存失败");
+      notifications.show(e instanceof Error ? t(e.message) : t("保存失败"), "error");
     } finally {
       busy = false;
     }
@@ -62,8 +60,6 @@
   }
   async function saveTag() {
     busy = true;
-    error = "";
-    notice = "";
     try {
       const result = await api.db
         .from("tag")
@@ -71,9 +67,9 @@
         .eq("id", selected);
       if (result.error) throw Error(result.error.message);
       tags = await api.tags();
-      notice = t("已保存");
+      notifications.show(t("已保存"), "success");
     } catch (e) {
-      error = e instanceof Error ? e.message : t("保存失败");
+      notifications.show(e instanceof Error ? t(e.message) : t("保存失败"), "error");
     } finally {
       busy = false;
     }
@@ -130,11 +126,5 @@
         disabled={busy || !names["zh-CN"]?.trim()}
         onclick={saveTag}>{t("保存")}</Button
       >{/if}
-    {#if error}<p role="alert" class="error">{error}</p>{/if}{#if notice}<p
-        role="status"
-        class="meta"
-      >
-        {notice}
-      </p>{/if}
   </div>
 </details>

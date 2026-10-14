@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Notice } from "@hasbai/ui/notice";
   import { ui, links, dates } from "$lib/i18n";
   const t = ui();
   const dateLabel = dates();
@@ -53,7 +54,6 @@
     class="collection-heading flex flex-wrap items-end justify-between gap-6"
   >
     <div>
-      <span class="eyebrow">THE WRITING ROOM</span>
       <h1 class="serif">{t("编辑室")}</h1>
     </div>
     <div class="flex flex-wrap gap-2">
@@ -86,7 +86,7 @@
   <LanguageSettings />
   {#if loading}<div class="empty" role="status">{t("正在加载…")}</div>
   {:else if error}<div class="empty">
-      <p role="alert" class="error">{error}</p>
+      <Notice variant="error">{error}</Notice>
       <Button onclick={load}>{t("重试")}</Button>
     </div>
   {:else if !rows.length}<div class="empty">

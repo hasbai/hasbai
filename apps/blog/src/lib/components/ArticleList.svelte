@@ -25,7 +25,6 @@
 
 <section class="wrap collection">
   <div class="collection-heading entrance">
-    <span class="eyebrow">BLOG</span>
     <h1>{title}</h1>
   </div>
   <div class="collection-grid">
@@ -78,7 +77,6 @@
       {/if}
     </div>
     <aside class="collection-side" aria-label={t("内容导航")}>
-      <span class="eyebrow">EXPLORE</span>
       <nav aria-label={t("浏览内容")}>
         <a href={link("/articles")} aria-current={!tag ? "page" : undefined}
           >{t("全部文章")}</a
