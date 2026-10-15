@@ -1,6 +1,6 @@
 # Tavern 模型参数与独立 Director
 
-服务端仅提供白名单逻辑模型，当前 `rp` 对应 Gateway `default` / `dynamic/rp`，实际 provider/model 由 Gateway 配置决定。本文是参数、候选协议及 UI 的维护入口；运行实现见 `apps/tavern/shared/settings.ts`、`worker/director.ts`、`worker/gateway.ts`。不靠 route version/schema/管理 API 探测作为聊天准入，推理凭据只在 Worker Secret 中使用；不依赖管理 Token。
+服务端仅提供白名单逻辑模型，当前 `rp` 对应 Gateway `default` / `dynamic/rp`，实际 provider/model 由 Gateway 配置决定。本文是参数、候选协议及 UI 的维护入口；运行实现见 `apps/tavern/shared/settings.ts`、`worker/director.ts`、`worker/inference.ts`、`worker/gateway.ts`。不靠 route version/schema/管理 API 探测作为聊天准入，推理凭据只在 Worker Secret 中使用；不依赖管理 Token。
 
 当前实现和最新真实验收缺口见[PROGRESS](PROGRESS.md)。
 
@@ -135,4 +135,10 @@ Director 不替换正文的首条 system、不改动用户输入，也不重建�
 
 已保存的系统提示保持原文，包括旧默认字符串；用户提示始终进入system，角色卡提示附加，含 `{{original}}` 时替换且不重复插入。正文用户消息只包含用户原文；Director使用JSON Schema，缓存以实际计数验收。
 
-当前正文、按需压缩与 Director 共用 `worker/gateway.ts` 的 固定 compat/chat/completions HTTP 入口与专用运行 Secret `AIG_RP_RUN_TOKEN`，保留各次 HTTP 响应/SSE/取消与响应内日志 ID。Gateway 识别聊天协议后保存完整聚合响应及 streamed_data，浏览器仍实时接收 SSE。Gateway 要求完整请求/回复、eventId、`skipCache:true`、app/task/签名 username，单次请求不自动重试、不删参数换路由；不在应用回写 response 或用 metadata 存正文。历史聚合格式与当前 event_id 差异见 PROGRESS，不追溯改写旧日志。
+正文、Director、按需压缩与角色生成共用 `worker/inference.ts` 的 AI SDK 适配器。
+SDK provider 通过 `worker/gateway.ts` 发送固定 compat/chat/completions HTTP 请求。
+专用运行 Secret `AIG_RP_RUN_TOKEN` 仅用于该传输层。
+原始请求、取消信号及每次响应内日志 ID 保留。
+
+工具执行和存储契约见[AGENT](AGENT.md#prompt-与模型投影)。
+Gateway 识别聊天协议后保存完整聚合响应及 streamed_data，浏览器仍实时接收 SSE。Gateway 要求完整请求/回复、eventId、`skipCache:true`、app/task/签名 username，单次请求不自动重试、不删参数换路由；不在应用回写 response 或用 metadata 存正文。历史聚合格式与当前 event_id 差异见 PROGRESS，不追溯改写旧日志。

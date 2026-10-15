@@ -21,7 +21,7 @@
  const systemParts=['用户系统提示词 + 角色卡 system_prompt','用户 persona','世界书 before_char','角色描述','角色性格','初始场景','世界书 after_char','示例对白','角色卡 post_history_instructions','应用正文协议','历史摘要'];
  const stagePrompts:Record<Stage,PromptKey[]>={character:['character'],body:['systemTemplate','agent'],tools:['agent'],director:['director'],summary:['summaryTask']};
  const promptRoles:Record<PromptKey,string>={systemTemplate:'system',character:'system',agent:'system',director:'user',summaryTask:'user'};
- const journey=[{icon:MessageSquare,title:'你的输入',subtitle:'浏览器 · 身份验证'},{icon:Database,title:'会话与记忆',subtitle:'每会话 SQLite DO'},{icon:Layers3,title:'上下文与模型',subtitle:'Worker → AI Gateway'},{icon:Sparkles,title:'正文与下一步',subtitle:'流式正文 → Director'}];
+ const journey=[{icon:MessageSquare,title:'你的输入',subtitle:'浏览器 · 身份验证'},{icon:Database,title:'会话与记忆',subtitle:'每会话 SQLite DO'},{icon:Layers3,title:'上下文与模型',subtitle:'AI SDK → AI Gateway'},{icon:Sparkles,title:'正文与下一步',subtitle:'流式正文 → Director'}];
 </script>
 
 <div class="about">

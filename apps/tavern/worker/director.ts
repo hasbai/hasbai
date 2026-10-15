@@ -2,7 +2,7 @@ import { estimateTokens, type PromptMessage } from '../shared/prompt';
 import { stateContext, type StoryState } from './agent';
 import { contextLimit } from './context';
 import { InferenceMetrics } from './metrics';
-import { sseData } from '../shared/sse';
+import { InferenceError, type InferenceEvent } from './inference';
 
 import { DIRECTOR_RULE, STATE_PREFIX } from '../shared/instructions';
 export { DIRECTOR_RULE } from '../shared/instructions';
@@ -38,25 +38,23 @@ export class DirectorAgent {
   this.messages=structuredClone(await rebuild(this.contextTokens));this.rebuilds++;
   return this.prompt().estimatedTokens<before;
  }
- async run(infer:(messages:PromptMessage[])=>Promise<Response>,signal:AbortSignal,owns:()=>Promise<void>,rebuild?:((limit:number)=>Promise<PromptMessage[]>)):Promise<string[]>{
+ async run(infer:(messages:PromptMessage[])=>AsyncIterable<InferenceEvent>|Promise<AsyncIterable<InferenceEvent>>,signal:AbortSignal,owns:()=>Promise<void>,rebuild?:((limit:number)=>Promise<PromptMessage[]>)):Promise<string[]>{
   this.outcome='generating';
   try{for(;;){
    while(this.contextTokens!==null&&this.prompt().estimatedTokens>this.contextTokens){if(!await this.compact(rebuild))throw Error('Director核心上下文过长');}
    await owns();this.requests++;this.metrics=new InferenceMetrics();
-   let response:Response;
-   try{response=await infer(this.prompt().messages);}catch(error){if(error instanceof DirectorContextError){this.contextTokens=error.limit;if(!await this.compact(rebuild))throw error;continue;}throw error;}
-   this.gatewayLogId=response.headers.get('cf-aig-log-id');
-   if(!response.ok||!response.body||!response.headers.get('Content-Type')?.includes('text/event-stream')){await response.body?.cancel();throw Error('Director非流式响应');}
    let text='',reason:string|undefined,limit:number|undefined;
-   for await(const raw of sseData(response.body,signal)){
-    if(raw==='[DONE]')break;const event=JSON.parse(raw);this.metrics.observe(event);if(typeof event.model==='string')this.model=event.model;
-    if(event.error){limit=contextLimit(event);if(limit)break;throw Error('Director上游错误');}
-    const choice=event.choices?.[0];
-    if(choice?.delta?.tool_calls?.length||choice?.delta?.refusal)throw Error('Director响应无效');
-    if(choice?.finish_reason){if(reason&&reason!==choice.finish_reason)throw Error('Director终态冲突');reason=choice.finish_reason;}
-    if(typeof choice?.delta?.content==='string'){text+=choice.delta.content;if(choice.delta.content.trim())this.firstAt??=Date.now();}
-    // Three 120-character strings fit comfortably; malformed streams are never unbounded.
-    if(new TextEncoder().encode(text).length>8192)throw Error('Director输出过长');
+   try{
+    for await(const event of await infer(this.prompt().messages)){
+     if(event.type==='observation'){this.metrics.observe(event.value);this.gatewayLogId=event.logId;if(typeof event.value.model==='string')this.model=event.value.model;}
+     else if(event.type==='text'){text+=event.text;if(event.text.trim())this.firstAt??=Date.now();}
+     else {if(event.calls.length)throw Error('Director响应无效');reason=event.reason;}
+     if(new TextEncoder().encode(text).length>8192)throw Error('Director输出过长');
+    }
+   }catch(error){
+    if(error instanceof DirectorContextError)limit=error.limit;
+    else if(error instanceof InferenceError){this.gatewayLogId=error.logId;limit=contextLimit(error.value);}
+    if(!limit)throw error;
    }
    await owns();
    if(limit){this.contextTokens=limit;if(!await this.compact(rebuild))throw Error('Director上下文未缩短');continue;}

@@ -1,7 +1,6 @@
 import { CHARACTER_RESPONSE_FORMAT, generatedCharacterCard, validateCharacterDraft } from '../shared/character-draft';
 import { body, HttpError } from './http';
-import { runRoleplay } from './gateway';
-import { sseData } from '../shared/sse';
+import { inferRoleplay } from './inference';
 import { readPrompts } from './prompts';
 import type { JsonObject } from '../shared/types';
 
@@ -16,23 +15,17 @@ export async function generateCharacter(request: Request, env: Env, username: st
  const {texts}=await readPrompts(env);
  const signal = request.signal;
  try {
-  const response = await runRoleplay(env, username, crypto.randomUUID(), {
+  const inputModel = {
    messages: [
-    { role: 'system', content: texts.character },
-    { role: 'user', content: JSON.stringify(input) },
+    { role: 'system' as const, content: texts.character },
+    { role: 'user' as const, content: JSON.stringify(input) },
    ], response_format: CHARACTER_RESPONSE_FORMAT, stream: true,
    temperature: 0.8, chat_template_kwargs: { enable_thinking: false }, reasoning_effort: 'none', reasoning_format: 'deepseek',
-  }, signal, 'character-generation');
-  if (!response.ok || !response.body || !response.headers.get('Content-Type')?.includes('text/event-stream')) { await response.body?.cancel(); throw Error('模型服务暂时不可用，请重试'); }
+  };
   let text = '', reason: string | undefined;
-  for await (const raw of sseData(response.body, signal)) {
-   if (raw === '[DONE]') break;
-   const event = JSON.parse(raw);
-   if (event.error || (event.choices && (!Array.isArray(event.choices) || event.choices.length > 1))) throw Error('模型返回无效，请重试');
-   const choice = event.choices?.[0];
-   if (choice?.delta?.tool_calls?.length || choice?.delta?.refusal) throw Error('模型未生成角色卡，请重试');
-   if (choice?.finish_reason) { if (reason && reason !== choice.finish_reason) throw Error('模型返回无效，请重试'); reason = choice.finish_reason; }
-   if (typeof choice?.delta?.content === 'string') text += choice.delta.content;
+  for await (const event of inferRoleplay(env,username,crypto.randomUUID(),inputModel,signal,'character-generation')) {
+   if(event.type==='text')text+=event.text;
+   else if(event.type==='finish'){if(event.calls.length)throw Error('模型未生成角色卡，请重试');reason=event.reason;}
   }
   signal.throwIfAborted();
   if (reason !== 'stop') throw Error('角色卡生成未完成，请重试');

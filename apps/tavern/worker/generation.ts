@@ -1,21 +1,20 @@
 import { readPrompts } from './prompts';
 import { capabilities, modelInput, recordFeedback, type Capability } from './models';
 import { candidateDelimiter, CandidateStream } from '../shared/candidates';
-import { runRoleplay } from './gateway';
-import { DirectorAgent, DirectorContextError, DIRECTOR_RESPONSE_FORMAT, directorTask } from './director';
+import { inferRoleplay, InferenceError } from './inference';
+import { DirectorAgent, DIRECTOR_RESPONSE_FORMAT, directorTask } from './director';
 import { InferenceMetrics } from './metrics';
 import { parseBook, parseCard } from '../shared/cards';
 import {LoreIndex,embeddings} from './lore';
 import { buildPrompt, stateMessage, type PromptMessage } from '../shared/prompt';
 import { ConversationContext, summarizeWithModel, explicitContextLimit, contextLimit, validSummary } from './context';
-import { sseData } from '../shared/sse';
 import { generationNotice } from '../shared/outcomes';
 import type { FinishReason, Message } from '../shared/types';
 import { HttpError, json } from './http';
 import { settings, currentMessages, message, ownedBooks } from './store';
 import type { SessionStore } from './session-store';
 import { recallRequested, draftProblems } from './narrative';
-import { AGENT_TOOLS, AgentTurn, contentHash, stableJson, stateContext, storyMessages, ToolCallStream, type ModelProjection } from './agent';
+import { AGENT_TOOLS, AgentTurn, contentHash, stableJson, stateContext, storyMessages, type ToolCall, type ModelProjection } from './agent';
 export { explicitContextLimit } from './context';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext,'waitUntil'>,owner:string,id:string,data:Record<string,unknown>,username:string,store:SessionStore,onSettled:(id:string)=>Promise<void> = async()=>{},onClaim:(id:string,abort:AbortController)=>void = ()=>{},beforeClaim:()=>void=()=>{}) {
@@ -92,32 +91,26 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
     if(delta){firstBodyAt??=Date.now();await send({type:'delta',text:delta});streamedUntil=end;}
    };
    for(;;){
-   await owns();const storyAtStart=output.length;let requestOutput='';const toolCalls=new ToolCallStream();
+   await owns();const storyAtStart=output.length;let requestOutput='';let calls:ToolCall[]=[];
    finishReason='upstream';
    firstModelStarted??=Date.now();modelRequests++;bodyRequests++;metrics=new InferenceMetrics();
-   const result=await runRoleplay(env,username,requestId,{messages:prompt.messages,tools:AGENT_TOOLS,tool_choice:'auto',stream:true,...modelInput(opts)},abort.signal);
-   if(!(result instanceof Response)){finishReason='unsupported';throw new Error('nonstream');}
-   gatewayLogId=result.headers.get('cf-aig-log-id');
-   if(!result.ok){const limit=await inspectLimit(result,env,capability);if(limit&&!output.length){conversation.contextTokens=limit;const before=prompt.estimatedTokens;await conversation.compress();prompt=await conversation.fit(conversation.options,toolTranscript);if(prompt.estimatedTokens>=before)throw new Error('会话压缩未缩短输入');await saveSummary();continue;}throw new Error('upstream');}
-   if(!result.body||!result.headers.get('Content-Type')?.includes('text/event-stream')){finishReason='unsupported';await result.body?.cancel();throw new Error('nonstream');}
    finishReason='interrupted';
    let upstreamReason:string|undefined;let streamLimit:number|undefined;
-   for await(const data of sseData(result.body,abort.signal)) {
-    if(data==='[DONE]')break;
-    const event=JSON.parse(data);if(event.error){await errorFeedback(env,capability,event).catch(()=>{});streamLimit=contextLimit(event);if(streamLimit)break;finishReason='upstream';throw new Error('upstream');}
-    if(typeof event.model==='string')model=event.model;
-    metrics.observe(event);
-    const choice=event.choices?.[0];if(typeof choice?.finish_reason==='string'&&choice.finish_reason){if(upstreamReason&&upstreamReason!==choice.finish_reason){finishReason='interrupted';throw new Error('conflicting finish');}upstreamReason=choice.finish_reason;}
-    toolCalls.push(choice?.delta?.tool_calls);
-    const delta=choice?.delta?.content;
-    if(typeof delta==='string') {requestOutput+=delta;output+=parser.push(delta);if(Date.now()-draftSavedAt>=1000){await checkpointDraft();draftSavedAt=Date.now();}await streamOutput();}
-
+   try{
+    for await(const event of inferRoleplay(env,username,requestId,{messages:prompt.messages,tools:AGENT_TOOLS,tool_choice:'auto',...modelInput(opts)},abort.signal)){
+     if(event.type==='observation'){metrics.observe(event.value);if(typeof event.value.model==='string')model=event.value.model;gatewayLogId=event.logId;}
+     else if(event.type==='text'){requestOutput+=event.text;output+=parser.push(event.text);if(Date.now()-draftSavedAt>=1000){await checkpointDraft();draftSavedAt=Date.now();}await streamOutput();}
+     else {upstreamReason=event.reason;calls=event.calls;}
+    }
+   }catch(error){
+    if(!(error instanceof InferenceError))throw error;
+    finishReason=error.reason;gatewayLogId=error.logId;await errorFeedback(env,capability,error.value).catch(()=>{});streamLimit=contextLimit(error.value);if(!streamLimit||error.hasToolFragments)throw error;
    }
    await checkpointDraft();
-   if(streamLimit){if(output.length||toolCalls.size)throw new Error('生成途中上下文超限');conversation.contextTokens=streamLimit;const before=prompt.estimatedTokens;await conversation.compress();prompt=await conversation.fit(conversation.options,toolTranscript);if(prompt.estimatedTokens>=before)throw new Error('会话压缩未缩短输入');await saveSummary();continue;}
+   if(streamLimit){if(output.length||calls.length)throw new Error('生成途中上下文超限');conversation.contextTokens=streamLimit;const before=prompt.estimatedTokens;await conversation.compress();prompt=await conversation.fit(conversation.options,toolTranscript);if(prompt.estimatedTokens>=before)throw new Error('会话压缩未缩短输入');await saveSummary();continue;}
    if(upstreamReason==='tool_calls'){
     finishReason='unsupported';
-    const calls=toolCalls.finish();if(!calls.length)throw new Error('工具调用为空');agent.validate(calls);const recalled=new Map();
+    if(!calls.length)throw new Error('工具调用为空');agent.validate(calls);const recalled=new Map();
     for(const call of calls)if(call.function.name==='search_memory'){const args=JSON.parse(call.function.arguments);if(typeof args.query==='string')recalled.set(args.query,await lore.search(args.query));}
     await owns();const results=agent.execute(calls,recalled);if(!store.saveSteps(assistantId,agent.steps))throw new Error('生成已停止');
     const toolMessage:PromptMessage={role:'assistant',content:requestOutput};
@@ -126,7 +119,7 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
     if(storyAtStart&&!toolTranscript.length)toolTranscript.push({role:'assistant',content:output.slice(0,storyAtStart)});toolTranscript.push(...additions);prompt=conversation.extend(prompt,additions);
     if(prompt.needsCompression){if(output.length){finishReason='upstream';throw Error('工具后上下文超限');}prompt=await conversation.fit(conversation.options,toolTranscript);}await saveSummary();continue;
    }
-   if(toolCalls.size)throw new Error('工具终态无效');
+   if(calls.length)throw new Error('工具终态无效');
    const parsed=parser.finish();parserFinished=true;output+=parsed.body;await streamOutput();
    if(abort.signal.aborted)throw new Error('aborted');
    finishReason=upstreamReason==='stop'?'stop':upstreamReason==='length'?'length':upstreamReason==='content_filter'?'content_filter':upstreamReason?'unsupported':'interrupted';
@@ -173,13 +166,9 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
      const rebuilt=await rebuild(conversation.contextTokens);
      director=new DirectorAgent(rebuilt.slice(0,-2),output,agent.state,fallback!.contextTokens,capability.inputRatio,texts.director);
     }
-    directorStartedAt=Date.now();candidates=await director.run(async messages=>{
+    directorStartedAt=Date.now();candidates=await director.run(messages=>{
      modelRequests++;
-     // Keep the body template; budget auxiliary reasoning where the backend supports it.
-     const response=await runRoleplay(env,username,requestId,{messages,tools:AGENT_TOOLS,tool_choice:'none',response_format:DIRECTOR_RESPONSE_FORMAT,stream:true,...modelInput(opts),...(opts.thinkingEnabled?{thinking_budget_tokens:0}:{})},abort.signal);
-     if(!(response instanceof Response))throw Error('Director非响应');director!.gatewayLogId=response.headers.get('cf-aig-log-id');
-     if(!response.ok){const limit=await inspectLimit(response,env,capability);if(limit)throw new DirectorContextError(limit);throw Error('Director上游错误');}
-     return response;
+     return inferRoleplay(env,username,requestId,{messages,tools:AGENT_TOOLS,tool_choice:'none',response_format:DIRECTOR_RESPONSE_FORMAT,...modelInput(opts),...(opts.thinkingEnabled?{thinking_budget_tokens:0}:{})},abort.signal);
     },abort.signal,owns,rebuild);
     candidateOutcome=director.outcome;candidateFirstAt=director.firstAt;model=director.model||model;gatewayLogId=director.gatewayLogId;metrics=director.metrics;
    }catch(error){candidateOutcome='error';if(abort.signal.aborted)throw error;candidates=[];}
@@ -206,13 +195,6 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
  })();
  ctx.waitUntil(work.catch(()=>{console.error('tavern-generation-persist-failed',{messageId:assistantId});abort.abort();}));
  return new Response(stream.readable,{headers:{'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-cache, no-store','X-Content-Type-Options':'nosniff'}});
-}
-
-async function inspectLimit(response:Response,env:Env,capability:Capability):Promise<number|undefined> {
- if(!response.body)return;const reader=response.body.getReader(),decoder=new TextDecoder();let text='',bytes=0;const timer=setTimeout(()=>{void reader.cancel().catch(()=>{});},1000);
- try{for(;;){const {value,done}=await reader.read();if(done)break;bytes+=value.length;if(bytes>16384)break;text+=decoder.decode(value,{stream:true});}text+=decoder.decode();
-  try{const value=JSON.parse(text);await errorFeedback(env,capability,value);return contextLimit(value);}catch{}
- }catch{}finally{clearTimeout(timer);await reader.cancel().catch(()=>{});}
 }
 
 export async function errorFeedback(env:Env,capability:Capability,value:unknown) {

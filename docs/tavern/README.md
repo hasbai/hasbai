@@ -18,7 +18,7 @@
 | 卡片、来源、UI、API 与资源 | [ARCHITECTURE](ARCHITECTURE.md) | `shared`、`worker/index.ts`、`worker/discovery.ts`、`src/pages` |
 | 状态、工具、检索、摘要、DO 恢复/删除 | [AGENT](AGENT.md) | `worker/agent.ts`、`worker/session-object.ts`、`worker/session-store.ts` |
 | 正文流式响应、复读检查与恢复 | [流式契约](AGENT.md#正文流式展示与检查) | `worker/generation.ts`、`worker/narrative.ts` |
-| 参数、模型白名单、独立 Director | [MODELS](MODELS.md) | `shared/settings.ts`、`worker/gateway.ts`、`worker/director.ts` |
+| 参数、模型白名单、独立 Director | [MODELS](MODELS.md) | `shared/settings.ts`、`worker/inference.ts`、`worker/gateway.ts`、`worker/director.ts` |
 | 当前实现与未解决验收 | [PROGRESS](PROGRESS.md) | 当前 main 与逐层证据 |
 | 交互图解 | [ARCHITECTURE.html](ARCHITECTURE.html) | 文档辅助图，不是运行时或验收证据 |
 | 决策与交付追溯 | [交付历史](history/DELIVERY.md)、[Agent 演进](history/AGENT-ITERATIONS.md)、[候选试验](history/CANDIDATE-EXPERIMENT.md) | 旧候选/预算/认证方案不作为当前契约 |

@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { generateCharacter } from './character-generation';
 import { runRoleplay } from './gateway';
 import { CHARACTER_RESPONSE_FORMAT, characterCard, emptyCharacterDraft, generatedCharacterCard } from '../shared/character-draft';
-vi.mock('./gateway', () => ({ runRoleplay: vi.fn() }));
+vi.mock('./gateway', async original => ({...await original<typeof import('./gateway')>(), runRoleplay: vi.fn()}));
 const env={PROMPTS:{get:async()=>null}} as unknown as Env;
 const draft = { ...emptyCharacterDraft(), name: '岚', description: '港城旅店的主人', creator: '我的署名', system_prompt: '保留我的提示' };
 const complete = characterCard({ ...draft, personality: '善于倾听', scenario: '港城的雨夜', first_mes: '进来坐吧。', mes_example: '<START>\n{{user}}: 你好。\n{{char}}: 欢迎。', alternate_greetings: ['清晨，窗外传来潮声。'], tags: ['奇幻'] });
