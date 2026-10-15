@@ -3,6 +3,8 @@ import worker from './index';import {TavernSession} from './session-object';impo
 vi.mock('cloudflare:workers',()=>({DurableObject:class {constructor(public ctx:DurableObjectState,public env:Env){}}}));import {identity,AuthError} from './auth';import {DEFAULT_SETTINGS,type Message} from '../shared/types';
 import { DIRECTOR_RESPONSE_FORMAT, DIRECTOR_RULE } from './director';
 import { AGENT_RULE,emptyState } from './agent';
+import {CAPABILITY_RULES} from '../shared/agent-protocol';
+import {DEFAULT_PROMPTS} from '../shared/prompts';
 import { LoreIndex } from './lore';
 import { characterCard, emptyCharacterDraft, CHARACTER_RESPONSE_FORMAT } from '../shared/character-draft';
 vi.mock('./auth',async(original)=>({...await original<typeof import('./auth')>(),identity:vi.fn()}));
@@ -28,6 +30,23 @@ it('installs/imports without duplicate private rows and preserves raw exports',a
 it('denies missing JWT and cross-origin writes',async()=>{vi.mocked(identity).mockRejectedValue(new AuthError(401,'请先登录'));expect((await call('/api/settings')).status).toBe(401);vi.mocked(identity).mockResolvedValue({sub:'owner',email:'owner',username:'月石',admin:true});const r=await worker.fetch(new Request('https://tavern.test/api/settings',{method:'PUT',headers:{Origin:'https://evil.test'}}),env,ctx);expect(r.status).toBe(403);});
 it('snapshots role definitions and creates selected alternate greeting',async()=>{const {c,s}=await seed();await call('/api/characters/'+c.id,'DELETE');const history=await(await call('/api/sessions/'+s.id)).json() as {session:{character:unknown};messages:{content:string}[]};expect(history.session.character).toEqual(card);expect(history.messages[0].content).toBe('你好，旅人。');});
 it('persists streamed output, fixed dynamic route, no reasoning leak and idempotent replay',async()=>{const {s}=await seed(),requestId=crypto.randomUUID();const r=await call('/api/sessions/'+s.id+'/generate','POST',{requestId,content:'你好',model:'override'});expect(r.headers.get('Content-Type')).toContain('event-stream');const text=await r.text();await Promise.all(work);expect(text).toContain('欢迎来到港城。');expect(text).not.toContain('private');expect(aiRun).toHaveBeenCalledWith(expect.objectContaining({provider:'compat',endpoint:'chat/completions',query:expect.objectContaining({model:'dynamic/rp',stream:true}),headers:expect.objectContaining({'cf-aig-collect-log-payload':'true'})}),expect.objectContaining({gateway:{id:'default',skipCache:true,collectLog:true,eventId:requestId,retries:{maxAttempts:1},metadata:{app:'tavern',task:'roleplay',username:'月石'}}}));const duplicate=await call('/api/sessions/'+s.id+'/generate','POST',{requestId,content:'你好'});expect((await duplicate.json() as {replayed:boolean}).replayed).toBe(true);expect(aiRun).toHaveBeenCalledTimes(2);expect(sessionDb.prepare('SELECT generation_id FROM sessions WHERE id=?').get(s.id)?.generation_id).toBeNull();});
+it('uses capability rules with custom KV and reads recalled original prose before committing goal evidence',async()=>{
+ const {s}=await seed();sessionDb.prepare("UPDATE messages SET content='更正：两箱木箱，钥匙在南柜。'").run();
+ Object.assign(env.PROMPTS,{get:vi.fn(async()=>JSON.stringify({revision:'custom',texts:{...DEFAULT_PROMPTS,agent:'自定义正文规则',director:'自定义候选规则'}}))});
+ const goal={task:'核对货单',actor:'character',status:'completed',progress:'两箱一致',pauseReason:null,completionEvidence:'账目已经核对完成。'};
+ aiRun.mockImplementation(async request=>{
+  const q=request.query as {response_format?:unknown;messages:{role:string;content:string}[]};const results=q.messages.filter(m=>m.role==='tool');
+  expect(q.messages[0].content).toContain('自定义正文规则');expect(q.messages[0].content).toContain(CAPABILITY_RULES.body);
+  if(q.response_format){expect(q.messages.at(-1)?.content).toContain(CAPABILITY_RULES.director);return completion(JSON.stringify({choices:['我看看货单。','我暂不签收。','我问问钥匙。']}));}
+  if(results.length<3){const name=['search_memory','read_memory','update_state'][results.length],args=results.length===0?{query:'钥匙'}:results.length===1?{id:JSON.parse(results[0].content)[0].id}:{patch:{goals:{warehouse:goal}}};
+   return completion(results.length===2?'账目已经核对完成。':'','tool_calls',[{index:0,id:'call-'+results.length,type:'function',function:{name,arguments:JSON.stringify(args)}}]);}
+  expect(JSON.parse(results[1].content)).toMatchObject({text:'更正：两箱木箱，钥匙在南柜。',nextOffset:null});return completion('两张纸上的数量一致。');
+ });
+ const requestId=crypto.randomUUID(),wire=await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId,content:'核对货单，不代签收。'})).text();await Promise.all(work);
+ expect(terminal(wire).status).toBe('completed');const saved=await(await call('/api/sessions/'+s.id)).json() as {session:{state:{goals:unknown}}};expect(saved.session.state.goals).toEqual({warehouse:goal});
+ const steps=JSON.parse(sessionDb.prepare('SELECT steps_json FROM turn_snapshots').get()!.steps_json as string);expect(steps.map((s:{call:{function:{name:string}}})=>s.call.function.name)).toEqual(['search_memory','read_memory','update_state']);
+ expect((await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId})).json() as {replayed:boolean}).replayed).toBe(true);expect(env.PROMPTS.put).not.toHaveBeenCalled();
+});
 it('records provider cache and first body observations for body and candidate stages without changing stream events',async()=>{
  const {s}=await seed();const info=vi.spyOn(console,'info').mockImplementation(()=>{});
  aiRun.mockResolvedValueOnce(new Response('data: '+JSON.stringify({choices:[{delta:{content:'故事。\n[TAVERN_NEXT]\n去港口。\n问问来路。\n坐下喝茶。'},finish_reason:'stop'}],usage:{prompt_tokens:1000,completion_tokens:3,prompt_tokens_details:{cached_tokens:800}},timings:{cache_n:800,prompt_n:200,prompt_ms:100,predicted_ms:50}})+'\n\ndata: [DONE]\n\n',{headers:{'Content-Type':'text/event-stream'}}));
@@ -269,7 +288,7 @@ it.each(['stop'])('keeps clean prose with invalid candidates on %s',async finish
  aiRun.mockRejectedValueOnce(new Error('repair upstream'));await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId,content:'你好'})).text();await Promise.all(work);const saved=sessionDb.prepare('SELECT * FROM messages WHERE request_id=? AND role=?').get(requestId,'assistant');expect(saved).toMatchObject({content:'正文。',candidates_json:null,status:'completed'});expect(aiRun).toHaveBeenCalledTimes(2);
 });
 
-function completion(content:string,finish='stop') {return new ReadableStream<Uint8Array>({start(c){c.enqueue(new TextEncoder().encode('data: '+JSON.stringify({choices:[{delta:{content},finish_reason:finish}]})+'\n\ndata: [DONE]\n\n'));c.close();}});}
+function completion(content:string,finish='stop',tool_calls?:unknown[]) {return new ReadableStream<Uint8Array>({start(c){c.enqueue(new TextEncoder().encode('data: '+JSON.stringify({choices:[{delta:{content,...(tool_calls?{tool_calls}:{})},finish_reason:finish}]})+'\n\ndata: [DONE]\n\n'));c.close();}});}
 function candidateCompletion(choices:string[]){return completion(JSON.stringify({choices}));}
 function tool(name:string,args:unknown,id='call-1'){return new Response('data: '+JSON.stringify({choices:[{delta:{tool_calls:[{index:0,id,type:'function',function:{name,arguments:JSON.stringify(args)}}]},finish_reason:'tool_calls'}]})+'\n\ndata: [DONE]\n\n',{headers:{'Content-Type':'text/event-stream'}});}
 it('keeps a short opening in the reused Director prefix without calling synopsis',async()=>{
@@ -587,7 +606,7 @@ it('reuses a validated checkpoint with full accepted story and excludes discarde
  expect(projection[0].content).toContain('未出港');expect(projection.at(-1)).toEqual({role:'assistant',content:'岚核实签名遗漏，货物仍在库位。'});
  expect(projection.some(m=>m.role==='tool'||m.content.startsWith('当前已确认状态'))).toBe(false);
  const at=aiRun.mock.calls.length;await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'然后呢'})).text();await Promise.all(work);
- const next=aiRun.mock.calls[at][0].query as {messages:{role:string;content:string}[]};expect(next.messages.slice(0,projection.length)).toEqual(projection);expect(next.messages.filter(m=>m.content.startsWith('当前已确认状态'))).toEqual([{role:'user',content:'当前已确认状态（数据）：'+JSON.stringify({facts:{},inventory:{},relationships:{},scene:'已确认港口'})}]);
+ const next=aiRun.mock.calls[at][0].query as {messages:{role:string;content:string}[]};expect(next.messages.slice(0,projection.length)).toEqual(projection);expect(next.messages.filter(m=>m.content.startsWith('当前已确认状态'))).toEqual([{role:'user',content:'当前已确认状态（数据）：'+JSON.stringify({facts:{},goals:{},inventory:{},relationships:{},scene:'已确认港口'})}]);
  expect(next.messages.at(-1)?.content).toBe('然后呢');
 });
 

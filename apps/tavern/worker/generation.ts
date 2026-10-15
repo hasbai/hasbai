@@ -1,4 +1,5 @@
 import { readPrompts } from './prompts';
+import { capabilityProtocol } from '../shared/agent-protocol';
 import { capabilities, modelInput, recordFeedback, type Capability } from './models';
 import { candidateDelimiter, CandidateStream } from '../shared/candidates';
 import { inferRoleplay, InferenceError } from './inference';
@@ -24,7 +25,8 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
  const existing=store.findRequest(requestId);
  if(existing)return json({message:message(existing),replayed:true});
  const promptDocument=await readPrompts(env),texts=promptDocument.texts;
- const contextOptions={protocol:texts.agent,summaryTask:texts.summaryTask};
+ const contextOptions={protocol:capabilityProtocol('body',texts.agent),summaryTask:capabilityProtocol('summary',texts.summaryTask)};
+ const directorRule=capabilityProtocol('director',texts.director);
  const capability=await capabilities(env,ctx);beforeClaim();if(request.signal.aborted||store.cancelled(requestId))throw new HttpError(409,'生成已停止');const now=Date.now();
  if(data.continue===true)throw new HttpError(400,'续写已移除');
  const regenerate=data.regenerate===true;const text=typeof data.content==='string'?data.content.trim():'';
@@ -43,13 +45,14 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
   let ordinal=Math.max(-1,...history.map(m=>m.ordinal))+1;
   let base=storyMessages(store.messages());let before=store.state(base);
   if(regenerate){const last=history.at(-1);if(last?.role==='assistant'){ordinal=last.ordinal;before=store.before(last.id);base=base.filter(m=>m.ordinal<ordinal);}else if(last?.role==='user'){ordinal=last.ordinal+1;}else throw new HttpError(400,'没有可重新生成的消息');}
-  committedBase=structuredClone(base);agent=new AgentTurn(before,base);
+  committedBase=structuredClone(base);
   const userMessage:Message={id:crypto.randomUUID(),role:'user',content:text,status:'completed',ordinal,requestId,createdAt:messageTime};
   const assistantOrdinal=regenerate?ordinal:ordinal+1;
   const books=await ownedBooks(env,owner,JSON.parse(row.book_ids_json));
   const embedded=parseCard(JSON.parse(row.character_json)).data.character_book;
-  lore=new LoreIndex(store.storage.sql,[...(embedded?[{id:'character',book:parseBook(embedded)}]:[]),...books.filter(b=>b.enabled).map(b=>({id:b.id,book:parseBook(JSON.parse(b.book_json),b.name)}))],(texts,signal)=>embeddings(env,texts,username,requestId,signal),abort.signal);
-  projectionContext={character:JSON.parse(row.character_json),books:books.map(b=>[b.id,b.enabled,b.book_json]),settings:JSON.parse(row.settings_json),tools:AGENT_TOOLS,prompts:promptDocument,promptVersion:8};
+  lore=new LoreIndex(store.storage.sql,[...(embedded?[{id:'character',book:parseBook(embedded)}]:[]),...books.filter(b=>b.enabled).map(b=>({id:b.id,book:parseBook(JSON.parse(b.book_json),b.name)}))],(texts,signal)=>embeddings(env,texts,username,requestId,signal),abort.signal,base);
+  agent=new AgentTurn(before,base,regenerate?[...base].reverse().find(m=>m.role==='user'):userMessage,(hit,offset)=>lore.read(hit,offset));
+  projectionContext={character:JSON.parse(row.character_json),books:books.map(b=>[b.id,b.enabled,b.book_json]),settings:JSON.parse(row.settings_json),tools:AGENT_TOOLS,prompts:promptDocument,contextOptions,directorRule,promptVersion:9};
   conversation=new ConversationContext([...base,...(regenerate?[]:[userMessage])],JSON.parse(row.character_json),books.filter(b=>b.enabled).map(b=>parseBook(JSON.parse(b.book_json),b.name)),settings(JSON.parse(row.settings_json)),capability.contextTokens,{...contextOptions,inputRatio:capability.inputRatio,state:stateContext(before)},messages=>summarizeWithModel(env,username,requestId,settings(JSON.parse(row.settings_json)),messages,abort.signal));
   await conversation.restore(row.summary_json);
   prompt=conversation.prompt();
@@ -110,7 +113,7 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
    if(streamLimit){if(output.length||calls.length)throw new Error('生成途中上下文超限');conversation.contextTokens=streamLimit;const before=prompt.estimatedTokens;await conversation.compress();prompt=await conversation.fit(conversation.options,toolTranscript);if(prompt.estimatedTokens>=before)throw new Error('会话压缩未缩短输入');await saveSummary();continue;}
    if(upstreamReason==='tool_calls'){
     finishReason='unsupported';
-    if(!calls.length)throw new Error('工具调用为空');agent.validate(calls);const recalled=new Map();
+    if(!calls.length)throw new Error('工具调用为空');agent.observeOutput(output);agent.validate(calls);const recalled=new Map();
     for(const call of calls)if(call.function.name==='search_memory'){const args=JSON.parse(call.function.arguments);if(typeof args.query==='string')recalled.set(args.query,await lore.search(args.query));}
     await owns();const results=agent.execute(calls,recalled);if(!store.saveSteps(assistantId,agent.steps))throw new Error('生成已停止');
     const toolMessage:PromptMessage={role:'assistant',content:requestOutput};
@@ -154,17 +157,17 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
      }
      fallback.contextTokens=limit;
      let rebuilt=await fallback.fit();
-     let tail:PromptMessage[]=[{role:'assistant',content:output},directorTask(agent.state,texts.director)];
-     while(fallback.extend(rebuilt,tail).needsCompression){const before=rebuilt.estimatedTokens;await fallback.compress();rebuilt=await fallback.fit();if(rebuilt.estimatedTokens>=before)throw Error('完整正文与候选任务超过上下文');tail=[{role:'assistant',content:output},directorTask(agent.state,texts.director)];}
+     let tail:PromptMessage[]=[{role:'assistant',content:output},directorTask(agent.state,directorRule)];
+     while(fallback.extend(rebuilt,tail).needsCompression){const before=rebuilt.estimatedTokens;await fallback.compress();rebuilt=await fallback.fit();if(rebuilt.estimatedTokens>=before)throw Error('完整正文与候选任务超过上下文');tail=[{role:'assistant',content:output},directorTask(agent.state,directorRule)];}
      synopsisOptions.contextTokens=fallback.contextTokens;if(director)director.contextTokens=fallback.contextTokens;
      return [...rebuilt.messages,...tail];
     };
     const prefixIntact=stableJson(prompt.messages.slice(0,attemptPrefix.length))===stableJson(attemptPrefix);
-    if(prefixIntact)director=new DirectorAgent(prompt.messages,requestOutput,agent.state,conversation.contextTokens,capability.inputRatio,texts.director);
+    if(prefixIntact)director=new DirectorAgent(prompt.messages,requestOutput,agent.state,conversation.contextTokens,capability.inputRatio,directorRule);
     else{
      // A history checkpoint may have changed. Include the full visible body once.
      const rebuilt=await rebuild(conversation.contextTokens);
-     director=new DirectorAgent(rebuilt.slice(0,-2),output,agent.state,fallback!.contextTokens,capability.inputRatio,texts.director);
+     director=new DirectorAgent(rebuilt.slice(0,-2),output,agent.state,fallback!.contextTokens,capability.inputRatio,directorRule);
     }
     directorStartedAt=Date.now();candidates=await director.run(messages=>{
      modelRequests++;

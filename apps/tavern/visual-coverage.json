@@ -358,7 +358,7 @@
     {
       "id": "about",
       "kind": "screenshot",
-      "description": "AI SDK 对话流程、上下文顺序与共享提示词；浅色和深色。",
+      "description": "AI SDK 对话流程、上下文顺序、记忆目标协议与共享提示词；浅色和深色。",
       "evidence": [
         {
           "spec": "e2e/tavern.spec.ts",
