@@ -13,7 +13,8 @@
     "check:visual-coverage": "node ../financial/scripts/check-visual-coverage.mjs",
     "visual:baseline:import": "node scripts/baselines.mjs import",
     "deploy": "wrangler deploy",
-    "test:session-runtime": "node scripts/check-session-runtime.mjs"
+    "test:session-runtime": "node scripts/check-session-runtime.mjs",
+    "eval:agent": "node scripts/evaluate-agent.mjs --live --embeddings"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "catalog:",

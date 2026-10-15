@@ -4,6 +4,7 @@
  import { onMount } from 'svelte';
  import { Notice } from '@hasbai/ui/notice';
  import { AGENT_TOOLS, STATE_PREFIX, SUMMARY_PREFIX } from '../../shared/instructions';
+ import { CAPABILITY_RULES } from '../../shared/agent-protocol';
  import { PROMPT_LABELS, type PromptKey, type PromptTexts, type PromptConfiguration } from '../../shared/prompts';
  import type { Settings } from '../../shared/types';
  import type { Api } from '../lib/api';
@@ -18,7 +19,7 @@
  type Stage='body'|'tools'|'director'|'summary'|'character';
  let stage=$state<Stage>('body');
  const stages:[Stage,string][]=[['body','正文'],['tools','工具'],['director','候选'],['summary','压缩'],['character','角色卡']];
- const systemParts=['用户系统提示词 + 角色卡 system_prompt','用户 persona','世界书 before_char','角色描述','角色性格','初始场景','世界书 after_char','示例对白','角色卡 post_history_instructions','应用正文协议','历史摘要'];
+ const systemParts=['用户系统提示词 + 角色卡 system_prompt','用户 persona','世界书 before_char','角色描述','角色性格','初始场景','世界书 after_char','示例对白','角色卡 post_history_instructions','应用正文协议','记忆与目标协议','历史摘要'];
  const stagePrompts:Record<Stage,PromptKey[]>={character:['character'],body:['systemTemplate','agent'],tools:['agent'],director:['director'],summary:['summaryTask']};
  const promptRoles:Record<PromptKey,string>={systemTemplate:'system',character:'system',agent:'system',director:'user',summaryTask:'user'};
  const journey=[{icon:MessageSquare,title:'你的输入',subtitle:'浏览器 · 身份验证'},{icon:Database,title:'会话与记忆',subtitle:'每会话 SQLite DO'},{icon:Layers3,title:'上下文与模型',subtitle:'AI SDK → AI Gateway'},{icon:Sparkles,title:'正文与下一步',subtitle:'流式正文 → Director'}];
@@ -49,7 +50,7 @@
     {:else}
      <li><span class="message-dot"></span><div><span class="role-badge">system</span><h3>系统提示词</h3><ol class="system-parts">{#each systemParts as part}<li>{part}</li>{/each}</ol></div></li>
      <li><span class="message-dot"></span><div><span class="role-badge">user / assistant</span><h3>有效历史</h3></div></li>
-     <li><span class="message-dot"></span><div><span class="role-badge">user</span><h3>当前状态<span class="optional">非空时</span></h3></div></li>
+     <li><span class="message-dot"></span><div><span class="role-badge">user</span><h3>当前状态与目标<span class="optional">非空时</span></h3></div></li>
      <li><span class="message-dot"></span><div><span class="role-badge">user</span><h3>用户输入</h3></div></li>
      {#if stage==='tools'||stage==='director'}
       <li><span class="message-dot"></span><div><span class="role-badge">assistant</span><h3>工具调用<span class="optional">有调用时</span></h3></div></li>
@@ -80,6 +81,7 @@
      </div>{/each}
      {#if configuration.admin}<div class="editor-actions"><Button type="submit" disabled={saving||!dirty}>{saving?'保存中…':'保存提示词'}</Button>{#if saved}<span role="status">已保存，缓存逐步更新</span>{/if}</div>{/if}
     </form>
+    {#if stage!=='character'}<div class="prompt-field"><div class="field-head"><span>固定能力协议</span><span class="role-badge">{stage==='body'||stage==='tools'?'system':'user'}</span></div><pre>{CAPABILITY_RULES[stage==='tools'?'body':stage]}</pre></div>{/if}
     {#if stage==='body'}<details class="data-labels"><summary>数据标签<ChevronDown size={14} aria-hidden="true"/></summary><pre>{STATE_PREFIX+'[状态 JSON]\n\n'+SUMMARY_PREFIX+'[历史摘要]'}</pre></details>{/if}
    {/if}
   </div>

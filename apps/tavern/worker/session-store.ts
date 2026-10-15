@@ -2,7 +2,7 @@ import type { FinishReason, Message } from '../shared/types';
 import { HttpError } from './http';
 import type { Summary } from './context';
 import { message, type MessageRow, type SessionRow } from './store';
-import { emptyState, stableJson, storyMessages, type ModelProjection, type StoryState, type ToolStep } from './agent';
+import { emptyState, normalizeState, stableJson, storyMessages, type ModelProjection, type StoryState, type ToolStep } from './agent';
 
 export const SESSION_SCHEMA = `
 CREATE TABLE IF NOT EXISTS sessions (
@@ -40,8 +40,8 @@ export class SessionStore {
  projection(id:string):ModelProjection|null{const row=this.rows<{value_json:string}>('SELECT value_json FROM model_projections WHERE message_id=?',id)[0];return row?JSON.parse(row.value_json):null;}
  synopsis():string|null{return this.rows<{value_json:string}>('SELECT value_json FROM director_synopsis WHERE session_id=?',this.id)[0]?.value_json??null;}
  saveSynopsis(assistantId:string,summary:Summary){if(!this.pending(assistantId))return false;this.write('INSERT INTO director_synopsis VALUES(?,?) ON CONFLICT(session_id) DO UPDATE SET value_json=excluded.value_json',this.id,JSON.stringify(summary));return true;}
- state(history:Message[]=storyMessages(this.messages())):StoryState{for(const m of [...history].reverse()){const s=this.snapshot(m.id);if(s?.after_json)return JSON.parse(s.after_json);}return emptyState();}
- before(id:string):StoryState{const s=this.snapshot(id);return s?JSON.parse(s.before_json):this.state(storyMessages(this.messages()).filter(m=>m.ordinal<(this.findMessage(id)?.ordinal??0)));}
+ state(history:Message[]=storyMessages(this.messages())):StoryState{for(const m of [...history].reverse()){const s=this.snapshot(m.id);if(s?.after_json)return normalizeState(JSON.parse(s.after_json));}return emptyState();}
+ before(id:string):StoryState{const s=this.snapshot(id);return s?normalizeState(JSON.parse(s.before_json)):this.state(storyMessages(this.messages()).filter(m=>m.ordinal<(this.findMessage(id)?.ordinal??0)));}
  beginState(id:string,state:StoryState){if(!this.pending(id))throw new HttpError(409,'生成已停止');this.write('INSERT INTO turn_snapshots(message_id,before_json) VALUES(?,?)',id,stableJson(state));}
  saveSteps(id:string,steps:ToolStep[]){if(!this.pending(id))return false;this.write('UPDATE turn_snapshots SET steps_json=? WHERE message_id=?',JSON.stringify(steps),id);return true;}
  rawMessages():MessageRow[]{return this.rows<MessageRow & Record<string,SqlStorageValue>>('SELECT * FROM messages WHERE session_id=? ORDER BY ordinal,created_at,id',this.id);}

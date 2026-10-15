@@ -96,6 +96,11 @@ Director 不替换正文的首条 system、不改动用户输入，也不重建�
 
 候选仍与所属 message ID 一起保存为现有 nullable 元数据；刷新和 UUID 回放仅读取结果。候选不是剧情消息，不进入正文摘要或模型投影。SSE 与按钮发送契约保持现有 `candidates_pending → done`。
 
+固定能力协议按正文、Director 和摘要分别追加，KV 自定义文本保留。
+Director 末尾任务包含目标边界，实际 messages 与 tools 前缀仍原样复用。
+协议原文与关于页来自同一模块，详见[AGENT](AGENT.md#prompt-与模型投影)。
+当前长程与真实缓存计数见[PROGRESS](PROGRESS.md#记忆原文目标与固定长程评测2026-10-15)。
+
 ## 上下文与恢复
 
 容量发现、超限压缩、checkpoint、模型投影、终态错误、停止/占用和 DO 提交以[AGENT](AGENT.md#上下文与摘要)为准。候选只在可靠 stop 且三条全部有效后原子保存，不拼接 length 的半个 JSON，不补模板。

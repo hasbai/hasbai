@@ -104,8 +104,20 @@ it('lets the user stop an old in-flight generation before migration without remo
 });
 it('upgrades an existing private SQLite object without losing IDs and imports recoverable branch snapshots',async()=>{
  seed();await invoke('read');const sqlite=sqlDbs.get(sessionName('owner','s'))!;sqlite.exec('DROP TABLE turn_snapshots; DROP TABLE model_projections');objects.delete(sessionName('owner','s'));await invoke('read');expect(sqlite.prepare('SELECT id FROM messages').get()?.id).toBe('m-s');expect(sqlite.prepare('SELECT count(*) n FROM turn_snapshots').get()?.n).toBe(0);
- const store=new SessionStore(storage(sessionName('owner','s')),'s'),before={scene:null,facts:{},relationships:{},inventory:{}};store.claim('a',Date.now());store.start('a',undefined,{id:'a',role:'assistant',content:'抵达北港',status:'pending',ordinal:1,requestId:'r',createdAt:5});store.beginState('a',before);store.finish('a','抵达北港','completed','stop',[],{...before,scene:'北港'});
+ const store=new SessionStore(storage(sessionName('owner','s')),'s'),before={scene:null,facts:{},relationships:{},inventory:{},goals:{}};store.claim('a',Date.now());store.start('a',undefined,{id:'a',role:'assistant',content:'抵达北港',status:'pending',ordinal:1,requestId:'r',createdAt:5});store.beginState('a',before);store.finish('a','抵达北港','completed','stop',[],{...before,scene:'北港'});
  sqlite.prepare("INSERT INTO messages VALUES('u','s','user','新问题','completed',2,NULL,6,NULL,NULL)").run();
  let failed=false;intercept=sql=>{if(sql.startsWith('UPDATE messages')&&!failed){failed=true;throw Error('temporary import failure');}};
  await expect(invoke('fork',{messageId:'u',content:'改问'})).rejects.toThrow('temporary');intercept=undefined;const row=db.prepare("SELECT id FROM sessions WHERE id<>'s'").get();const recovered=await invoke('read',{},'owner',row!.id as string);expect(recovered.value.session.state.scene).toBe('北港');expect(recovered.value.messages.at(-1).content).toBe('改问');
+});
+it('keeps goal snapshots before an edited branch and excludes completed future goals',async()=>{
+ seed();await invoke('read');const store=new SessionStore(storage(sessionName('owner','s')),'s');
+ const paused={task:'核对货单',actor:'character' as const,status:'paused' as const,progress:'已登记',pauseReason:'用户休息',completionEvidence:null};
+ const before={scene:null,facts:{},relationships:{},inventory:{},goals:{warehouse:paused}};
+ store.claim('a',Date.now());store.start('a',undefined,{id:'a',role:'assistant',content:'暂不核对。',status:'pending',ordinal:1,requestId:'r',createdAt:5},before);store.finish('a','暂不核对。','completed','stop',[],before);
+ const sql=sqlDbs.get(sessionName('owner','s'))!;sql.prepare("INSERT INTO messages VALUES('u','s','user','现在恢复','completed',2,NULL,6,NULL,NULL)").run();
+ const completed={...before,goals:{warehouse:{...paused,status:'completed' as const,pauseReason:null,completionEvidence:'核对完成。'}}};
+ store.claim('b',Date.now());store.start('b',undefined,{id:'b',role:'assistant',content:'核对完成。',status:'pending',ordinal:3,requestId:'r2',createdAt:7},before);store.finish('b','核对完成。','completed','stop',[],completed);
+ const branch=await invoke('fork',{messageId:'u',content:'继续休息'});const saved=await invoke('read',{},'owner',branch.value.id);
+ expect(saved.value.session.state.goals).toEqual(before.goals);expect(saved.value.messages.at(-1)).toMatchObject({role:'user',content:'继续休息'});expect(saved.value.messages.some((m:{content:string})=>m.content==='核对完成。')).toBe(false);
+ objects.delete(sessionName('owner',branch.value.id));expect((await invoke('read',{},'owner',branch.value.id)).value.session.state.goals).toEqual(before.goals);
 });

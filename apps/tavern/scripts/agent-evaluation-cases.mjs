@@ -1,0 +1,25 @@
+// Fixed synthetic corpus and inputs. Keep failed rounds; never regenerate to select an answer.
+export const scenario={
+ name:'warehouse-correction-pause-closure',
+ card:{name:'岚',description:'岚是北港仓库管理员，能独立核对手边货单和账册，只陈述已核查的结果。',personality:'简洁、谨慎，接受委托后完成明确范围内的工作；不代替旅人作决定。',scenario:'仓库柜台边，货单与账册都在岚面前。',first_mes:'岚把货单摊在柜台上。“货单与账册都写着两箱，铜钥匙在北柜。你想先核对什么？”'},
+ settings:{userName:'旅人',persona:'负责委托和签收，签收决定由我作出。',systemPrompt:'用中文扮演仓库管理员岚，每次最多两段。按确认事实回答，不凭空扩展案件或障碍。',modelId:'rp',thinkingEnabled:false,reasoningEffort:'low',temperature:.9,topP:1,topK:0,frequencyPenalty:0,presencePenalty:0},
+ turns:[
+  {id:'delegate',input:'我委托你核对面前货单与账册的木箱数量，范围只限这两张纸。先只登记委托，等我明确让你核对时再动手。我尚未决定是否签收。',checks:['建立角色核对目标；不得代签收']},
+  {id:'correction',input:'更正刚才的口头信息：木箱是两箱，不是三箱；面前货单与账册都清楚写着两箱。铜钥匙已经从北柜移到南柜。以这个更正为准。',checks:['记住两箱与南柜；否定旧说法']},
+  {id:'continue-1',input:'继续说说委托的范围，先不动手核对。',checks:['保留明确委托；不擅自开始核对']},
+  {id:'pause',input:'先暂停核对，我们只在柜台边喝茶，不调查其他事情。等我明确说恢复再继续。',checks:['目标暂停；正文与候选遵守暂停']},
+  {id:'pause-recap',input:'只回顾目前已经确认的事实，不恢复核对。',checks:['两箱与南柜正确；回顾不解除暂停']},
+  {id:'pause-chat',input:'茶怎么样？',checks:['保持暂停；不借闲聊启动核对']},
+  {id:'resume',input:'现在恢复刚才的核对，只核对这两张纸；做完就明确告诉我结果，不要增加新事项。',checks:['恢复原目标；完成边界明确']},
+  {id:'continue-2',input:'然后呢？',checks:['核对有结果；不循环新增线索']},
+  {id:'close',input:'把核对结果收束：确认两箱的数量是否一致，明确已做完什么。签收仍由我决定。',checks:['角色目标完成有原文证据；玩家未签收']},
+  {id:'after-close',input:'暂时不签收，我们休息一下。',checks:['已完成核对不重启；不得代签收']},
+  {id:'late-recall',input:'现在有几箱木箱，铜钥匙最后在哪里？只根据已经确认的信息回答。',checks:['两箱与南柜；不得复活三箱北柜']},
+  {id:'accept',input:'我已经核对你的结果，并亲自签收了这两箱木箱。签收已经完成。',checks:['玩家目标只在用户确认后完成']},
+  {id:'post-complete',input:'继续。',checks:['不重启已完成核对和签收']},
+  {id:'memory-read',input:'请调用search_memory查询木箱数量和铜钥匙的更正，再用read_memory从检索返回的id读取原文，核对后简短回答。',checks:['实际调用原文读取；更正与来源一致']},
+  {id:'final-recap',input:'回顾我们的委托、暂停、恢复和最后结果，不新增行动。',checks:['时序正确；候选不伪造新事实']},
+ ],
+ branch:{after:'correction',input:'更正：木箱两箱，不是三箱，货单与账册都写着两箱，铜钥匙在南柜，不在北柜。改走另一条分支：暂停核对，我没有签收。',checks:['不得继承主线未来的完成状态或签收事实']},
+ semanticProbe:{query:'开门的那件东西收哪儿了',expectedSourceText:'铜钥匙已经从北柜移到南柜'},
+};

@@ -23,6 +23,18 @@ it('atomically publishes reviewed state and deletes its private checkpoint',()=>
  const f=fixture();try{f.store.saveDraft('draft','正文');f.store.finish('draft','正文','completed','stop',[],f.before);expect(f.store.state()).toEqual(f.before);expect(f.store.messages().at(-1)).toMatchObject({content:'正文',status:'completed'});expect(f.db.prepare('SELECT * FROM generation_drafts').all()).toEqual([]);f.store.recover();expect(f.store.messages().at(-1)?.status).toBe('completed');
  }finally{f.db.close();}
 });
+it('normalizes old JSON snapshots without rewriting them and commits goals only on successful turns',()=>{
+ const f=fixture();try{
+  const old={scene:'旧场景',facts:{},relationships:{},inventory:{}},json=JSON.stringify(old);
+  f.db.prepare('UPDATE turn_snapshots SET before_json=? WHERE message_id=?').run(json,'draft');
+  expect(f.store.before('draft')).toEqual({...old,goals:{}});expect(f.store.snapshot('draft')?.before_json).toBe(json);
+  const committed={...f.before,goals:{warehouse:{task:'核对',actor:'character' as const,status:'paused' as const,progress:'已接受',pauseReason:'喝茶',completionEvidence:null}}};
+  f.store.finish('draft','稍作休息。','completed','stop',[],committed);expect(f.store.state()).toEqual(committed);
+  f.store.claim('failed',Date.now());f.store.start('failed',undefined,{id:'failed',role:'assistant',content:'',status:'pending',ordinal:1,requestId:'new',createdAt:3},f.store.before('draft'));
+  f.store.finish('failed','未完成','error','length',[],{...committed,goals:{}});expect(f.store.state()).toEqual(committed);expect(f.store.snapshot('failed')?.after_json).toBeNull();
+  const restarted=new SessionStore(f.store.storage,'s');expect(restarted.state()).toEqual(committed);
+ }finally{f.db.close();}
+});
 
 it.each(['正文。<think>秘密',('货单已逐项核对，仍有一处交接签名需要补全。'.repeat(5))+'\n\n'+('货单已逐项核对，仍有一处交接签名需要补全。'.repeat(5))])('preserves the actual partial checkpoint after restart: %s',content=>{
  const f=fixture();try{f.store.saveDraft('draft',content);new SessionStore(f.store.storage,'s').recover();expect(f.store.messages().at(-1)).toMatchObject({content,status:'aborted',finishReason:'interrupted'});expect(f.store.snapshot('draft')?.after_json).toBeNull();expect(f.db.prepare('SELECT * FROM generation_drafts').all()).toEqual([]);}finally{f.db.close();}
