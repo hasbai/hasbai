@@ -16,15 +16,17 @@
     "test:session-runtime": "node scripts/check-session-runtime.mjs"
   },
   "dependencies": {
+    "@ai-sdk/openai-compatible": "catalog:",
     "@hasbai/auth": "workspace:*",
     "@hasbai/ui": "workspace:*",
     "@lucide/svelte": "catalog:",
     "@tailwindcss/vite": "catalog:",
+    "ai": "catalog:",
+    "fflate": "catalog:",
     "jose": "catalog:",
     "svelte": "catalog:",
     "tailwindcss": "catalog:",
-    "tw-animate-css": "catalog:",
-    "fflate": "catalog:"
+    "tw-animate-css": "catalog:"
   },
   "devDependencies": {
     "@playwright/test": "catalog:",

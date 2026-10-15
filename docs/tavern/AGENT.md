@@ -31,7 +31,22 @@ DO 成功消息版本与状态事务是权威剧情；摘要、旧 Director 梗�
 
 ## Prompt 与模型投影
 
-保持直接 TypeScript 模块，不引入通用插件框架或 Agents SDK。
+正文、Director、压缩与角色生成统一经 `worker/inference.ts` 调用 Vercel AI SDK。
+固定 `ai` 与 OpenAI-compatible provider 版本，由 workspace catalog 管理。
+`streamText` 处理流式正文及工具解析，`tool` 只声明工具，不设置 `execute`。
+领域循环继续整批校验工具，再按原序执行。
+
+不引入通用插件框架或 Cloudflare Agents SDK。
+
+适配器保留应用原始请求，避免 SDK 转换改变消息边界或工具参数。
+正文增量即时交给 SDK；工具分片合并后才交给 SDK 解析。
+可空协议字段不覆盖累计值，业务参数中的 null 保留。
+
+SDK 解析结果须与原始工具 ID、顺序、名称及参数一致。
+`maxRetries:0` 与 `streamRetries:0` 禁用自动重试。
+缺失或冲突终态仍报错，不按 SDK 归一化结果认定成功。
+原始 usage、timings 与每次 HTTP 日志 ID 保留；未知指标仍为 null。
+
 提示词读取与编辑见[应用提示词](ARCHITECTURE.md#应用提示词)。
 正文使用一个稳定 system，包含用户配置、角色卡、世界书与短应用协议。
 协议只约束事实连续性、用户行动边界、工具及输出格式。

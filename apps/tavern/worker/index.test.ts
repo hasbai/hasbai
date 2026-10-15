@@ -645,3 +645,11 @@ it('uses the KV system template only for missing personal settings and preserves
  const {DEFAULT_PROMPTS}=await import('../shared/prompts');Object.assign(env.PROMPTS,{get:vi.fn(async()=>JSON.stringify({revision:'template',texts:{...DEFAULT_PROMPTS,systemTemplate:'在线默认模板'.repeat(3000)}}))});
  expect(await(await call('/api/settings')).json()).toMatchObject({systemPrompt:'在线默认模板'.repeat(3000)});await call('/api/settings','PUT',{...DEFAULT_SETTINGS,systemPrompt:'我的已保存提示'});expect(await(await call('/api/settings')).json()).toMatchObject({systemPrompt:'我的已保存提示'});
 });
+
+it('does not compress or resend after native tool fragments precede context overflow',async()=>{
+ const {s}=await seed();sessionDb.prepare('UPDATE messages SET content=? WHERE session_id=?').run('旧剧情。'.repeat(1000),s.id);
+ aiRun.mockResolvedValueOnce(new Response('data: '+JSON.stringify({choices:[{delta:{tool_calls:[{index:0,id:'partial',function:{name:'update_state',arguments:'{"patch":'}}]}}]})+'\n\ndata: '+JSON.stringify({error:{n_ctx:2048}})+'\n\n',{headers:{'Content-Type':'text/event-stream'}}));
+ const requestId=crypto.randomUUID(),wire=await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId,content:'继续'})).text();await Promise.all(work);
+ expect(terminal(wire)).toMatchObject({status:'error',content:'',candidates:[]});expect(aiRun).toHaveBeenCalledOnce();expect(sessionDb.prepare('SELECT after_json FROM turn_snapshots').get()?.after_json).toBeNull();
+ expect((await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId})).json() as {replayed:boolean}).replayed).toBe(true);expect(aiRun).toHaveBeenCalledOnce();
+});

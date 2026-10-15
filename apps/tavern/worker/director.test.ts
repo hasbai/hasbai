@@ -4,7 +4,11 @@ import { emptyState } from './agent';
 import type {PromptMessage} from '../shared/prompt';
 const prefix:PromptMessage[]=[{role:'system',content:'角色设定与剧情摘要'},{role:'user',content:'我的输入'}];
 const agent=()=>new DirectorAgent(prefix,'最新正文',emptyState(),null);
-const reply=(chunks:string[],reason='stop',extra:Record<string,unknown>={})=>new Response(chunks.map(content=>'data: '+JSON.stringify({choices:[{delta:{content,...extra}}]})+'\n\n').join('')+'data: '+JSON.stringify({choices:[{delta:{},finish_reason:reason}]})+'\n\ndata: [DONE]\n\n',{headers:{'Content-Type':'text/event-stream'}});
+const reply=async function*(chunks:string[],reason='stop',extra:Record<string,unknown>={}):AsyncGenerator<import('./inference').InferenceEvent>{
+ if(extra.tool_calls||extra.refusal)throw Error('无效响应');
+ for(const text of chunks)yield {type:'text',text};
+ yield {type:'finish',reason,calls:[]};
+};
 it('preserves wire messages and tool transcript, then appends a Qwen-compatible Director task',()=>{
  const state=emptyState();state.scene='北港';const source:PromptMessage[]=[...structuredClone(prefix),{role:'assistant',content:'工具前正文',tool_calls:[{id:'state',type:'function',function:{name:'update_state',arguments:'{}'}}]},{role:'tool',tool_call_id:'state',content:'已更新'}];
  const before=structuredClone(source),director=new DirectorAgent(source,'当前正文',state,null);source[0].content='后来修改';state.scene='未来';

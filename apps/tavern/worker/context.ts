@@ -1,8 +1,7 @@
 import { SUMMARY_TASK } from '../shared/instructions';
 import { buildPrompt, estimateTokens, type PromptMessage } from '../shared/prompt';
-import { sseData } from '../shared/sse';
 import type { Book, JsonObject, Message, Settings } from '../shared/types';
-import { runRoleplay } from './gateway';
+import { inferRoleplay, InferenceError } from './inference';
 import { modelInput } from './models';
 
 export type Summary = { text: string; covered: string[]; fingerprint: string };
@@ -125,23 +124,16 @@ export async function summarizeStory(previous:string,history:Message[],options:{
 }
 
 export async function summarizeWithModel(env: Env, username: string, requestId: string, settings: Settings, messages: PromptMessage[], signal: AbortSignal, observe?:(event:Parameters<import('./metrics').InferenceMetrics['observe']>[0],logId:string|null)=>void) {
- const result = await runRoleplay(env,username,requestId,{messages,stream:true,...modelInput({...settings,thinkingEnabled:false})},signal);
- if (!(result instanceof Response)) throw new Error('会话压缩失败');
- if (!result.ok) {
-  const value = await result.json().catch(() => null) as { error?: { message?: string }; message?: string } | null;
-  const limit = contextLimit(value);
-  if (limit) throw new SummaryRetry(limit);
-  throw new Error('会话压缩失败');
- }
- if (!result.body || !result.headers.get('Content-Type')?.includes('text/event-stream')) { await result.body?.cancel(); throw new Error('会话压缩失败'); }
  let text = '', finish = '';
- for await (const data of sseData(result.body, signal)) {
-  if (data === '[DONE]') break;
-  const event = JSON.parse(data);observe?.(event,result.headers.get('cf-aig-log-id'));
-  if (event.error) { const limit = contextLimit(event); if (limit) throw new SummaryRetry(limit); throw new Error('会话压缩失败'); }
-  const c = event.choices?.[0];
-  if (typeof c?.delta?.content === 'string') text += c.delta.content;
-  if (c?.finish_reason) finish = c.finish_reason;
+ try {
+  for await (const event of inferRoleplay(env,username,requestId,{messages,...modelInput({...settings,thinkingEnabled:false})},signal)) {
+   if(event.type==='observation')observe?.(event.value,event.logId);
+   else if(event.type==='text')text+=event.text;
+   else {if(event.calls.length)throw new Error('会话压缩失败');finish=event.reason;}
+  }
+ } catch(error) {
+  if(error instanceof InferenceError){const limit=contextLimit(error.value);if(limit)throw new SummaryRetry(limit);}
+  throw error;
  }
  if (signal.aborted) throw new Error('会话压缩已停止');
  if (finish === 'length') throw new Error('会话压缩达到长度上限');
