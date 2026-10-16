@@ -1,3 +1,4 @@
+import { userPrompt } from './commands';
 import { STATE_PREFIX, SUMMARY_PREFIX } from './instructions';
 import { parseBook, parseCard } from './cards';
 import type { Book, Entry, JsonObject, Message, Settings } from './types';
@@ -44,7 +45,7 @@ export function buildPrompt(raw: JsonObject, books: Book[], history: Message[], 
   const picked = entries;
   const selectedHistory = activeHistory;
   const system = [systemText(picked), post, options.protocol, options.summary ? SUMMARY_PREFIX + options.summary : ''].filter(Boolean).join('\n\n');
-  const messages: PromptMessage[] = [{ role: 'system', content: system }, ...selectedHistory.map(m => ({ role: m.role, content: expand(m.content) }))];
+  const messages: PromptMessage[] = [{ role: 'system', content: system }, ...selectedHistory.map(m => ({ role: m.role, content: expand(m.role==='user'?userPrompt(m.content):m.content) }))];
   if(options.state){const at=messages.at(-1)?.role==='user'?messages.length-1:messages.length;messages.splice(at,0,stateMessage(options.state));}
   // Template allowance is part of context estimation, not an output budget.
   const estimatedTokens = messages.reduce((sum, m) => sum + count(m.content) + 8, 256);

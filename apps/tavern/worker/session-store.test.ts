@@ -39,3 +39,14 @@ it('normalizes old JSON snapshots without rewriting them and commits goals only 
 it.each(['正文。<think>秘密',('货单已逐项核对，仍有一处交接签名需要补全。'.repeat(5))+'\n\n'+('货单已逐项核对，仍有一处交接签名需要补全。'.repeat(5))])('preserves the actual partial checkpoint after restart: %s',content=>{
  const f=fixture();try{f.store.saveDraft('draft',content);new SessionStore(f.store.storage,'s').recover();expect(f.store.messages().at(-1)).toMatchObject({content,status:'aborted',finishReason:'interrupted'});expect(f.store.snapshot('draft')?.after_json).toBeNull();expect(f.db.prepare('SELECT * FROM generation_drafts').all()).toEqual([]);}finally{f.db.close();}
 });
+
+it('rolls back an entire history cut if message deletion fails',()=>{
+ const f=fixture();try{f.store.finish('draft','保留原文','completed','stop',[],f.before);f.db.prepare("UPDATE sessions SET summary_json='old-checkpoint'").run();f.store.activity({id:'step',messageId:'draft',ordinal:1,kind:'tool',title:'工具',status:'completed',result:'原结果',createdAt:1});f.db.exec("CREATE TRIGGER refuse_cut BEFORE DELETE ON messages BEGIN SELECT RAISE(ABORT,'cut unavailable'); END");
+ expect(()=>f.store.truncate('draft','delete')).toThrow('cut unavailable');expect(f.store.findMessage('draft')?.content).toBe('保留原文');expect(f.store.state()).toEqual(f.before);expect(f.store.activities()).toHaveLength(1);expect(f.store.get().summary_json).toBe('old-checkpoint');expect(f.store.cancelled('request')).toBe(false);
+ }finally{f.db.close();}
+});
+it.each(['edit','delete'] as const)('clears replaced snapshots, derived memories and future events on %s',action=>{
+ const f=fixture();try{f.store.finish('draft','旧结局','completed','stop',['旧候选'],f.before);f.db.exec("CREATE TABLE lore_chunks(id TEXT PRIMARY KEY); INSERT INTO lore_chunks VALUES('future'); INSERT INTO director_synopsis VALUES('s','future'); INSERT INTO model_projections VALUES('draft','{}')");f.db.prepare("UPDATE sessions SET summary_json='old-checkpoint'").run();f.store.activity({id:'tool',messageId:'draft',ordinal:1,kind:'tool',title:'工具',status:'completed',result:'未来事实',createdAt:1});
+ f.store.truncate('draft',action,'编辑后');expect(f.store.state()).toEqual(emptyState());expect(f.store.get().summary_json).toBeNull();expect(f.store.snapshots()).toEqual([]);expect(f.store.activities()).toEqual([]);expect(f.db.prepare('SELECT * FROM lore_chunks').all()).toEqual([]);expect(f.store.projection('draft')).toBeNull();expect(f.store.synopsis()).toBeNull();expect(f.store.cancelled('request')).toBe(true);expect(f.store.messages()).toHaveLength(action==='edit'?1:0);
+ }finally{f.db.close();}
+});

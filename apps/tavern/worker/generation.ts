@@ -1,3 +1,5 @@
+import { contextUsage } from './session-context';
+import type { AgentActivity } from '../shared/types';
 import { readPrompts } from './prompts';
 import { capabilityProtocol } from '../shared/agent-protocol';
 import { capabilities, modelInput, recordFeedback, type Capability } from './models';
@@ -36,6 +38,9 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
  const abort=new AbortController();let checking=false;let leaseLost=false;let ready=false;let finishing=false;let abortReason:FinishReason='stopped';onClaim(assistantId,abort);
  const owns=async()=>{if(abort.signal.aborted)throw new HttpError(409,'生成已停止');if(!store.owns(assistantId)){leaseLost=true;abort.abort();throw new Error('会话生成已接管');}};
  const stopWatcher=setInterval(()=>{if(checking||finishing||abort.signal.aborted)return;checking=true;try{if(!store.renew(assistantId)){leaseLost=true;abort.abort();return;}if(ready&&!store.pending(assistantId)){abortReason='stopped';abort.abort();}}catch{leaseLost=true;abortReason='upstream';abort.abort();}finally{checking=false;}},1000);
+ let report:(kind:AgentActivity['kind'],key:string,status:AgentActivity['status'],title:string,result?:unknown,input?:unknown)=>Promise<void>;
+ let compression=0;let compressionKey='';
+ const observeCompression=async(status:'running'|'completed'|'error',result:unknown)=>{if(status==='running')compressionKey='compression-'+(++compression);await report('compression',compressionKey,status,'压缩上下文',result);};
  let row=initial;let prompt:ReturnType<typeof buildPrompt>;let conversation:ConversationContext;let agent:AgentTurn;
  const toolTranscript:PromptMessage[]=[];
  let projectionContext:unknown;let storyProjection:ModelProjection|undefined;let lore:LoreIndex;let committedBase:Message[];
@@ -44,7 +49,8 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
   const history=currentMessages(store.messages());const messageTime=Math.max(now,...history.map(m=>m.createdAt+1));
   let ordinal=Math.max(-1,...history.map(m=>m.ordinal))+1;
   let base=storyMessages(store.messages());let before=store.state(base);
-  if(regenerate){const last=history.at(-1);if(last?.role==='assistant'){ordinal=last.ordinal;before=store.before(last.id);base=base.filter(m=>m.ordinal<ordinal);}else if(last?.role==='user'){ordinal=last.ordinal+1;}else throw new HttpError(400,'没有可重新生成的消息');}
+  const target=regenerate?(data.messageId?history.find(m=>m.id===data.messageId):history.at(-1)):undefined;
+  if(regenerate){if(!target)throw new HttpError(400,'没有可重新生成的消息');ordinal=target.ordinal+(target.role==='user'?1:0);before=target.role==='assistant'?store.before(target.id):store.state(base.filter(m=>m.ordinal<ordinal));base=base.filter(m=>m.ordinal<ordinal);}
   committedBase=structuredClone(base);
   const userMessage:Message={id:crypto.randomUUID(),role:'user',content:text,status:'completed',ordinal,requestId,createdAt:messageTime};
   const assistantOrdinal=regenerate?ordinal:ordinal+1;
@@ -53,8 +59,8 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
   lore=new LoreIndex(store.storage.sql,[...(embedded?[{id:'character',book:parseBook(embedded)}]:[]),...books.filter(b=>b.enabled).map(b=>({id:b.id,book:parseBook(JSON.parse(b.book_json),b.name)}))],(texts,signal)=>embeddings(env,texts,username,requestId,signal),abort.signal,base);
   agent=new AgentTurn(before,base,regenerate?[...base].reverse().find(m=>m.role==='user'):userMessage,(hit,offset)=>lore.read(hit,offset));
   projectionContext={character:JSON.parse(row.character_json),books:books.map(b=>[b.id,b.enabled,b.book_json]),settings:JSON.parse(row.settings_json),tools:AGENT_TOOLS,prompts:promptDocument,contextOptions,directorRule,promptVersion:9};
-  conversation=new ConversationContext([...base,...(regenerate?[]:[userMessage])],JSON.parse(row.character_json),books.filter(b=>b.enabled).map(b=>parseBook(JSON.parse(b.book_json),b.name)),settings(JSON.parse(row.settings_json)),capability.contextTokens,{...contextOptions,inputRatio:capability.inputRatio,state:stateContext(before)},messages=>summarizeWithModel(env,username,requestId,settings(JSON.parse(row.settings_json)),messages,abort.signal));
-  await conversation.restore(row.summary_json);
+  conversation=new ConversationContext([...base,...(regenerate?[]:[userMessage])],JSON.parse(row.character_json),books.filter(b=>b.enabled).map(b=>parseBook(JSON.parse(b.book_json),b.name)),settings(JSON.parse(row.settings_json)),capability.contextTokens,{...contextOptions,inputRatio:capability.inputRatio,state:stateContext(before)},messages=>summarizeWithModel(env,username,requestId,settings(JSON.parse(row.settings_json)),messages,abort.signal),observeCompression);
+  if(!regenerate)await conversation.restore(row.summary_json);
   prompt=conversation.prompt();
   {const previous=base.at(-1),saved=previous?store.projection(previous.id):null;
    if(saved&&saved.messages[0]?.content===prompt.messages[0]?.content&&saved.key===await contentHash([projectionContext,base.map(m=>[m.id,m.content])])){
@@ -63,10 +69,10 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
    }
   }
   modelInput(settings(JSON.parse(row.settings_json)));
-  await owns();store.start(assistantId,regenerate?undefined:userMessage,{id:assistantId,role:'assistant',content:'',status:'pending',ordinal:assistantOrdinal,requestId,createdAt:messageTime+1},before);ready=true;
+  await owns();store.start(assistantId,regenerate?undefined:userMessage,{id:assistantId,role:'assistant',content:'',status:'pending',ordinal:assistantOrdinal,requestId,createdAt:messageTime+1},before,target?.id);ready=true;
  }catch(error){clearInterval(stopWatcher);abort.abort();try{store.release(assistantId);}finally{await onSettled(assistantId);}if(error instanceof Error&&error.message.includes('上下文上限'))throw new HttpError(400,error.message);throw error;}
- const sourceHistory=structuredClone(conversation.history);let checkpoint=row.summary_json;
- let disconnected=false;let output='';let finishReason:FinishReason='interrupted';let model='';let gatewayLogId:string|null=null;let metrics=new InferenceMetrics();let firstModelStarted:number|null=null;let modelRequests=0;let firstBodyAt:number|null=null;let candidates:string[]=[];let parser=new CandidateStream(candidateDelimiter());let parserFinished=false;let candidateOutcome='not-started';let bodyModel='';let bodyGatewayLogId:string|null=null;let bodyFinishedAt:number|null=null;let candidateStartedAt:number|null=null;let candidateFirstAt:number|null=null;let candidateFinishedAt:number|null=null;let bodyRequests=0;let director:DirectorAgent|undefined;let synopsisRequests=0;let synopsisSource='not-started';let synopsisCovered=0;let synopsisMetrics:ReturnType<InferenceMetrics['snapshot']>|null=null;let synopsisGatewayLogId:string|null=null;let synopsisModel='';let synopsisElapsedMs=0;let directorStartedAt:number|null=null;let bodyMetrics:ReturnType<InferenceMetrics['snapshot']>|null=null;
+ const sourceHistory=structuredClone(conversation.history);let checkpoint=regenerate?null:row.summary_json;
+ let disconnected=false;let output='';let finishReason:FinishReason='interrupted';let model='';let gatewayLogId:string|null=null;let metrics=new InferenceMetrics();let firstModelStarted:number|null=null;let modelRequests=0;let firstBodyAt:number|null=null;let candidates:string[]=[];let parser=new CandidateStream(candidateDelimiter());let parserFinished=false;let candidateOutcome='not-started';let candidateError='';let bodyModel='';let bodyGatewayLogId:string|null=null;let bodyFinishedAt:number|null=null;let candidateStartedAt:number|null=null;let candidateFirstAt:number|null=null;let candidateFinishedAt:number|null=null;let bodyRequests=0;let director:DirectorAgent|undefined;let synopsisRequests=0;let synopsisSource='not-started';let synopsisCovered=0;let synopsisMetrics:ReturnType<InferenceMetrics['snapshot']>|null=null;let synopsisGatewayLogId:string|null=null;let synopsisModel='';let synopsisElapsedMs=0;let directorStartedAt:number|null=null;let bodyMetrics:ReturnType<InferenceMetrics['snapshot']>|null=null;
 
  let transport!:TransformStreamDefaultController<Uint8Array>,ending=false;
  const stream=new TransformStream<Uint8Array,Uint8Array>({start(controller){transport=controller;}});
@@ -83,12 +89,15 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
  // Detach transport without aborting the independent model task. Terminating
  // the stream also releases a write blocked by a paused/disconnected reader.
  const onDisconnect=()=>{if(ending||disconnected)return;disconnected=true;try{transport.terminate();}catch{/* The reader may already have cancelled. */}};request.signal.addEventListener('abort',onDisconnect,{once:true});if(request.signal.aborted)onDisconnect();void writer.closed.catch(onDisconnect);
+ report=async(kind,key,status,title,result,input)=>{const value:AgentActivity={id:assistantId+':'+key,messageId:assistantId,ordinal:store.findMessage(assistantId)!.ordinal,kind,title,status,result,input,createdAt:Date.now()};const previous=store.activities().find(a=>a.id===value.id);if(previous){value.createdAt=previous.createdAt;value.input??=previous.input;}store.activity(value);if(!disconnected&&!ending)try{transport.enqueue(frame({type:'activity',activity:value}));}catch{onDisconnect();}};
+ const publishContext=async()=>{if(!disconnected)try{transport.enqueue(frame({type:'context',context:contextUsage(conversation)}));}catch{onDisconnect();}};
  const work=(async()=>{
   let status:Message['status']='completed';let failure='';
   try{
    await send({type:'start',messageId:assistantId,requestId});
+   await report('body','body','running','对话生成');
    const opts=settings(JSON.parse(row.settings_json));
-   prompt=await conversation.fit();
+   prompt=await conversation.fit();await publishContext();
    const saveSummary=async()=>{await owns();if(conversation.summary?.covered.includes(assistantId))return;checkpoint=conversation.summary?JSON.stringify(conversation.summary):null;const saved=store.saveSummary(assistantId,checkpoint);if(!saved){abort.abort();throw new Error('生成已停止');}if(conversation.contextTokens!==null)await recordFeedback(env,capability,{contextLimit:conversation.contextTokens});};
    await saveSummary();
    const checkpointDraft=async()=>{await owns();if(!store.saveDraft(assistantId,output))throw Error('生成已停止');};
@@ -117,9 +126,12 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
    if(streamLimit){if(output.length||calls.length)throw new Error('生成途中上下文超限');conversation.contextTokens=streamLimit;const before=prompt.estimatedTokens;await conversation.compress();prompt=await conversation.fit(conversation.options,toolTranscript);if(prompt.estimatedTokens>=before)throw new Error('会话压缩未缩短输入');await saveSummary();continue;}
    if(upstreamReason==='tool_calls'){
     finishReason='unsupported';
-    if(!calls.length)throw new Error('工具调用为空');agent.observeOutput(output);agent.validate(calls);const recalled=new Map();
+    if(!calls.length)throw new Error('工具调用为空');
+    for(const call of calls)await report('tool',call.id,'running',call.function.name,undefined,{arguments:call.function.arguments});
+    agent.observeOutput(output);agent.validate(calls);const recalled=new Map();
     for(const call of calls)if(call.function.name==='search_memory'){const args=JSON.parse(call.function.arguments);if(typeof args.query==='string')recalled.set(args.query,await lore.search(args.query));}
     await owns();const results=agent.execute(calls,recalled);if(!store.saveSteps(assistantId,agent.steps))throw new Error('生成已停止');
+    for(const step of agent.steps.filter(step=>calls.some(call=>call.id===step.call.id)))await report('tool',step.call.id,'completed',step.call.function.name,step.result,{arguments:step.call.function.arguments});
     const toolMessage:PromptMessage={role:'assistant',content:requestOutput};
     toolMessage.tool_calls=calls;
     const additions:PromptMessage[]=[toolMessage,...results];
@@ -138,6 +150,8 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
    if(problems.length){finishReason='invalid_output';throw Error('正文输出异常');}
    finishReason='stop';
    await owns();if(!store.saveOutput(assistantId,output))throw Error('生成已停止');
+   await report('body','body','completed','对话生成',{characters:output.length,usage:bodyMetrics});
+   await report('director','director','running','Director · 下一步');
    await send({type:'candidates_pending',messageId:assistantId});
    const committedHistory=storyMessages([...store.messages().filter(m=>m.id!==assistantId),{id:assistantId,role:'assistant',content:output,status:'completed',ordinal:store.findMessage(assistantId)!.ordinal,requestId,createdAt:now}]);
    // Persist only confirmed story, never the request's state snapshots or control turns.
@@ -156,7 +170,7 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
     let fallback:ConversationContext|undefined;
     const rebuild=async(limit:number|null)=>{
      if(!fallback){
-      fallback=new ConversationContext(structuredClone(committedHistory.filter(m=>m.id!==assistantId)),conversation.card,conversation.books,opts,limit,{...contextOptions,inputRatio:capability.inputRatio},synopsisOptions.infer);
+      fallback=new ConversationContext(structuredClone(committedHistory.filter(m=>m.id!==assistantId)),conversation.card,conversation.books,opts,limit,{...contextOptions,inputRatio:capability.inputRatio},synopsisOptions.infer,observeCompression);
       await fallback.restore(conversation.summary?JSON.stringify(conversation.summary):null);
      }
      fallback.contextTokens=limit;
@@ -178,8 +192,9 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
      return inferRoleplay(env,username,requestId,{messages,tools:AGENT_TOOLS,tool_choice:'none',response_format:DIRECTOR_RESPONSE_FORMAT,...modelInput(opts),...(opts.thinkingEnabled?{thinking_budget_tokens:0}:{})},abort.signal);
     },abort.signal,owns,rebuild);
     candidateOutcome=director.outcome;candidateFirstAt=director.firstAt;model=director.model||model;gatewayLogId=director.gatewayLogId;metrics=director.metrics;
-   }catch(error){candidateOutcome='error';if(abort.signal.aborted)throw error;candidates=[];}
+   }catch(error){candidateOutcome='error';candidateError=(error as Error).message;if(abort.signal.aborted)throw error;candidates=[];}
    candidateFinishedAt=Date.now();
+   await report('director','director',candidateOutcome==='completed'?'completed':'error','Director · 下一步',{candidates,outcome:candidateOutcome,output:director?.rawOutput??'',...((candidateError||director?.error)?{error:candidateError||director?.error}:{})});
    break;
    }
   }catch{if(candidateStartedAt!==null)candidateOutcome=abort.signal.aborted?abortReason:'error';if(abort.signal.aborted)finishReason=abortReason;else if(finishReason==='stop')finishReason='upstream';status=['stopped','disconnected','timeout'].includes(finishReason)?'aborted':'error';failure=generationNotice(finishReason);}
@@ -191,6 +206,7 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
    finishing=true;clearInterval(stopWatcher);
    try{
     let saved:ReturnType<SessionStore['finish']>;try{
+     store.settleActivities(assistantId,status==='aborted'?'stopped':'error',failure||'运行中断');
      if(!parserFinished)output+=parser.finish().body;
      if(store.owns(assistantId))store.saveDraft(assistantId,output);saved=store.finish(assistantId,output,status,finishReason,candidates,agent.state,storyProjection);}finally{await onSettled(assistantId);}
     console.info('tavern-generation-outcome',{messageId:assistantId,requestId,gatewayLogId,finishReason:saved?.finish_reason,status:saved?.status,model,modelRequests,metricsScope:director?.requests?'last-candidate-request':synopsisRequests?'last-synopsis-request':'last-body-request',...phaseMetrics,firstBodyMs:firstBodyAt===null?null:firstBodyAt-started,modelFirstBodyMs:firstBodyAt===null||firstModelStarted===null?null:firstBodyAt-firstModelStarted,promptBudget:prompt.budget,estimatedInputTokens:prompt.estimatedTokens,chars:output.length,bodyModel,bodyGatewayLogId,bodyRequests,candidateRequests:director?.requests??0,synopsisRequests,synopsisSource,synopsisCovered,synopsisMetricsScope:'last-synopsis-request',synopsisMetrics,synopsisGatewayLogId,synopsisElapsedMs,directorFirstMs:candidateFirstAt===null||directorStartedAt===null?null:candidateFirstAt-directorStartedAt,bodyMetricsScope:'last-body-request',bodyMetrics,bodyCompleteMs:bodyFinishedAt===null?null:bodyFinishedAt-started,candidateFirstMs:candidateFirstAt===null||candidateStartedAt===null?null:candidateFirstAt-candidateStartedAt,candidateElapsedMs:candidateFinishedAt===null||candidateStartedAt===null?null:candidateFinishedAt-candidateStartedAt,directorContextRebuilds:director?.rebuilds??0,directorEstimatedInputTokens:director?.prompt().estimatedTokens??null,directorIncludedMessages:director?.prompt().includedMessages??null,directorStoryCondensed:director?.prompt().condensed??false,candidateOutcome,candidateCount:saved?.candidates_json?JSON.parse(saved.candidates_json).length:0,elapsedMs:Date.now()-started});

@@ -27,4 +27,8 @@ export type FinishReason = 'stop' | 'length' | 'content_filter' | 'unsupported' 
 export type Message = { id: string; role: 'user' | 'assistant'; content: string; status: 'pending' | 'completed' | 'aborted' | 'error'; ordinal: number; requestId: string | null; createdAt: number; finishReason?: FinishReason | null; candidates?: string[] };
 export type SearchResult = { id: string; name: string; description: string; creator: string; tags: string[]; source: string; sourceUrl: string; avatarUrl?: string; popularity?: number; createdAt?: string; updatedAt?: string };
 export type Discovery = { results: SearchResult[]; page: number; hasMore: boolean; source: string; total?: number; sort?: string };
-export type StreamEvent = { type: 'start'; messageId: string; requestId: string } | { type: 'delta'; text: string } | { type: 'candidates_pending'; messageId: string } | { type: 'done'; message: Message } | { type: 'error'; message: string };
+export type StreamEvent = { type: 'start'; messageId: string; requestId: string } | { type:'activity'; activity:AgentActivity } | {type:'context';context:ContextUsage} | { type: 'delta'; text: string } | { type: 'candidates_pending'; messageId: string } | { type: 'done'; message: Message } | { type: 'error'; message: string };
+
+export type AgentActivity = { id:string; messageId:string|null; ordinal:number; kind:'body'|'director'|'tool'|'compression'|'status'; title:string; status:'running'|'completed'|'error'|'stopped'; input?:unknown; result?:unknown; error?:string; createdAt:number };
+export type ContextUsage = { estimatedTokens:number; contextTokens:number|null; inputRatio:number; summaryTokens:number; coveredMessages:number; includedMessages:number };
+export type SessionDetail = { session:Session; messages:Message[]; activities:AgentActivity[]; context:ContextUsage };

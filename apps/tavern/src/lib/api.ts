@@ -8,7 +8,7 @@ export function createApi(token:()=>Promise<string>) {
  async function avatar(id:string) {const r=await response(`characters/${id}/avatar`);return URL.createObjectURL(await r.blob());}
  async function generate(id:string,value:unknown,event:(e:StreamEvent)=>void,signal:AbortSignal) {
   const r=await response(`sessions/${id}/generate`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(value),signal});
-  if(r.headers.get('Content-Type')?.includes('application/json')) {const replay=await r.json() as {message:Message};event({type:'done',message:replay.message});return;}
+  if(r.headers.get('Content-Type')?.includes('application/json')) {const replay=await r.json() as {message?:Message;ok?:boolean};if(replay.message)event({type:'done',message:replay.message});else if(!replay.ok)throw Error('命令响应无效');return;}
   if(!r.body)throw new Error('生成响应为空');let done=false;
   for await(const data of sseData(r.body,signal)){const e=JSON.parse(data) as StreamEvent;event(e);if(e.type==='done')done=true;}
   if(!done)throw new Error('连接中断，已保存的内容可刷新恢复');

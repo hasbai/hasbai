@@ -1,3 +1,4 @@
+import { splitOoc } from '../shared/commands';
 import type {Book,Message} from '../shared/types';
 import {contentHash,memoryPage,searchMemory,storyMessages,type MemoryHit,type MemoryPage} from './agent';
 import {roleplayGatewayOptions} from './gateway';
@@ -16,7 +17,8 @@ export async function loreChunks(sources:LoreSource[]):Promise<LoreChunk[]>{
 }
 export async function historyChunks(history:Message[]):Promise<LoreChunk[]>{
  const result:LoreChunk[]=[];
- for(const message of storyMessages(history)){
+ for(const raw of storyMessages(history)){
+  const message=raw.role==='user'?{...raw,content:splitOoc(raw.content).dialogue}:raw;
   const revision=await contentHash([message.id,message.content]),chars=[...message.content];
   for(let at=0;at<chars.length;at+=1000)result.push({id:'history:'+message.id+':'+revision+':'+at,bookId:'@history',revision,entryId:message.id,text:chars.slice(at,at+1200).join(''),message:{id:message.id,ordinal:message.ordinal,role:message.role}});
  }

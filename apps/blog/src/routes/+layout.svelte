@@ -1,4 +1,5 @@
 <script lang="ts">
+ import { pageMotion } from "@hasbai/ui/motion";
   import "../app.css";
   import { onMount, setContext } from "svelte";
   import { navigating, page } from "$app/state";
@@ -129,7 +130,7 @@
     </div>
   </div>
 </header>
-<main id="main">
+<main use:pageMotion={page.url.pathname} id="main">
   {#if navigating.to && navigating.to.url.href !== page.url.href}
     <section
       class="wrap navigation-skeleton"

@@ -78,14 +78,15 @@ try{
  const promptBundle=await build({entryPoints:[join(appRoot,'shared/prompts.ts')],bundle:true,write:false,format:'esm',platform:'node'});
  const {DEFAULT_PROMPTS:prompts}=await import('data:text/javascript;base64,'+Buffer.from(promptBundle.outputFiles[0].text).toString('base64'));
  await kv.put('dialogue-v2',JSON.stringify({revision:'evaluation-custom-kv',texts:{...prompts,agent:prompts.agent+'保留这份自定义协议。'}}));
- let branchId;
+ let editMessageId;
  for(const test of scenario.turns){
   const round=await generate('main',test);
-  if(test.id===scenario.branch.after){const fork=await(await call('main','fork',{messageId:(await(await call('main','read')).json()).value.messages.findLast(m=>m.role==='user').id,content:scenario.branch.input})).json();assert(fork.ok);branchId=fork.value.id;resources.add(branchId);const saved=await(await call(branchId,'read')).json();round.branchInitialState=saved.value.session.state;}
+  if(test.id===scenario.edit.after)editMessageId=(await(await call('main','read')).json()).value.messages.findLast(m=>m.role==='user').id;
   if(test.id==='continue-1'){await generate('cache-other',{id:'cache-switch',input:'我们先喝一口茶，简短打个招呼。'});}
  }
  active={id:'semantic-probe',session:'main'};const embeddingCount=embeddingRequests.length,hits=await(await call('main','probe',{query:scenario.semanticProbe.query})).json();metadata.semanticProbe={query:scenario.semanticProbe.query,hits,actualEmbeddingRequests:embeddingRequests.length-embeddingCount,foundCorrection:hits.some(h=>h.text.includes('南柜'))};save();
- await generate(branchId,{id:'branch-isolation',input:'只回顾这条分支已经确认的数量、钥匙位置和签收状态，不继续核对。',checks:scenario.branch.checks});
+ const edited=await(await call('main','changeMessage',{action:'edit',messageId:editMessageId,content:scenario.edit.input})).json();assert(edited.ok);metadata.editedInitialState=(await(await call('main','read')).json()).value.session.state;
+ await generate('main',{id:'edit-isolation',input:'只回顾此时已经确认的数量、钥匙位置和签收状态，不继续核对。',checks:scenario.edit.checks});
  await generate('main',{id:'regenerate',input:'',checks:['重生成从before开始，不重新执行玩家签收']},{regenerate:true});
  active={id:'stop',session:'main'};const pending=await call('main','generate',{requestId:crypto.randomUUID(),content:'简短说说今天的工作。'}),drain=pending.text();
  for(let n=0;n<1000&&!requests.some(r=>r.round==='stop');n++)await new Promise(r=>setTimeout(r,10));

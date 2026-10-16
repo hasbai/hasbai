@@ -1,4 +1,4 @@
-import type { FinishReason, Message } from '../shared/types';
+import type { AgentActivity, FinishReason, Message } from '../shared/types';
 import { HttpError } from './http';
 import type { Summary } from './context';
 import { message, type MessageRow, type SessionRow } from './store';
@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS session_meta (id TEXT PRIMARY KEY, deleted INTEGER NO
 CREATE TABLE IF NOT EXISTS turn_snapshots (message_id TEXT PRIMARY KEY, before_json TEXT NOT NULL, after_json TEXT, steps_json TEXT NOT NULL DEFAULT '[]');
 CREATE TABLE IF NOT EXISTS director_synopsis (session_id TEXT PRIMARY KEY, value_json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS model_projections (message_id TEXT PRIMARY KEY, value_json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS agent_activities(id TEXT PRIMARY KEY,message_id TEXT,ordinal INTEGER NOT NULL,value_json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS generation_drafts (message_id TEXT PRIMARY KEY, content TEXT NOT NULL);
 `;
 export type TurnSnapshot={message_id:string;before_json:string;after_json:string|null;steps_json:string};
@@ -44,6 +45,28 @@ export class SessionStore {
  before(id:string):StoryState{const s=this.snapshot(id);return s?normalizeState(JSON.parse(s.before_json)):this.state(storyMessages(this.messages()).filter(m=>m.ordinal<(this.findMessage(id)?.ordinal??0)));}
  beginState(id:string,state:StoryState){if(!this.pending(id))throw new HttpError(409,'生成已停止');this.write('INSERT INTO turn_snapshots(message_id,before_json) VALUES(?,?)',id,stableJson(state));}
  saveSteps(id:string,steps:ToolStep[]){if(!this.pending(id))return false;this.write('UPDATE turn_snapshots SET steps_json=? WHERE message_id=?',JSON.stringify(steps),id);return true;}
+ activities():AgentActivity[]{const events:AgentActivity[]=this.rows<{value_json:string}>('SELECT value_json FROM agent_activities ORDER BY rowid').map(r=>JSON.parse(r.value_json));for(const snapshot of this.snapshots()){const m=this.findMessage(snapshot.message_id);if(!m)continue;for(const step of JSON.parse(snapshot.steps_json) as ToolStep[]){const id=m.id+':'+step.call.id;if(!events.some(e=>e.id===id))events.push({id,messageId:m.id,ordinal:m.ordinal,kind:'tool',title:step.call.function.name,status:'completed',input:{arguments:step.call.function.arguments},result:step.result,createdAt:m.created_at});}}return events;}
+ activity(value:AgentActivity){this.write('INSERT INTO agent_activities VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET value_json=excluded.value_json',value.id,value.messageId,value.ordinal,JSON.stringify(value));}
+ settleActivities(messageId:string|null,status:'error'|'stopped',error:string){for(const a of this.activities())if(a.messageId===messageId&&a.status==='running')this.activity({...a,status,error});}
+ /** A single linear history: every derived source at/after the cut is invalidated. */
+ truncate(messageId:string,action:'edit'|'delete'|'regenerate',content?:string,claimedBy?:string){const mutate=()=>{
+  if(claimedBy){if(!this.owns(claimedBy))throw new HttpError(409,'会话生成已接管');}else this.idle();
+  const target=this.findMessage(messageId);if(!target)throw new HttpError(404,'消息不存在');
+  const keep=action==='edit'||action==='regenerate'&&target.role==='user';
+  const cutoff=target.ordinal+(keep?1:0);
+  this.write('INSERT OR IGNORE INTO cancelled_requests SELECT session_id,request_id FROM messages WHERE session_id=? AND ordinal>=? AND request_id IS NOT NULL',this.id,target.ordinal);
+  for(const table of ['turn_snapshots','model_projections','generation_drafts'])this.write('DELETE FROM '+table+' WHERE message_id IN(SELECT id FROM messages WHERE session_id=? AND ordinal>=?)',this.id,target.ordinal);
+  this.write('INSERT OR IGNORE INTO cancelled_requests SELECT ?,id FROM agent_activities WHERE ordinal>=? AND message_id IS NULL',this.id,target.ordinal);
+  this.write('DELETE FROM agent_activities WHERE ordinal>=?',target.ordinal);
+  this.write('DELETE FROM messages WHERE session_id=? AND (ordinal>=? OR (ordinal=? AND id<>?))',this.id,cutoff,target.ordinal,target.id);
+  if(action==='edit')this.write("UPDATE messages SET content=?,status='completed',finish_reason=NULL,candidates_json=NULL WHERE id=?",content!,target.id);
+  this.write('UPDATE messages SET candidates_json=NULL WHERE session_id=?',this.id);
+  this.write('DELETE FROM model_projections');this.write('DELETE FROM director_synopsis');
+  if(this.rows("SELECT name FROM sqlite_master WHERE type='table' AND name='lore_chunks'").length)this.write('DELETE FROM lore_chunks');
+  this.write('UPDATE sessions SET summary_json=NULL,updated_at=? WHERE id=?',Date.now(),this.id);this.dirty();
+  return target;
+ };return claimedBy?mutate():this.transaction(mutate);}
+ saveCheckpoint(assistantId:string,summary:string|null){if(!this.owns(assistantId))throw new HttpError(409,'生成已停止');this.write('UPDATE sessions SET summary_json=? WHERE id=?',summary,this.id);this.write('DELETE FROM model_projections');this.write('DELETE FROM director_synopsis');this.dirty();}
  rawMessages():MessageRow[]{return this.rows<MessageRow & Record<string,SqlStorageValue>>('SELECT * FROM messages WHERE session_id=? ORDER BY ordinal,created_at,id',this.id);}
  findRequest(requestId:string){return this.rows<MessageRow & Record<string,SqlStorageValue>>("SELECT * FROM messages WHERE session_id=? AND request_id=? AND role='assistant'",this.id,requestId)[0];}
  findMessage(id:string){return this.rows<MessageRow & Record<string,SqlStorageValue>>('SELECT * FROM messages WHERE session_id=? AND id=?',this.id,id)[0];}
@@ -67,7 +90,7 @@ export class SessionStore {
   this.write("UPDATE messages SET content=COALESCE((SELECT content FROM generation_drafts WHERE message_id=messages.id),content),status='aborted',finish_reason=CASE WHEN status='aborted' AND finish_reason IS NOT NULL THEN finish_reason ELSE ? END,candidates_json=NULL WHERE session_id=? AND (status='pending' OR (status='aborted' AND EXISTS(SELECT 1 FROM generation_drafts WHERE message_id=messages.id)))"+(assistantId?' AND id=?':''),reason,this.id,...(assistantId?[assistantId]:[]));
   this.write('DELETE FROM generation_drafts WHERE message_id IN (SELECT id FROM messages WHERE session_id=?'+(assistantId?' AND id=?':'')+')',this.id,...(assistantId?[assistantId]:[]));
  }
- recover(assistantId?:string){this.transaction(()=>{if(assistantId&&!this.owns(assistantId))return;this.recoverDrafts(assistantId);this.write('UPDATE sessions SET generation_id=NULL,generation_until=NULL WHERE id=?'+(assistantId?' AND generation_id=?':''),this.id,...(assistantId?[assistantId]:[]));});}
+ recover(assistantId?:string){this.transaction(()=>{if(assistantId&&!this.owns(assistantId))return;this.recoverDrafts(assistantId);for(const a of this.activities())if(a.status==='running')this.activity({...a,status:'error',error:'运行中断，未自动重试'});this.write('UPDATE sessions SET generation_id=NULL,generation_until=NULL WHERE id=?'+(assistantId?' AND generation_id=?':''),this.id,...(assistantId?[assistantId]:[]));});}
  claim(assistantId:string,now:number){return this.transaction(()=>{
   const r=this.get();if(r.generation_id&&(r.generation_until??0)>now)return false;
   this.recoverDrafts(undefined,'expired');
@@ -77,8 +100,9 @@ export class SessionStore {
  owns(assistantId:string){return this.get().generation_id===assistantId;}
  renew(assistantId:string){return this.write('UPDATE sessions SET generation_until=? WHERE id=? AND generation_id=?',Date.now()+180000,this.id,assistantId)>0;}
  release(assistantId:string){this.write('UPDATE sessions SET generation_id=NULL,generation_until=NULL WHERE id=? AND generation_id=?',this.id,assistantId);}
- start(assistantId:string,user:Message|undefined,assistant:Message,state?:StoryState){this.transaction(()=>{
+ start(assistantId:string,user:Message|undefined,assistant:Message,state?:StoryState,regenerateId?:string){this.transaction(()=>{
   if(!this.owns(assistantId))throw new HttpError(409,'会话生成已接管');
+  if(regenerateId)this.truncate(regenerateId,'regenerate',undefined,assistantId);
   if(user)this.insert({id:user.id,role:user.role,content:user.content,status:user.status,ordinal:user.ordinal,request_id:user.requestId??null,created_at:user.createdAt,finish_reason:null});
   this.insert({id:assistant.id,role:assistant.role,content:assistant.content,status:assistant.status,ordinal:assistant.ordinal,request_id:assistant.requestId??null,created_at:assistant.createdAt,finish_reason:null});
   if(state)this.beginState(assistantId,state);

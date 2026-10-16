@@ -20,6 +20,6 @@ export const scenario={
   {id:'memory-read',input:'请调用search_memory查询木箱数量和铜钥匙的更正，再用read_memory从检索返回的id读取原文，核对后简短回答。',checks:['实际调用原文读取；更正与来源一致']},
   {id:'final-recap',input:'回顾我们的委托、暂停、恢复和最后结果，不新增行动。',checks:['时序正确；候选不伪造新事实']},
  ],
- branch:{after:'correction',input:'更正：木箱两箱，不是三箱，货单与账册都写着两箱，铜钥匙在南柜，不在北柜。改走另一条分支：暂停核对，我没有签收。',checks:['不得继承主线未来的完成状态或签收事实']},
+ edit:{after:'correction',input:'更正：木箱两箱，不是三箱，货单与账册都写着两箱，铜钥匙在南柜，不在北柜。修改这一轮：暂停核对，我没有签收。',checks:['不得继承编辑点之后的完成状态或签收事实']},
  semanticProbe:{query:'开门的那件东西收哪儿了',expectedSourceText:'铜钥匙已经从北柜移到南柜'},
 };

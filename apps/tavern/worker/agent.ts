@@ -1,3 +1,4 @@
+import { splitOoc } from '../shared/commands';
 import type { Message } from '../shared/types';
 import type { PromptMessage } from '../shared/prompt';
 
@@ -70,7 +71,7 @@ export function searchMemory(history:Message[],query:string):MemoryHit[]{
  if(!query.trim()||[...query].length>160)throw Error('query需为1–160字');
  const normalized=query.toLowerCase(),parts=normalized.match(/[a-z0-9]+|[\p{Script=Han}]+/gu)??[];
  const terms=[...new Set(parts.flatMap(p=>{const chars=[...p];return /\p{Script=Han}/u.test(p)&&chars.length>2?[p,...chars.slice(1).map((_,i)=>chars.slice(i,i+2).join(''))]:[p];}))];
- const selected=storyMessages(history);
+ const selected=storyMessages(history).map(m=>m.role==='user'?{...m,content:splitOoc(m.content).dialogue}:m);
  const scored=selected.map(m=>{const text=m.content.toLowerCase();const score=terms.reduce((n,t)=>n+(text.includes(t)?t.length:0),0);return {m,score};}).filter(x=>x.score>0).sort((a,b)=>b.score-a.score||b.m.ordinal-a.m.ordinal).slice(0,3).sort((a,b)=>a.m.ordinal-b.m.ordinal);
  return scored.map(({m})=>{
   const lower=m.content.toLowerCase(),chars=[...m.content];
@@ -101,7 +102,7 @@ export type ToolStep={call:ToolCall;result:string};
 export class AgentTurn {
  state:StoryState;steps:ToolStep[]=[];private seen=new Set<string>();private evidence=new Set<string>();private emptySearch=false;
  private recalled=new Map<string,MemoryHit>();private offsets=new Map<string,Set<number>>();private output='';private actors:Map<string,Goal['actor']>;
- constructor(readonly before:StoryState,readonly history:Message[],readonly currentInput?:Message,readonly readBook?:(hit:MemoryHit,offset:number)=>MemoryPage){this.state=structuredClone(normalizeState(before));this.actors=new Map(Object.entries(this.state.goals).map(([id,g])=>[id,g.actor]));}
+ constructor(readonly before:StoryState,readonly history:Message[],readonly currentInput?:Message,readonly readBook?:(hit:MemoryHit,offset:number)=>MemoryPage){this.history=history.map(m=>m.role==='user'?{...m,content:splitOoc(m.content).dialogue}:m);if(currentInput?.role==='user')this.currentInput={...currentInput,content:splitOoc(currentInput.content).dialogue};this.state=structuredClone(normalizeState(before));this.actors=new Map(Object.entries(this.state.goals).map(([id,g])=>[id,g.actor]));}
  observeOutput(text:string){this.output=text;}
  private page(args:Record<string,unknown>):MemoryPage{
   if(Object.keys(args).some(k=>!['id','offset'].includes(k))||typeof args.id!=='string'||!this.recalled.has(args.id))throw Error('原文来源无效');
