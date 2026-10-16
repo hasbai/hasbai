@@ -92,17 +92,10 @@ export default {
    if(chat){
     const id=chat[1],stub=sessionStub(env,owner,id);
     if(method==='POST'&&chat[2]==='generate'){
-     const data=await body(request),username=authenticatedUsername(user),requestId=String(data.requestId??'');
-     const onAbort=()=>{ctx.waitUntil(stub.cancel(owner,id,requestId).catch(()=>{}));};
-     request.signal.addEventListener('abort',onAbort,{once:true});
-     try{
-      if(request.signal.aborted){onAbort();throw new HttpError(409,'生成已停止');}
-      const upstream=await stub.fetch(new Request('https://session/generate',{method:'POST',headers:{'Content-Type':'application/json','X-Tavern-Owner':owner,'X-Tavern-Session':id,'X-Tavern-Username':encodeURIComponent(username)},body:JSON.stringify(data),signal:request.signal}));
-      if(!upstream.body||!upstream.headers.get('Content-Type')?.includes('text/event-stream')){request.signal.removeEventListener('abort',onAbort);return upstream;}
-      const reader=upstream.body.getReader();
-      const stream=new ReadableStream<Uint8Array>({async pull(controller){try{const {done,value}=await reader.read();if(done){request.signal.removeEventListener('abort',onAbort);controller.close();}else controller.enqueue(value);}catch(error){request.signal.removeEventListener('abort',onAbort);onAbort();controller.error(error);}},async cancel(){request.signal.removeEventListener('abort',onAbort);onAbort();await reader.cancel().catch(()=>{});}});
-      return new Response(stream,{status:upstream.status,headers:upstream.headers});
-     }catch(error){request.signal.removeEventListener('abort',onAbort);throw error;}
+     const data=await body(request),username=authenticatedUsername(user);
+     // Forward unchanged bytes natively. The DO owns accepted generations;
+     // losing this response only detaches the viewer, never cancels inference.
+     return await stub.fetch(new Request('https://session/generate',{method:'POST',headers:{'Content-Type':'application/json','X-Tavern-Owner':owner,'X-Tavern-Session':id,'X-Tavern-Username':encodeURIComponent(username)},body:JSON.stringify(data),signal:request.signal}));
     }
     if(method==='POST'&&chat[2]==='stop')return json(await callSession(env,owner,id,'stop',await body(request)));
     if(method==='GET'&&chat[2]==='export'){

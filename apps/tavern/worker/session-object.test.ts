@@ -3,6 +3,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {readFileSync,readdirSync} from 'node:fs';
 import {TavernSession,sessionName} from './session-object';
 import {SessionStore,SESSION_SCHEMA} from './session-store';
+import {ConversationContext} from './context';
 import {DEFAULT_SETTINGS} from '../shared/types';
 vi.mock('cloudflare:workers',()=>({DurableObject:class{constructor(public ctx:DurableObjectState,public env:Env){}}}));
 let db:DatabaseSync,env:Env,sqlDbs:Map<string,DatabaseSync>,objects:Map<string,TavernSession>,work:Promise<unknown>[],alarms:Map<string,number>;
@@ -95,8 +96,8 @@ it('reserves worldbook references through a failed directory sync, then releases
  expect(db.prepare("DELETE FROM worldbooks WHERE id='b' AND NOT EXISTS(SELECT 1 FROM sessions,json_each(book_ids_json) WHERE value='b')").run().changes).toBe(0);
  intercept=undefined;await target().alarm();await invoke('update',{bookIds:[]});expect(db.prepare("DELETE FROM worldbooks WHERE id='b' AND NOT EXISTS(SELECT 1 FROM sessions,json_each(book_ids_json) WHERE value='b')").run().changes).toBe(1);
 });
-it('remembers cancellation that arrives before the generation fetch can claim occupancy',async()=>{
- seed();await target().cancel('owner','s','early');const store=new SessionStore(storage(sessionName('owner','s')),'s');expect(store.cancelled('early')).toBe(true);expect(store.get().generation_id).toBeNull();
+it('ignores legacy transport cancellation before a generation is accepted',async()=>{
+ seed();await target().cancel('owner','s','early');const store=new SessionStore(storage(sessionName('owner','s')),'s');expect(store.cancelled('early')).toBe(false);expect(store.get().generation_id).toBeNull();
 });
 
 it('lets the user stop an old in-flight generation before migration without removing its fence',async()=>{
@@ -120,4 +121,28 @@ it('keeps goal snapshots before an edited branch and excludes completed future g
  const branch=await invoke('fork',{messageId:'u',content:'继续休息'});const saved=await invoke('read',{},'owner',branch.value.id);
  expect(saved.value.session.state.goals).toEqual(before.goals);expect(saved.value.messages.at(-1)).toMatchObject({role:'user',content:'继续休息'});expect(saved.value.messages.some((m:{content:string})=>m.content==='核对完成。')).toBe(false);
  objects.delete(sessionName('owner',branch.value.id));expect((await invoke('read',{},'owner',branch.value.id)).value.session.state.goals).toEqual(before.goals);
+});
+
+it.each(['before','capacity','initialization'])('stops an explicit request before stream headers: %s',async stage=>{
+ seed();await invoke('read');const requestId=crypto.randomUUID(),infer=vi.fn();Object.assign(env,{PROMPTS:{get:async()=>null},AI:{run:infer}});
+ db.prepare('INSERT INTO model_capabilities VALUES(?,?,?)').run('rp',JSON.stringify({contextTokens:16384,source:'llama.cpp:n_ctx',checkedAt:Date.now(),inputRatio:1.2}),Date.now()+300000);
+ let release!:()=>void,entered!:()=>void;const paused=new Promise<void>(r=>release=r),started=new Promise<void>(r=>entered=r);
+ const restore=vi.spyOn(ConversationContext.prototype,'restore');
+ if(stage==='capacity')readIntercept=async sql=>{if(sql.includes('FROM model_capabilities')){entered();await paused;}};
+ if(stage==='initialization')restore.mockImplementationOnce(async()=>{entered();await paused;});
+ try{
+  if(stage==='before')expect((await invoke('stop',{requestId})).ok).toBe(true);
+  const pending=target().fetch(new Request('https://session/generate',{method:'POST',headers:{'X-Tavern-Owner':'owner','X-Tavern-Session':'s','Content-Type':'application/json'},body:JSON.stringify({requestId,content:'准备中'})}));
+  if(stage!=='before'){await started;expect((await invoke('stop',{requestId})).ok).toBe(true);release();}
+  expect((await pending).status).toBe(409);expect(infer).not.toHaveBeenCalled();
+  const result=await invoke('read');expect(result.value.session.generationId).toBeNull();expect(result.value.messages).toHaveLength(1);
+  expect((await invoke('stop',{requestId})).ok).toBe(true);
+ }finally{release();restore.mockRestore();readIntercept=undefined;}
+});
+it('validates explicit request stops and leaves a different active request running',async()=>{
+ seed();await invoke('read');expect((await invoke('stop',{requestId:'invalid'})).status).toBe(400);
+ const store=new SessionStore(storage(sessionName('owner','s')),'s'),requestId=crypto.randomUUID(),abort=new AbortController();
+ store.claim('new',Date.now());store.start('new',undefined,{id:'new',role:'assistant',content:'进行中',status:'pending',ordinal:1,requestId,createdAt:4});Object.assign(target(),{active:{requestId,id:'new',abort}});
+ expect((await invoke('stop',{requestId:crypto.randomUUID()})).ok).toBe(true);expect(abort.signal.aborted).toBe(false);expect(store.pending('new')).toBe(true);
+ expect((await invoke('stop',{requestId})).ok).toBe(true);expect(abort.signal.aborted).toBe(true);expect(store.findMessage('new')).toMatchObject({status:'aborted',finish_reason:'stopped'});
 });

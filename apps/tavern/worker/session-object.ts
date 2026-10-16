@@ -74,6 +74,12 @@ export class TavernSession extends DurableObject<Env> {
   try{await this.sync();}catch{await this.ctx.storage.setAlarm(Date.now()+10000);}
  }
  private async read(owner:string,id:string){const store=await this.load(owner,id);return {session:{...session(store.get(),true),state:store.state()},messages:currentMessages(store.messages())};}
+ private async stopRequest(owner:string,id:string,requestId:string){
+  if(!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(requestId))throw new HttpError(400,'请求 ID 无效');
+  const store=await this.load(owner,id);store.cancelRequest(requestId);
+  const active=this.active;if(active?.requestId===requestId){if(store.owns(active.id))store.stop(active.id);active.abort.abort();}
+  return {ok:true};
+ }
  private async stop(owner:string,id:string,generationId:string){
   if(!this.store){
    const old=await getSession(this.env,owner,id);
@@ -85,7 +91,8 @@ export class TavernSession extends DurableObject<Env> {
   }
   const store=await this.load(owner,id);store.stop(generationId);if(this.active?.id===generationId)this.active.abort.abort();return {ok:true};
  }
- async cancel(owner:string,id:string,requestId:string){const store=await this.load(owner,id);store.cancelRequest(requestId);if(this.active?.requestId===requestId){store.stop(this.active.id,'disconnected');this.active.abort.abort();}}
+ /** Older outer Worker versions may still send transport-cancel RPCs during deployment. */
+ async cancel(owner:string,id:string,_requestId:string){await this.load(owner,id);}
  private async update(owner:string,id:string,data:Record<string,unknown>){
   const store=await this.load(owner,id),row=store.idle(),opts=data.settings?settings(data.settings):settings(JSON.parse(row.settings_json));
   const ids=data.bookIds??JSON.parse(row.book_ids_json);await ownedBooks(this.env,owner,ids);if(data.settings)modelInput(opts);
@@ -135,7 +142,7 @@ export class TavernSession extends DurableObject<Env> {
    try{
     switch(method){
      case 'read':value=await this.read(owner,id);break;
-     case 'stop':value=await this.stop(owner,id,string(data.generationId));break;
+     case 'stop':value=data.requestId!==undefined?await this.stopRequest(owner,id,string(data.requestId)):await this.stop(owner,id,string(data.generationId));break;
      case 'update':value=await this.update(owner,id,data);break;
      case 'fork':value=await this.fork(owner,id,data);break;
      case 'remove':value=await this.remove(owner,id);break;

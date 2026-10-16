@@ -14,7 +14,7 @@ export type InferenceEvent =
 export class InferenceError extends Error {
  logId: string | null = null;
  hasToolFragments = false;
- constructor(readonly value: unknown, readonly reason: 'upstream' | 'interrupted' | 'unsupported' = 'upstream') { super('模型推理失败'); }
+ constructor(readonly value: unknown, readonly reason: 'upstream' | 'rate_limited' | 'interrupted' | 'unsupported' = 'upstream') { super('模型推理失败'); }
 }
 type Input = { messages: PromptMessage[]; tools?: typeof AGENT_TOOLS; tool_choice?: 'auto' | 'none'; [key: string]: unknown };
 
@@ -70,7 +70,7 @@ export async function* inferRoleplay(env: Env, username: string, requestId: stri
    if (!(response instanceof Response)) { failure = new InferenceError(null, 'unsupported'); throw failure; }
    logId = response.headers.get('cf-aig-log-id');
    if (!response.ok) {
-    failure = new InferenceError(await errorBody(response));
+    failure = new InferenceError(await errorBody(response), response.status === 429 ? 'rate_limited' : 'upstream');
     throw failure;
    }
    if (!response.body || !response.headers.get('Content-Type')?.includes('text/event-stream')) {

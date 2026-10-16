@@ -8,6 +8,7 @@ const require=createRequire(import.meta.url),runtimeRequire=createRequire(requir
 const {Miniflare,convertV4MiniflareOptions}=runtimeRequire('miniflare'),{build}=runtimeRequire('esbuild');
 const root=resolve(import.meta.dirname,'..'),persist=mkdtempSync(join(tmpdir(),'tavern-session-'));
 const source=`
+import worker from './worker/index';
 import {TavernSession} from './worker/session-object';
 export class TestSession extends TavernSession {
  async inspectStorage(){const tables=this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE type='table'").toArray().map(r=>r.name).filter(n=>!n.startsWith('_cf')&&!n.startsWith('sqlite_'));return {tables,drafts:tables.includes('generation_drafts')?this.ctx.storage.sql.exec('SELECT content FROM generation_drafts').toArray():[],alarm:await this.ctx.storage.getAlarm(),bytes:this.ctx.storage.sql.databaseSize};}
@@ -59,25 +60,28 @@ export class TestSession extends TavernSession {
  if(director){if(!request.query.tools||request.query.tool_choice!=='none'||request.query.messages.at(-1).role!=='user'||request.query.messages.slice(1).some(m=>m.role==='system'))throw new Error('Director prefix missing');if(input.includes('本轮正文任务（应用指令）'))throw new Error('Director reminder leaked');}
  if(director&&request.query.messages.some(m=>m.role==='user'&&m.content==='候选时重启'))return new Response(new ReadableStream(),{headers:{'Content-Type':'text/event-stream'}});
  if(!director&&input==='正文时重启')return new Response(new ReadableStream({start(c){c.enqueue(new TextEncoder().encode('data: '+JSON.stringify({choices:[{delta:{content:'重启前半句。'}}]})+'\\n\\n'));}}),{headers:{'Content-Type':'text/event-stream'}});
+ if(!director&&input==='代理等待'){let timer;return new Response(new ReadableStream({start(c){const encode=e=>new TextEncoder().encode('data: '+JSON.stringify(e)+'\\n\\n');c.enqueue(encode({choices:[{delta:{content:'断连前的正文😀。'}}]}));timer=setTimeout(()=>{c.enqueue(encode({choices:[{delta:{content:'断连后完整保存。'},finish_reason:'stop'}]}));c.enqueue(new TextEncoder().encode('data: [DONE]\\n\\n'));c.close();},500);},cancel(){clearTimeout(timer);}}),{headers:{'Content-Type':'text/event-stream'}});}
  if(!director&&input.includes('等待'))return new Response(new ReadableStream(),{headers:{'Content-Type':'text/event-stream'}});
  return new Response('data: '+JSON.stringify({choices:[{delta:{tool_calls:null,content:director?JSON.stringify({choices:['我坐下。','我问问。','我看窗外。']}):synopsis?'旧事':'你好。'},finish_reason:'stop'}]})+'\\n\\ndata: [DONE]\\n\\n',{headers:{'Content-Type':'text/event-stream'}});
  };}
 }
-export default {async fetch(request,env){const d=await request.json();const stub=env.SESSIONS.getByName(JSON.stringify([d.owner,d.id]));
+export default {async fetch(request,env,ctx){if(new URL(request.url).pathname.startsWith('/api/'))return worker.fetch(request,env,ctx);const d=await request.json();const stub=env.SESSIONS.getByName(JSON.stringify([d.owner,d.id]));
  if(d.method==='recovery')return Response.json(await stub.checkRecovery(d.owner,d.id,d.data.mode));
  if(d.method==='backpressure')return Response.json(await stub.checkBackpressure(d.owner,d.id,d.data.phase));
  if(d.method==='inspect')return Response.json(await stub.inspectStorage());
  if(d.method==='generate')return stub.fetch(new Request('https://session/generate',{method:'POST',headers:{'X-Tavern-Owner':d.owner,'X-Tavern-Session':d.id,'X-Tavern-Username':'test','Content-Type':'application/json'},body:JSON.stringify(d.data)}));
  return new Response(await stub.invoke(d.owner,d.id,d.method,d.data??{}),{headers:{'Content-Type':'application/json'}});
 }};`;
-const bundle=await build({stdin:{contents:source,resolveDir:root,sourcefile:'session-test.ts',loader:'ts'},bundle:true,write:false,format:'esm',platform:'browser',target:'es2022',external:['cloudflare:workers']});
-const options={modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-09-18',compatibilityFlags:['nodejs_compat','enable_request_signal'],durableObjects:{SESSIONS:{className:'TestSession',useSQLite:true}},resourcePersistencePath:persist,kvNamespaces:{PROMPTS:'test-prompts'},d1Databases:{DB:'test'},bindings:{AIG_GATEWAY_ID:'default'}};
+// Only this isolated bundle substitutes identity. Production JWT verification has
+// its own signed-token tests; all routing, proxying and DO code below is real.
+const bundle=await build({stdin:{contents:source,resolveDir:root,sourcefile:'session-test.ts',loader:'ts'},bundle:true,write:false,format:'esm',platform:'browser',target:'es2022',external:['cloudflare:workers'],plugins:[{name:'fixture-identity',setup(b){b.onLoad({filter:/[/\\]worker[/\\]auth\.ts$/},()=>({contents:`export class AuthError extends Error {} export async function identity(){return {sub:'owner',username:'test',admin:false};} export function authenticatedUsername(user){return user.username;}`,loader:'ts'}));}}]});
+const options={modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-10-03',compatibilityFlags:['nodejs_compat','enable_request_signal'],durableObjects:{SESSIONS:{className:'TestSession',useSQLite:true}},resourcePersistencePath:persist,kvNamespaces:{PROMPTS:'test-prompts'},d1Databases:{DB:'test'},bindings:{AIG_GATEWAY_ID:'default'}};
 let runtime=new Miniflare(convertV4MiniflareOptions(options));
-async function call(id,method,data,owner='owner'){return runtime.dispatchFetch('https://test',{method:'POST',body:JSON.stringify({id,owner,method,data})});}
+async function call(id,method,data,owner='owner'){const response=await runtime.dispatchFetch('https://test',{method:'POST',body:JSON.stringify({id,owner,method,data})});return method==='generate'?response:new Response(await response.arrayBuffer(),response);}
 try{
  let db=await runtime.getD1Database('DB');for(const name of readdirSync(join(root,'migrations')).filter(n=>n.endsWith('.sql')).sort())await db.exec(readFileSync(join(root,'migrations',name),'utf8').replace(/--[^\n]*/g,'').replace(/\n/g,' '));
  const settings={userName:'旅人',persona:'',systemPrompt:'保持角色',modelId:'rp',thinkingEnabled:false,temperature:.9,topP:1,topK:0,frequencyPenalty:0,presencePenalty:0};
- for(const id of ['a','b','memory','tool-prose','pressure-start','pressure-delta','pressure-candidates_pending','pressure-completed','recovery-final','recovery-persistent','recovery-snapshot','restart-draft','restart-review'])await db.prepare('INSERT INTO sessions(id,owner,title,character_json,character_name,settings_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)').bind(id,'owner','旅店','{"name":"岚"}','岚',JSON.stringify(settings),1,1).run();
+ for(const id of ['a','b','proxy','memory','tool-prose','pressure-start','pressure-delta','pressure-candidates_pending','pressure-completed','recovery-final','recovery-persistent','recovery-snapshot','restart-draft','restart-review'])await db.prepare('INSERT INTO sessions(id,owner,title,character_json,character_name,settings_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)').bind(id,'owner','旅店','{"name":"岚"}','岚',JSON.stringify(settings),1,1).run();
  await db.prepare("INSERT INTO messages(id,session_id,role,content,status,ordinal,created_at,finish_reason) VALUES('long-story','memory','assistant',?,'completed',0,1,'stop')").bind('北门早已关闭。'+'İ'.repeat(800)+'😀'.repeat(61)+'a北门钥匙在南塔。'+'风'.repeat(1000)+'银怀表藏在南塔。').run();
  await db.prepare("INSERT INTO messages(id,session_id,role,content,status,ordinal,created_at,finish_reason,candidates_json) VALUES('legacy','a','assistant','旧正文','completed',0,1,'stop','[\"问问。\"]')").run();
  await db.prepare('INSERT INTO model_capabilities VALUES(?,?,?)').bind('rp',JSON.stringify({contextTokens:32768,source:'llama.cpp:n_ctx',inputRatio:1.2}),Date.now()+300000).run();
@@ -87,6 +91,25 @@ try{
  const requestId=crypto.randomUUID();const streamed=await(await call('a','generate',{requestId,content:'问候'})).text();assert.match(streamed,/"type":"done"/);assert.doesNotMatch(streamed,/\[TAVERN_NEXT\]/);
  a=await(await call('a','read')).json();assert.equal(a.value.messages.at(-1).content,'你好。');assert.equal(a.value.messages.at(-1).candidates.length,3);assert.equal((await(await call('b','read')).json()).value.messages.length,0);
  assert.equal((await(await call('a','generate',{requestId})).json()).replayed,true);
+ // Exercise the actual outer Worker over HTTP, including cancellation while the
+ // model is idle. Direct DO dispatch alone cannot verify native proxy teardown.
+ const origin=await runtime.ready;
+ const proxy=(data,signal)=>fetch(new URL('/api/sessions/proxy/generate',origin),{method:'POST',headers:{'Content-Type':'application/json','Connection':'close'},body:JSON.stringify(data),signal});
+ const completedId=crypto.randomUUID(),complete=await proxy({requestId:completedId,content:'问候'});
+ assert.match(complete.headers.get('Content-Type'),/text\/event-stream/);assert.match(await complete.text(),/"type":"done"/);
+ assert.equal((await(await proxy({requestId:completedId})).json()).replayed,true);
+ for(const mode of ['reader','request','stop','request-stop']){
+  const requestId=crypto.randomUUID(),abort=new AbortController(),response=await proxy({requestId,content:'代理等待'},abort.signal),reader=response.body.getReader(),decoder=new TextDecoder();let wire='';
+  while(!wire.includes('断连前的正文😀。')){const next=await reader.read();assert.equal(next.done,false);wire+=decoder.decode(next.value,{stream:true});}
+  const pending=await(await call('proxy','read')).json();assert(pending.value.session.generationId);
+  if(mode==='stop'||mode==='request-stop'){await call('proxy','stop',mode==='stop'?{generationId:pending.value.session.generationId}:{requestId});while(!(await reader.read()).done){}}
+  else if(mode==='reader')await reader.cancel();else{abort.abort();await reader.cancel().catch(()=>{});}
+  let saved;for(let n=0;n<100;n++){saved=await(await call('proxy','read')).json();if(saved.value.session.generationId===null)break;await new Promise(r=>setTimeout(r,10));}
+  assert.equal(saved.value.session.generationId,null,'proxy settlement: '+mode);assert.equal(saved.value.messages.at(-1).content,mode.includes('stop')?'断连前的正文😀。':'断连前的正文😀。断连后完整保存。');assert.equal(saved.value.messages.at(-1).finishReason,mode.includes('stop')?'stopped':'stop');
+  assert.equal((await(await proxy({requestId})).json()).replayed,true);
+ }
+ assert.equal((await(await call('proxy','remove')).json()).ok,true);
+ console.log('workerd native proxy: completion, disconnected background generation, explicit stop and UUID replay passed');
  const memoryRequest=crypto.randomUUID(),memoryStream=await(await call('memory','generate',{requestId:memoryRequest,content:'检索两个片段'})).text();assert.doesNotMatch(memoryStream,/"type":"error"/);let recalled=await(await call('memory','read')).json();assert.equal(recalled.value.messages.at(-1).status,'completed');assert.equal(recalled.value.messages.at(-1).candidates.length,3);assert.equal((await(await call('memory','generate',{requestId:memoryRequest})).json()).replayed,true);
  const memoryExport=await(await call('memory','export')).json();const steps=JSON.parse(memoryExport.value.snapshots.at(-1).steps_json);assert.equal(steps.length,4);assert.equal(steps[2].call.function.name,'read_memory');assert.equal(steps[3].call.function.name,'read_memory');assert.equal(JSON.parse(steps[0].result)[0].source.messageId,'long-story');assert.equal(JSON.parse(steps[1].result)[0].source.messageId,'long-story');assert.match(JSON.parse(steps[1].result)[0].text,/银怀表藏在南塔/);
  await db.prepare('UPDATE model_capabilities SET value_json=? WHERE id=?').bind(JSON.stringify({contextTokens:2048,source:'llama.cpp:n_ctx',inputRatio:1.2}),'rp').run();const proseRequest=crypto.randomUUID(),proseWire=await(await call('tool-prose','generate',{requestId:proseRequest,content:'同次长正文工具'})).text();assert.match(proseWire,/"type":"error"/);const proseSaved=await(await call('tool-prose','read')).json();assert.equal(proseSaved.value.messages.at(-1).content,'😀'.repeat(2201));assert.equal(proseSaved.value.messages.at(-1).status,"error");assert.equal(proseSaved.value.messages.at(-1).candidates.length,0);assert.equal(proseSaved.value.session.state.scene,null);assert.equal((await(await call('tool-prose','generate',{requestId:proseRequest})).json()).replayed,true);await db.prepare('UPDATE model_capabilities SET value_json=? WHERE id=?').bind(JSON.stringify({contextTokens:32768,source:'llama.cpp:n_ctx',inputRatio:1.2}),'rp').run();
@@ -98,7 +121,7 @@ try{
  const preTool=a.value.messages.findLast(m=>m.role==='user');const priorBranch=await(await call('a','fork',{messageId:preTool.id,content:'不同方向'})).json();assert.equal((await(await call(priorBranch.value.id,'read')).json()).value.session.state.scene,null);
  const stateBranch=await(await call('a','fork',{messageId:a.value.messages.at(-1).id,content:'编辑这一轮'})).json();assert.equal((await(await call(stateBranch.value.id,'read')).json()).value.session.state.scene,null);
  const pending=await call('b','generate',{requestId:crypto.randomUUID(),content:'等待'}),reader=pending.body.getReader();await reader.read();const b=await(await call('b','read')).json();await call('b','stop',{generationId:b.value.session.generationId});while(!(await reader.read()).done){};
- await call('a','update',{title:'已保存'});await runtime.dispose();runtime=new Miniflare(convertV4MiniflareOptions(options));a=await(await call('a','read')).json();assert.equal(a.value.session.title,'已保存');assert.equal(a.value.messages.at(-1).content,'你好。');assert.equal(a.value.session.state.scene,'北港');
+ await call('a','update',{title:'已保存'});console.log('workerd SQLite: restarting runtime after completed and stopped turns');await runtime.dispose();runtime=new Miniflare(convertV4MiniflareOptions(options));a=await(await call('a','read')).json();assert.equal(a.value.session.title,'已保存');assert.equal(a.value.messages.at(-1).content,'你好。');assert.equal(a.value.session.state.scene,'北港');
  recalled=await(await call('memory','read')).json();assert.equal(recalled.value.messages.at(-1).status,'completed');assert.equal((await(await call('memory','generate',{requestId:memoryRequest})).json()).replayed,true);assert.equal((await(await call('memory','remove')).json()).ok,true);
  const proseRestored=await(await call('tool-prose','read')).json();assert.equal(proseRestored.value.messages.at(-1).content,'😀'.repeat(2201));assert.equal(proseRestored.value.session.state.scene,null);assert.equal((await(await call('tool-prose','remove')).json()).ok,true);
  for(const [id,content,expected]of [['restart-draft','正文时重启','重启前半句。'],['restart-review','候选时重启','你好。']]){
