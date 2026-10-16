@@ -18,7 +18,7 @@
 旧快照读取时补空 goals，不重写原 JSON。
 目标与其他状态共用成功提交、失败回滚和分支隔离规则。
 
-`update_state` 仅暂存已发生事实，可供本回合工具后请求读取；只有正文正常完成且整回合未停止时，与 message、快照和 revision 在 DO 同一事务提交。长度中断、取消、断流或工具失败不提前提交；候选故障保留成功正文/状态。
+`update_state` 仅暂存已发生事实，可供本回合工具后请求读取；只有正文正常完成且整回合未停止时，与 message、快照和 revision 在 DO 同一事务提交。长度中断、主动停止、上游断流或工具失败不提前提交；候选故障保留成功正文/状态。
 
 重生成从对应版本 before 开始，成功后才选中新的剧情状态。失败版本可见，Prompt/state/记忆使用最新成功剧情版本。新分支仅复制编辑点之前的有效 state/摘要，重映射来源锚点，排除编辑点旧 after 与工具步骤，不继承未来事实。
 
@@ -123,6 +123,15 @@ JSON 紧凑编码和稳定键序，移除锁、revision、时间及日志字段�
 兼容旧候选分隔符只处理协议边界，不改写正文。
 私有 `generation_drafts` 保存实际输出检查点，pending GET 不暴露草稿。
 
+外层 Worker 原样透传 DO 响应，不逐块调用 JavaScript。
+浏览器断线或离开页面只关闭展示流。
+DO 继续生成正文、候选并保存正常终态及确认状态。
+断连立即释放等待背压的写入，不让展示连接阻塞后台任务。
+只有显式停止、上游故障或运行时故障才中断生成。
+重新进入会话按 generationId 轮询，完成后读取持久结果。
+相同 requestId 回放状态或结果，不重复调用模型。
+HTTP 429 单独记录为 rate_limited，不当作浏览器断连。
+
 可靠 stop 后检查 think 标记、同轮长段重复与跨轮精确复写。
 跨轮检查最近三个成功正文。
 至少两段各不少于60字的原文匹配，且占新稿至少45%，才判为复写。
@@ -175,9 +184,16 @@ DO revision/synced_revision 与 alarm 幂等重试目录同步，正文 done 不
 
 不提交推测 state/投影，不伪报 done，不自动重发模型。持续故障保留恢复 ID，后续 read/generate/delete 重试；旧 ID 不清新占用。冷实例删除先恢复未完成任务，恢复成功才发布缓存。
 
-短事务领取占用，外部模型 await 期间允许 stop，不持有 blockConcurrencyWhile。重复 UUID 回放，其他并发请求冲突；重启未完成回合标中断，不自动重复推理。
+短事务领取占用，外部模型 await 期间允许 stop，不持有 blockConcurrencyWhile。显式停止支持当前 requestId，先持久化取消标记，再取消匹配的内存任务；首个 SSE start 前也生效。未知或已结束 requestId 幂等成功，不影响其他回合。重复 UUID 回放，其他并发请求冲突；重启未完成回合标中断，不自动重复推理。
 
-客户端暂停读取 start/delta/candidates_pending 时，写入必须响应停止/断连，中止不续租。先保存终态/释放 DO 活跃状态，再直接入队最多 error/done 两帧结束流；正常 done 同样不等 reader，主动结束不误判断连。持久化异常也结束传输；reader 恢复之前删除即可清空存储/alarm。兼容日期支持标准 TransformStream，依据[兼容标志](https://developers.cloudflare.com/workers/configuration/compatibility-flags/#standard-transformstream-constructor)。
+客户端暂停读取 start/delta/candidates_pending 时，显式停止须立即释放等待写入。
+浏览器断连仅终止展示流，生成继续续租并保存结果。
+先保存终态并释放 DO 活跃状态，再入队最多 error/done 两帧。
+正常 done 不等待 reader，主动结束不误判断连。
+持久化异常也结束传输；任务结束后可删除全部存储和 alarm。
+兼容日期支持标准 TransformStream，依据[兼容标志](https://developers.cloudflare.com/workers/configuration/compatibility-flags/#standard-transformstream-constructor)。
+生产和运行时测试使用兼容日期 2026-10-03。
+DO 的 waitUntil 与待完成 I/O 采用平台保活规则，见[DO 保活](https://developers.cloudflare.com/changelog/post/2026-10-01-pending-io-keep-alive/)。
 
 ## 缓存与性能证据
 

@@ -24,7 +24,7 @@ beforeEach(()=>{
  db.prepare('INSERT INTO model_capabilities(id,value_json,expires_at) VALUES(?,?,?)').run('rp',JSON.stringify({contextTokens:16384,source:'llama.cpp:n_ctx',checkedAt:Date.now(),inputRatio:1.2}),Date.now()+300000);
  vi.mocked(identity).mockResolvedValue({sub:'auth0|owner',email:'owner',username:'月石',admin:true});
 });
-afterEach(async()=>{await Promise.allSettled(work);db.close();sessionDb.close();vi.clearAllMocks();});
+afterEach(async()=>{await Promise.allSettled(work);db.close();sessionDb.close();vi.clearAllMocks();vi.unstubAllGlobals();});
 async function seed(){const c=await(await call('/api/characters','POST',card)).json() as {id:string};const s=await(await call('/api/sessions','POST',{characterId:c.id})).json() as {id:string};return {c,s};}
 it('installs/imports without duplicate private rows and preserves raw exports',async()=>{const a=await(await call('/api/characters','POST',card)).json() as {id:string};const b=await(await call('/api/characters','POST',card)).json() as {id:string};expect(a.id).toBe(b.id);expect(await(await call('/api/characters/'+a.id+'/export')).json()).toEqual(card);vi.mocked(identity).mockResolvedValue({sub:'auth0|other',email:'other',username:'其他用户',admin:true});expect((await call('/api/characters/'+a.id)).status).toBe(404);});
 it('denies missing JWT and cross-origin writes',async()=>{vi.mocked(identity).mockRejectedValue(new AuthError(401,'请先登录'));expect((await call('/api/settings')).status).toBe(401);vi.mocked(identity).mockResolvedValue({sub:'owner',email:'owner',username:'月石',admin:true});const r=await worker.fetch(new Request('https://tavern.test/api/settings',{method:'PUT',headers:{Origin:'https://evil.test'}}),env,ctx);expect(r.status).toBe(403);});
@@ -138,10 +138,40 @@ it('returns conflict when generation claims a session before deletion',async()=>
  expect((await call('/api/sessions/'+s.id,'DELETE')).status).toBe(409);expect(sessionDb.prepare('SELECT id FROM sessions WHERE id=?').get(s.id)).toBeTruthy();
 });
 
-it('cancels idle upstream when the response reader disconnects and releases the lock',async()=>{
- const {s}=await seed(),cancel=vi.fn();aiRun.mockImplementation(async()=>new ReadableStream({cancel}));
- const response=await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'idle'});const reader=response.body!.getReader();await reader.read();await vi.waitFor(()=>expect(aiRun).toHaveBeenCalled());await reader.cancel();await Promise.all(work);
- expect(cancel).toHaveBeenCalled();expect(sessionDb.prepare('SELECT generation_id FROM sessions WHERE id=?').get(s.id)?.generation_id).toBeNull();expect(sessionDb.prepare("SELECT status FROM messages WHERE request_id IS NOT NULL AND role='assistant'").get()?.status).toBe('aborted');
+it('continues an accepted generation after its viewer disconnects and saves the full reply exactly once',async()=>{
+ const {s}=await seed(),cancel=vi.fn(),requestId=crypto.randomUUID();let upstream!:ReadableStreamDefaultController<Uint8Array>;
+ aiRun.mockResolvedValueOnce(tool('update_state',{patch:{scene:'北港'}})).mockResolvedValueOnce(new ReadableStream({start(c){upstream=c;},cancel}));
+ const response=await call('/api/sessions/'+s.id+'/generate','POST',{requestId,content:'你好'});const reader=response.body!.getReader();await reader.read();await vi.waitFor(()=>expect(aiRun).toHaveBeenCalledTimes(2));await reader.cancel();
+ expect(cancel).not.toHaveBeenCalled();const pending=await(await call('/api/sessions/'+s.id)).json() as {session:{generationId:string|null}};expect(pending.session.generationId).toBeTruthy();
+ expect((await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId})).json() as {replayed:boolean}).replayed).toBe(true);
+ upstream.enqueue(new TextEncoder().encode('data: '+JSON.stringify({choices:[{delta:{content:'断开后仍完成😀。'},finish_reason:'stop'}]})+'\n\ndata: [DONE]\n\n'));upstream.close();await Promise.all(work);
+ const saved=await(await call('/api/sessions/'+s.id)).json() as {session:{generationId:string|null;state:{scene:string}};messages:Message[]};expect(saved.session.generationId).toBeNull();expect(saved.session.state.scene).toBe('北港');expect(saved.messages.at(-1)).toMatchObject({status:'completed',finishReason:'stop',content:'断开后仍完成😀。',candidates:['去港口。','问问来路。','坐下喝茶。']});expect(aiRun).toHaveBeenCalledTimes(3);
+});
+it('lets a reconnected viewer explicitly stop background generation after the original reader disconnects',async()=>{
+ const {s}=await seed(),cancel=vi.fn();aiRun.mockResolvedValueOnce(new ReadableStream({cancel}));
+ const reader=(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'你好'})).body!.getReader();await reader.read();await vi.waitFor(()=>expect(aiRun).toHaveBeenCalledOnce());await reader.cancel();expect(cancel).not.toHaveBeenCalled();
+ const pending=await(await call('/api/sessions/'+s.id)).json() as {session:{generationId:string}};expect((await call('/api/sessions/'+s.id+'/stop','POST',{generationId:pending.session.generationId})).status).toBe(200);await Promise.all(work);expect(cancel).toHaveBeenCalled();
+ const saved=await(await call('/api/sessions/'+s.id)).json() as {session:{generationId:string|null};messages:Message[]};expect(saved.session.generationId).toBeNull();expect(saved.messages.at(-1)).toMatchObject({status:'aborted',finishReason:'stopped'});
+});
+it.each(['interrupted','upstream'])('retains the real model %s failure after the viewer disconnects',async reason=>{
+ const {s}=await seed(),requestId=crypto.randomUUID();let upstream!:ReadableStreamDefaultController<Uint8Array>;
+ aiRun.mockResolvedValueOnce(new ReadableStream({start(c){upstream=c;}}));const reader=(await call('/api/sessions/'+s.id+'/generate','POST',{requestId,content:'你好'})).body!.getReader();await reader.read();await vi.waitFor(()=>expect(aiRun).toHaveBeenCalledOnce());
+ upstream.enqueue(new TextEncoder().encode('data: '+JSON.stringify({choices:[{delta:{content:'已收到的半句。'}}]})+'\n\n'));await reader.read();await reader.cancel();
+ if(reason==='upstream')upstream.enqueue(new TextEncoder().encode('data: '+JSON.stringify({error:{message:'private model failure'}})+'\n\n'));upstream.close();await Promise.all(work);
+ const saved=await(await call('/api/sessions/'+s.id)).json() as {session:{generationId:string|null};messages:Message[]};expect(saved.session.generationId).toBeNull();expect(saved.messages.at(-1)).toMatchObject({status:'error',finishReason:reason,content:'已收到的半句。',candidates:[]});expect(aiRun).toHaveBeenCalledOnce();
+});
+it('preserves the native response without acquiring a per-chunk proxy reader',async()=>{
+ const {s}=await seed();const stub=env.SESSIONS.getByName(JSON.stringify(['auth0|owner',s.id]));
+ const bytes=new TextEncoder().encode('data: {"type":"delta","text":"原文😀"}\n\n'),upstream=new Response(bytes,{headers:{'Content-Type':'text/event-stream','X-Stream-Test':'unchanged'}});
+ const fetch=vi.spyOn(stub,'fetch').mockResolvedValueOnce(upstream);
+ const reader=vi.spyOn(upstream.body!,'getReader');
+ try{const response=await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'你好'});expect(reader).not.toHaveBeenCalled();expect(response.headers.get('X-Stream-Test')).toBe('unchanged');expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);}finally{fetch.mockRestore();reader.mockRestore();}
+});
+it('persists rate limiting separately from disconnection without retrying or exposing provider details',async()=>{
+ const {s}=await seed(),requestId=crypto.randomUUID();aiRun.mockResolvedValueOnce(Response.json({error:{message:'private provider quota detail'}},{status:429,headers:{'cf-aig-log-id':'rate-limit-log'}}));
+ const wire=await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId,content:'你好'})).text();await Promise.all(work);
+ expect(wire).toContain('模型服务限流或额度受限');expect(wire).not.toContain('private provider');expect(terminal(wire)).toMatchObject({status:'error',finishReason:'rate_limited',candidates:[]});expect(aiRun).toHaveBeenCalledOnce();
+ const saved=await(await call('/api/sessions/'+s.id)).json() as {messages:Message[];session:{generationId:string|null}};expect(saved.session.generationId).toBeNull();expect(saved.messages.at(-1)?.finishReason).toBe('rate_limited');expect((await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId})).json() as {replayed:boolean}).replayed).toBe(true);expect(aiRun).toHaveBeenCalledOnce();
 });
 it.each(['start','delta','candidates_pending'])('settles stop during %s backpressure without waiting for the response reader',async phase=>{
  const {s}=await seed(),requestId=crypto.randomUUID(),writes=vi.spyOn(WritableStreamDefaultWriter.prototype,'write');
@@ -170,7 +200,7 @@ it.each(['completed','disconnected'])('settles %s transport without a terminal r
   await vi.waitFor(()=>expect(sessionDb.prepare('SELECT generation_id FROM sessions WHERE id=?').get(s.id)?.generation_id).toBeNull(),{timeout:200});await Promise.all(work);
   let wire='';for(;;){const next=await reader.read();if(next.done)break;wire+=new TextDecoder().decode(next.value);}
   const saved=sessionDb.prepare("SELECT status,finish_reason,content FROM messages WHERE request_id=? AND role='assistant'").get(requestId);
-  expect(saved).toMatchObject({status:outcome==='completed'?'completed':'aborted',finish_reason:outcome==='completed'?'stop':'disconnected',content:'欢迎来到港城。'});
+  expect(saved).toMatchObject({status:'completed',finish_reason:'stop',content:'欢迎来到港城。'});
   if(outcome==='completed')expect(wire).toContain('"type":"done"');else expect(wire).not.toContain('"type":"done"');
   expect((await call('/api/sessions/'+s.id,'DELETE')).status).toBe(200);
  }finally{await reader.cancel();await Promise.allSettled(work);writes.mockRestore();}

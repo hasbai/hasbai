@@ -6,6 +6,7 @@ export function generationNotice(reason?: FinishReason | null): string {
   case 'timeout': return '生成超时，内容已保存';
   case 'stopped': return '已停止生成';
   case 'disconnected': return '连接断开，内容已保存';
+  case 'rate_limited': return '模型服务限流或额度受限，请稍后重试';
   case 'content_filter': return '模型未返回可用内容';
   case 'unsupported': return '模型返回了不支持的结束类型';
   case 'empty': return '模型未返回正文，请重试';

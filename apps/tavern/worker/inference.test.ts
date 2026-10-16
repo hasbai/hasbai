@@ -47,7 +47,7 @@ it('lets the SDK parse complete calls while retaining original strings, nullable
 
 it.each([400, 429, 500, 503])('retains HTTP %i context feedback and log ID without an SDK retry', async status => {
  const fetch = vi.fn().mockResolvedValue(Response.json({ error: { n_ctx: 4096 } }, { status, headers: { 'cf-aig-log-id': 'failure-log' } })); vi.stubGlobal('fetch', fetch);
- await expect(collect(inferRoleplay(env, 'u', 'r', { messages }, signal()))).rejects.toMatchObject({ value: { error: { n_ctx: 4096 } }, reason: 'upstream', logId: 'failure-log' });
+ await expect(collect(inferRoleplay(env, 'u', 'r', { messages }, signal()))).rejects.toMatchObject({ value: { error: { n_ctx: 4096 } }, reason: status === 429 ? 'rate_limited' : 'upstream', logId: 'failure-log' });
  expect(fetch).toHaveBeenCalledOnce();
 });
 

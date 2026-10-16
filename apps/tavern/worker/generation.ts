@@ -34,7 +34,7 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
  const assistantId=crypto.randomUUID();
  if(!store.claim(assistantId,now))throw new HttpError(409,'当前会话正在生成');
  const abort=new AbortController();let checking=false;let leaseLost=false;let ready=false;let finishing=false;let abortReason:FinishReason='stopped';onClaim(assistantId,abort);
- const owns=async()=>{if(abort.signal.aborted)throw new Error('生成已停止');if(!store.owns(assistantId)){leaseLost=true;abort.abort();throw new Error('会话生成已接管');}};
+ const owns=async()=>{if(abort.signal.aborted)throw new HttpError(409,'生成已停止');if(!store.owns(assistantId)){leaseLost=true;abort.abort();throw new Error('会话生成已接管');}};
  const stopWatcher=setInterval(()=>{if(checking||finishing||abort.signal.aborted)return;checking=true;try{if(!store.renew(assistantId)){leaseLost=true;abort.abort();return;}if(ready&&!store.pending(assistantId)){abortReason='stopped';abort.abort();}}catch{leaseLost=true;abortReason='upstream';abort.abort();}finally{checking=false;}},1000);
  let row=initial;let prompt:ReturnType<typeof buildPrompt>;let conversation:ConversationContext;let agent:AgentTurn;
  const toolTranscript:PromptMessage[]=[];
@@ -74,11 +74,15 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
  const frame=(event:unknown)=>encoder.encode('data: '+JSON.stringify(event)+'\n\n');
  const send=async(event:unknown)=>{
   if(abort.signal.aborted)throw new Error('生成已停止');
+  if(disconnected)return;
   let stop!:()=>void;
   const cancelled=new Promise<never>((_,reject)=>{stop=()=>reject(new Error('生成已停止'));abort.signal.addEventListener('abort',stop,{once:true});});
-  try{await Promise.race([writer.write(frame(event)),cancelled]);}finally{abort.signal.removeEventListener('abort',stop);}
+  const bytes=frame(event);
+  try{await Promise.race([writer.write(bytes),cancelled]);}catch(error){if(abort.signal.aborted)throw error;onDisconnect();}finally{abort.signal.removeEventListener('abort',stop);}
  };
- const onDisconnect=()=>{if(ending)return;disconnected=true;abortReason='disconnected';abort.abort();};request.signal.addEventListener('abort',onDisconnect,{once:true});if(request.signal.aborted)onDisconnect();void writer.closed.catch(onDisconnect);
+ // Detach transport without aborting the independent model task. Terminating
+ // the stream also releases a write blocked by a paused/disconnected reader.
+ const onDisconnect=()=>{if(ending||disconnected)return;disconnected=true;try{transport.terminate();}catch{/* The reader may already have cancelled. */}};request.signal.addEventListener('abort',onDisconnect,{once:true});if(request.signal.aborted)onDisconnect();void writer.closed.catch(onDisconnect);
  const work=(async()=>{
   let status:Message['status']='completed';let failure='';
   try{
