@@ -9,11 +9,30 @@
 | 角色库 | 搜索已安装角色，导入 JSON/PNG/CHARX，表单创建与 AI 补全。编辑、查看设定与来源、导出原卡、删除、选择开场白开始对话 |
 | 发现 | 输入关键词、选择公开来源。按热度/近期热门/发布或更新时间/评分排序，选择分类与自定义标签。分页、查看作者/源页面、安装角色；安装相同内容去重，不自动覆盖本地编辑 |
 | 世界书 | 独立 JSON 导入/导出、查看编辑原文、条目数量、启用/停用，给会话选择世界书；内嵌角色书自动生效 |
-| 对话 | 会话列表、角色与用户 persona。右侧用户气泡、无气泡角色正文、单行自动伸展输入、圆形发送/停止、回答末尾操作。持久化历史、重试、重新生成、编辑历史并派生新会话、导出 JSONL、删除会话 |
+| 对话 | 会话列表、角色与用户 persona。右侧用户气泡、无气泡角色正文、单行自动伸展输入、圆形发送/停止、回答末尾操作。持久化历史、重试、重新生成、任意历史消息编辑、删除和重生成，原会话内截断后续、导出 JSONL、删除会话 |
 | 关于 | 从设置进入；按用例同时切换上下文流程与 KV 提示词。登录用户可查看；管理员可在线编辑保存 |
 | 设置 | RP模型、默认关闭思考、采样参数、用户名称/persona、系统提示、主题；模型路由由服务端固定，不接受客户端覆盖 |
 
 当前不执行外来 JS/Lua、正则替换脚本或扩展工具，不提供多人群聊、图像生成、语音或全量 SillyTavern 插件兼容。未知扩展和资源留在原始卡及导出中；兼容导入不等于执行全部扩展。不会提供伪造角色推荐、示例历史、评分或人数。只有 e2e 独立夹具有合成内容。
+
+## Agent 操作
+
+编辑保留修改后的目标消息，删除移除目标消息；两者都删除后续消息。
+重生成支持历史用户消息和角色回复，在原会话中替换后续剧情。
+新操作不创建消息分支，编辑不自动推理。
+
+执行记录持久化在当前 DO，正文流同步发布事件。
+工具输入与结果、Director 输出、压缩摘要和失败原因均可展开。
+刷新读取同一记录，未知阶段不伪装为“正在构思”。
+
+输入框提供上下文占用估算，包含当前草稿。
+容量来自服务端发现；未知容量不显示百分比。
+
+点击输入框显示命令，可用键盘上下选择、Escape 关闭。
+`/compress`、`/status` 支持直接点击和独立文本发送。
+点击命令保留已有草稿，状态命令不调用模型。
+`/ooc 指令` 占一行，后续行可填写普通对白并一并发送。
+原始输入保留；OOC 不作为剧情事实、状态证据或摘要源。
 
 ## 架构与边界
 
@@ -38,7 +57,7 @@ D1 公共 source_catalog/source_releases 保存固定版本目录，只有完整
 
 sessions 保存会话目录、可靠世界书引用与迁移占用哨兵。messages 只读保留迁移前原文，settings 保存用户 persona 和生成参数。
 
-会话角色快照、设置、全部消息版本、摘要与生成占用由每会话SQLite DO统一管理；旧 D1 原文按 AGENT 的惰性迁移契约保留。已安装角色删除不删除既有会话快照。R2 原文件私有，头像由 Bearer API 转 Blob URL；不创建公共桶，不自动加载角色扩展资源；发现页只显示经过HTTPS/固定头像域校验的公开Chub缩略图。
+会话角色快照、设置、有效线性消息、摘要与生成占用由每会话SQLite DO统一管理；旧 D1 原文按 AGENT 的惰性迁移契约保留。已安装角色删除不删除既有会话快照。R2 原文件私有，头像由 Bearer API 转 Blob URL；不创建公共桶，不自动加载角色扩展资源；发现页只显示经过HTTPS/固定头像域校验的公开Chub缩略图。
 
 导入大小限制、PNG chunk 长度/CRC、ZIP 条目数量/未压缩总量/路径遍历验证在解析前执行。CHARX 支持 card.json 与内嵌主头像，原压缩包完整保留可下载；资源脚本不执行。远端安装 URL 只由适配器构造、固定 HTTPS 主机，重定向逐跳校验，有限时与响应大小。HTML 永远转义；聊天按纯文本显示角色动作和对白，链接不自动触发抓取。
 
@@ -59,6 +78,7 @@ sessions 保存会话目录、可靠世界书引用与迁移占用哨兵。messa
 发送使用 UUID requestId，所有会话操作通过每会话 DO。
 正常正文实时发送增量，并写入私有恢复检查点；停止真正取消上游。停止 API 支持 requestId，可在首个响应前停止；现有 generationId 停止保持兼容。
 外层原生透传响应流，浏览器断连后 DO 继续生成和保存。
+
 重新进入会话可恢复生成状态及最终结果。
 输出异常保留原稿并报错，不发起修订或续写。
 中断和不可靠终态保存实际部分正文，刷新/重复 UUID 不再次推理。
@@ -116,7 +136,7 @@ KV 使用自身缓存，不叠加进程缓存；更新最终一致，页面提�
 - GET /api/discover?q=&source=&page=&sort=&tags=；POST /api/install {source,id}；固定适配器，不提供任意 URL 代理。
 - GET/POST /api/worldbooks；PATCH/DELETE /api/worldbooks/:id；GET /api/worldbooks/:id/export。
 - GET/POST /api/sessions；GET/DELETE /api/sessions/:id；PATCH /api/sessions/:id 配置。
-- POST /api/sessions/:id/generate；POST /api/sessions/:id/stop；POST /api/sessions/:id/fork；GET /api/sessions/:id/export。
+- POST /api/sessions/:id/generate；POST /api/sessions/:id/stop；POST /api/sessions/:id/command；PATCH /api/sessions/:id/messages；DELETE /api/sessions/:id/messages；GET /api/sessions/:id/export。
 - GET/PUT /api/settings；GET /api/models。
 
 ## 规范与公开来源
@@ -136,6 +156,6 @@ KV 使用自身缓存，不叠加进程缓存；更新最终一致，页面提�
 
 前端 5176；应用目录 `pnpm exec wrangler dev --port 8787` 启动独立 API，Vite 开发代理。Wrangler 配置 Worker、D1、私有 R2 和 SQLite `SESSIONS` binding，兼容日期保留 `2026-10-03`。
 
-`pnpm --filter tavern test:session-runtime` 使用 Wrangler 所带真实 workerd/SQLite 的隔离 harness，验证导入、停止、回放、分支、重启、故障恢复和删除。harness 使用其固定 runtime 支持的兼容日期，不打包进生产；模型是夹具，不能当真实推理验收。
+`pnpm --filter tavern test:session-runtime` 使用 Wrangler 所带真实 workerd/SQLite 的隔离 harness，验证导入、停止、回放、线性编辑、重启、故障恢复和删除。harness 使用其固定 runtime 支持的兼容日期，不打包进生产；模型是夹具，不能当真实推理验收。
 
-Workers Builds 的 rootDirectory `/`、build `pnpm --filter tavern build`，生产 main；构建监控应用/共享包/workspace 路径。D1 0007/0008 兼容迁移与 DO 来源冻结/分支恢复以[AGENT](AGENT.md#do与迁移一致性)为准。检查与发布步骤仅在[TESTING](../TESTING.md)维护，不重复手动部署。
+Workers Builds 的 rootDirectory `/`、build `pnpm --filter tavern build`，生产 main；构建监控应用/共享包/workspace 路径。D1 0007/0008 兼容迁移与 DO 来源冻结与历史 seed 恢复以[AGENT](AGENT.md#do与迁移一致性)为准。检查与发布步骤仅在[TESTING](../TESTING.md)维护，不重复手动部署。

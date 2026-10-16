@@ -25,7 +25,7 @@ export class DirectorContextError extends Error { constructor(readonly limit:num
 export class DirectorAgent {
  private messages:PromptMessage[];
  requests=0;rebuilds=0;model='';gatewayLogId:string|null=null;metrics=new InferenceMetrics();
- firstAt:number|null=null;outcome='not-started';
+ rawOutput='';error='';firstAt:number|null=null;outcome='not-started';
  constructor(prefix:PromptMessage[],output:string,state:StoryState,public contextTokens:number|null,readonly inputRatio=1.2,rule=DIRECTOR_RULE){
   this.messages=[...structuredClone(prefix),{role:'assistant',content:output},directorTask(state,rule)];
  }
@@ -47,7 +47,7 @@ export class DirectorAgent {
    try{
     for await(const event of await infer(this.prompt().messages)){
      if(event.type==='observation'){this.metrics.observe(event.value);this.gatewayLogId=event.logId;if(typeof event.value.model==='string')this.model=event.value.model;}
-     else if(event.type==='text'){text+=event.text;if(event.text.trim())this.firstAt??=Date.now();}
+     else if(event.type==='text'){text+=event.text;this.rawOutput=text;if(event.text.trim())this.firstAt??=Date.now();}
      else {if(event.calls.length)throw Error('Director响应无效');reason=event.reason;}
      if(new TextEncoder().encode(text).length>8192)throw Error('Director输出过长');
     }
@@ -58,9 +58,9 @@ export class DirectorAgent {
    }
    await owns();
    if(limit){this.contextTokens=limit;if(!await this.compact(rebuild))throw Error('Director上下文未缩短');continue;}
-   if(reason!=='stop'){this.outcome='incomplete';return [];}
+   if(reason!=='stop'){this.outcome='incomplete';this.error='Director 未正常完成：'+(reason??'连接中断');return [];}
    const choices=directorChoices(text);this.outcome='completed';return choices;
-  }}catch(error){this.outcome=signal.aborted?'cancelled':'error';if(signal.aborted)throw error;return [];}
+  }}catch(error){this.error=(error as Error).message;this.outcome=signal.aborted?'cancelled':'error';if(signal.aborted)throw error;return [];}
  }
 }
 

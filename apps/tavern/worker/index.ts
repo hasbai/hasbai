@@ -88,7 +88,7 @@ export default {
      return json((await callSession(env,owner,id,'read')).session,201);
     }
    }
-   const chat=p.match(/^\/api\/sessions\/([^/]+)(?:\/(generate|stop|fork|export))?$/);
+   const chat=p.match(/^\/api\/sessions\/([^/]+)(?:\/(generate|stop|command|messages|export))?$/);
    if(chat){
     const id=chat[1],stub=sessionStub(env,owner,id);
     if(method==='POST'&&chat[2]==='generate'){
@@ -102,7 +102,8 @@ export default {
      const {row,messages,snapshots}=await callSession(env,owner,id,'export');const lines=[{user_name:JSON.parse(row.settings_json).userName,character_name:row.character_name,create_date:new Date(row.created_at).toISOString()},...messages.map(m=>({name:m.role==='user'?JSON.parse(row.settings_json).userName:row.character_name,is_user:m.role==='user',is_system:false,send_date:new Date(m.createdAt).toISOString(),mes:m.content,extra:{tavern_status:m.status,tavern_finish_reason:m.finishReason??null,ordinal:m.ordinal,...(snapshots.find(s=>s.message_id===m.id)?{tavern_agent:snapshots.find(s=>s.message_id===m.id)}:{})}}))];
      return new Response(lines.map(l=>JSON.stringify(l)).join('\n')+'\n',{headers:{'Content-Type':'application/x-ndjson','Content-Disposition':`attachment; filename*=UTF-8''${encodeURIComponent(row.title+'.jsonl')}`,'Cache-Control':'no-store'}});
     }
-    if(method==='POST'&&chat[2]==='fork')return json(await callSession(env,owner,id,'fork',await body(request)),201);
+    if(method==='POST'&&chat[2]==='command')return json(await callSession(env,owner,id,'command',{...await body(request),username:authenticatedUsername(user)}));
+    if((method==='PATCH'||method==='DELETE')&&chat[2]==='messages')return json(await callSession(env,owner,id,'changeMessage',{...await body(request),action:method==='DELETE'?'delete':'edit'}));
     if(!chat[2]&&method==='GET')return json(await callSession(env,owner,id,'read'));
     if(!chat[2]&&method==='PATCH')return json(await callSession(env,owner,id,'update',await body(request)));
     if(!chat[2]&&method==='DELETE')return json(await callSession(env,owner,id,'remove'));

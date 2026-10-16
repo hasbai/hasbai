@@ -26,6 +26,7 @@ beforeEach(()=>{
 });
 afterEach(async()=>{await Promise.allSettled(work);db.close();sessionDb.close();vi.clearAllMocks();vi.unstubAllGlobals();});
 async function seed(){const c=await(await call('/api/characters','POST',card)).json() as {id:string};const s=await(await call('/api/sessions','POST',{characterId:c.id})).json() as {id:string};return {c,s};}
+async function readType(reader:ReadableStreamDefaultReader<Uint8Array>,type:string){for(;;){const next=await reader.read();if(next.done)throw Error('Missing SSE event '+type);const text=new TextDecoder().decode(next.value);if(text.includes('"type":"'+type+'"'))return text;}}
 it('installs/imports without duplicate private rows and preserves raw exports',async()=>{const a=await(await call('/api/characters','POST',card)).json() as {id:string};const b=await(await call('/api/characters','POST',card)).json() as {id:string};expect(a.id).toBe(b.id);expect(await(await call('/api/characters/'+a.id+'/export')).json()).toEqual(card);vi.mocked(identity).mockResolvedValue({sub:'auth0|other',email:'other',username:'其他用户',admin:true});expect((await call('/api/characters/'+a.id)).status).toBe(404);});
 it('denies missing JWT and cross-origin writes',async()=>{vi.mocked(identity).mockRejectedValue(new AuthError(401,'请先登录'));expect((await call('/api/settings')).status).toBe(401);vi.mocked(identity).mockResolvedValue({sub:'owner',email:'owner',username:'月石',admin:true});const r=await worker.fetch(new Request('https://tavern.test/api/settings',{method:'PUT',headers:{Origin:'https://evil.test'}}),env,ctx);expect(r.status).toBe(403);});
 it('snapshots role definitions and creates selected alternate greeting',async()=>{const {c,s}=await seed();await call('/api/characters/'+c.id,'DELETE');const history=await(await call('/api/sessions/'+s.id)).json() as {session:{character:unknown};messages:{content:string}[]};expect(history.session.character).toEqual(card);expect(history.messages[0].content).toBe('你好，旅人。');});
@@ -103,7 +104,8 @@ it('aborts a stopped generation and refuses stale stop or concurrent send',async
  expect((await call('/api/sessions/'+s.id+'/stop','POST',{generationId})).status).toBe(200);
  while(!(await reader.read()).done){}await Promise.all(work);expect(sessionDb.prepare("SELECT status FROM messages WHERE id=?").get(generationId as string)?.status).toBe('aborted');
 });
-it('forks edited history without changing original messages',async()=>{const {s}=await seed();const data=await(await call('/api/sessions/'+s.id)).json() as {messages:{id:string}[]};const fork=await(await call('/api/sessions/'+s.id+'/fork','POST',{messageId:data.messages[0].id,content:'新的开场'})).json() as {id:string};expect(sessionDb.prepare('SELECT content FROM messages WHERE session_id=?').get(s.id)?.content).toBe('你好，旅人。');expect(sessionDb.prepare('SELECT content FROM messages WHERE session_id=?').get(fork.id)?.content).toBe('新的开场');});
+it('edits history in place and removes every later message without creating another session',async()=>{const {s}=await seed();await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'你好'})).text();await Promise.all(work);const data=await(await call('/api/sessions/'+s.id)).json() as {messages:Message[]};expect((await call('/api/sessions/'+s.id+'/messages','PATCH',{messageId:data.messages[0].id,content:'新的开场'})).status).toBe(200);const saved=await(await call('/api/sessions/'+s.id)).json() as {messages:Message[]};expect(saved.messages).toHaveLength(1);expect(saved.messages[0]).toMatchObject({id:data.messages[0].id,content:'新的开场'});expect(db.prepare('SELECT count(*) n FROM sessions').get()?.n).toBe(1);});
+
 it('validates worldbook ownership, settings and malformed imported files',async()=>{const {s}=await seed();expect((await call('/api/sessions/'+s.id,'PATCH',{bookIds:['missing']})).status).toBe(400);expect((await call('/api/settings','PUT',{...DEFAULT_SETTINGS,temperature:999999})).status).toBe(400);expect((await call('/api/worldbooks','POST',{raw:{name:'bad'}})).status).toBe(400);expect((await call('/api/characters','POST',{fake:true})).status).toBe(400);});
 it('searches actual synchronized catalog rows and installs from server definitions',async()=>{const revision='a'.repeat(40);db.prepare('INSERT INTO source_catalog VALUES(?,?,?,?,?,?,?,?,?)').run('theatrelm',revision,'0','岚','旅店主人','G-reen','[]','https://huggingface.co/source',JSON.stringify(card));db.prepare('INSERT INTO source_releases VALUES(?,?,?,?)').run('theatrelm',revision,1,Date.now());const r=await(await call('/api/discover?source=theatrelm&q=岚')).json() as {results:{id:string}[]};expect(r.results[0].id).toBe(revision+':0');const installed=await(await call('/api/install','POST',{source:'theatrelm',id:r.results[0].id,card:{name:'fake'}})).json() as {name:string};expect(installed.name).toBe('岚');expect((await call('/api/install','POST',{source:'theatrelm',id:'../escape'})).status).toBe(400);});
 
@@ -128,11 +130,8 @@ it('atomically refuses binding a book deleted after its ownership check',async()
  expect((await call('/api/sessions/'+s.id,'PATCH',{bookIds:[b.id]})).status).toBe(409);expect(sessionDb.prepare('SELECT book_ids_json FROM sessions WHERE id=?').get(s.id)?.book_ids_json).toBe('[]');
 });
 
-it('rejects a fork if its book disappears after the DO snapshot',async()=>{
- const {s}=await seed();const b=await(await call('/api/worldbooks','POST',{raw:{name:'race',entries:[]}})).json() as {id:string};await call('/api/sessions/'+s.id,'PATCH',{bookIds:[b.id]});const m=sessionDb.prepare('SELECT id FROM messages WHERE session_id=?').get(s.id)!;
- beforeRun=sql=>{if(!sql.startsWith('INSERT INTO sessions'))return;beforeRun=undefined;sessionDb.prepare('UPDATE sessions SET book_ids_json=? WHERE id=?').run('[]',s.id);db.prepare('DELETE FROM worldbooks WHERE id=?').run(b.id);};
- const r=await call('/api/sessions/'+s.id+'/fork','POST',{messageId:m.id,content:'fork'});expect(r.status).toBe(409);
-});
+it('rejects obsolete fork API without changing the conversation',async()=>{const {s}=await seed();expect((await call('/api/sessions/'+s.id+'/fork','POST',{messageId:'x',content:'fork'})).status).toBe(404);expect(db.prepare('SELECT count(*) n FROM sessions').get()?.n).toBe(1);});
+
 it('returns conflict when generation claims a session before deletion',async()=>{
  const {s}=await seed();beforeRun=sql=>{if(!sql.startsWith('SELECT * FROM sessions'))return;beforeRun=undefined;sessionDb.prepare('UPDATE sessions SET generation_id=?,generation_until=? WHERE id=?').run(crypto.randomUUID(),Date.now()+60000,s.id);};
  expect((await call('/api/sessions/'+s.id,'DELETE')).status).toBe(409);expect(sessionDb.prepare('SELECT id FROM sessions WHERE id=?').get(s.id)).toBeTruthy();
@@ -178,8 +177,8 @@ it.each(['start','delta','candidates_pending'])('settles stop during %s backpres
  const target=(env.SESSIONS as unknown as {getByName(name:string):TavernSession}).getByName(JSON.stringify(['auth0|owner',s.id]));
  const response=await target.fetch(new Request('https://session/generate',{method:'POST',headers:{'X-Tavern-Owner':'auth0|owner','X-Tavern-Session':s.id,'X-Tavern-Username':encodeURIComponent('月石'),'Content-Type':'application/json'},body:JSON.stringify({requestId,content:'你好'})})),reader=response.body!.getReader();
  try{
-  if(phase!=='start')await reader.read();
-  if(phase==='candidates_pending')await reader.read();
+  if(phase!=='start')await readType(reader,'start');
+  if(phase==='candidates_pending')await readType(reader,'delta');
   await vi.waitFor(()=>expect(writes.mock.calls.some(([chunk])=>new TextDecoder().decode(chunk as Uint8Array).includes('\"type\":\"'+phase+'\"'))).toBe(true));
   const id=sessionDb.prepare('SELECT generation_id FROM sessions WHERE id=?').get(s.id)?.generation_id as string;
   expect((await call('/api/sessions/'+s.id+'/stop','POST',{generationId:id})).status).toBe(200);
@@ -196,7 +195,7 @@ it.each(['completed','disconnected'])('settles %s transport without a terminal r
  const response=await target.fetch(new Request('https://session/generate',{method:'POST',signal:abort.signal,headers:{'X-Tavern-Owner':'auth0|owner','X-Tavern-Session':s.id,'Content-Type':'application/json'},body:JSON.stringify({requestId,content:'你好'})})),reader=response.body!.getReader();
  try{
   await reader.read();
-  if(outcome==='completed'){await reader.read();await reader.read();}else{await vi.waitFor(()=>expect(writes.mock.calls.some(([chunk])=>new TextDecoder().decode(chunk as Uint8Array).includes('"type":"delta"'))).toBe(true));abort.abort();}
+  if(outcome==='completed'){await readType(reader,'candidates_pending');}else{await vi.waitFor(()=>expect(writes.mock.calls.some(([chunk])=>new TextDecoder().decode(chunk as Uint8Array).includes('"type":"delta"'))).toBe(true));abort.abort();}
   await vi.waitFor(()=>expect(sessionDb.prepare('SELECT generation_id FROM sessions WHERE id=?').get(s.id)?.generation_id).toBeNull(),{timeout:200});await Promise.all(work);
   let wire='';for(;;){const next=await reader.read();if(next.done)break;wire+=new TextDecoder().decode(next.value);}
   const saved=sessionDb.prepare("SELECT status,finish_reason,content FROM messages WHERE request_id=? AND role='assistant'").get(requestId);
@@ -299,7 +298,7 @@ it('generates, persists and replays candidates in two stages without including c
  const replay=await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId})).json() as {message:Message};expect(replay.message.candidates).toEqual(saved.messages.at(-1)?.candidates);expect(aiRun).toHaveBeenCalledTimes(2);expect(JSON.stringify(aiRun.mock.calls[0][0].query)).not.toContain(requestId);
  await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'往港口走。'})).text();await Promise.all(work);
  const prompt=aiRun.mock.calls[2][0].query as {messages:{content:string}[]};expect(prompt.messages.map(m=>m.content).join('')).not.toContain('问问来路。');
- const fork=await(await call('/api/sessions/'+s.id+'/fork','POST',{messageId:saved.messages.at(-1)!.id,content:'新正文'})).json() as {id:string};expect(sessionDb.prepare('SELECT candidates_json FROM messages WHERE session_id=?').all(fork.id).every(m=>!m.candidates_json)).toBe(true);
+ expect((await call('/api/sessions/'+s.id+'/messages','PATCH',{messageId:saved.messages.at(-1)!.id,content:'新正文'})).status).toBe(200);expect(sessionDb.prepare('SELECT candidates_json FROM messages WHERE session_id=?').all(s.id).every(m=>!m.candidates_json)).toBe(true);
 });
 it.each(['normal','regenerate'])('reminds the %s request once without changing saved user text',async mode=>{
  const {s}=await seed();
@@ -388,10 +387,10 @@ it('runs two native tool steps, commits the snapshot atomically and reuses Direc
  const restored=await(await call('/api/sessions/'+s.id)).json() as {session:{state:{scene:string;facts:unknown}}};expect(restored.session.state).toMatchObject({scene:'北港',facts:{钥匙:'旅人持有'}});const snapshot=sessionDb.prepare('SELECT * FROM turn_snapshots').get();expect(JSON.parse(snapshot!.before_json as string).scene).toBeNull();expect(JSON.parse(snapshot!.steps_json as string)).toHaveLength(2);
  expect((await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId})).json() as {replayed:boolean}).replayed).toBe(true);expect(aiRun).toHaveBeenCalledTimes(4);
 });
-it('keeps committed state after failed regeneration and restarts successful regeneration from the original before state',async()=>{
+it('removes replaced state after failed regeneration and retries from the retained history',async()=>{
  const {s}=await seed();aiRun.mockResolvedValueOnce(tool('update_state',{patch:{scene:'北港'}})).mockResolvedValueOnce(completion('到达北港。'));await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'到达北港。'})).text();await Promise.all(work);
  aiRun.mockResolvedValueOnce(tool('update_state',{patch:{scene:'未来灯塔'}})).mockRejectedValueOnce(Error('offline'));await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),regenerate:true})).text();await Promise.all(work);
- const failed=await(await call('/api/sessions/'+s.id)).json() as {session:{state:{scene:string}};messages:Message[]};expect(failed.session.state.scene).toBe('北港');expect(failed.messages.at(-1)?.status).toBe('error');
+ const failed=await(await call('/api/sessions/'+s.id)).json() as {session:{state:{scene:string}};messages:Message[]};expect(failed.session.state.scene).toBeNull();expect(failed.messages.at(-1)?.status).toBe('error');
  aiRun.mockResolvedValueOnce(tool('update_state',{patch:{scene:'新港'}})).mockResolvedValueOnce(completion('到了新港。'));const at=aiRun.mock.calls.length;await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),regenerate:true})).text();await Promise.all(work);
  const query=aiRun.mock.calls[at][0].query as {messages:{content:string}[]};expect(query.messages.some(m=>m.content.startsWith('当前已确认状态'))).toBe(false);expect((await(await call('/api/sessions/'+s.id)).json() as {session:{state:{scene:string}}}).session.state.scene).toBe('新港');
  const projection=JSON.parse(sessionDb.prepare('SELECT value_json FROM model_projections').get()!.value_json as string).messages;
@@ -572,7 +571,7 @@ it('delivers successive body deltas while upstream completion is still withheld'
  const response=await call('/api/sessions/'+s.id+'/generate','POST',{requestId,content:'开门'}),reader=response.body!.getReader(),decoder=new TextDecoder();let wire=decoder.decode((await reader.read()).value);
  const chunk=(content:string,finish_reason:string|null=null)=>new TextEncoder().encode('data: '+JSON.stringify({choices:[{delta:{content},finish_reason}]})+'\n\n');
  for(const text of ['岚推开门。','她指向柜台。']){
-  controller.enqueue(chunk(text));const delta=decoder.decode((await reader.read()).value);wire+=delta;
+  controller.enqueue(chunk(text));const delta=await readType(reader,'delta');wire+=delta;
   expect(JSON.parse(delta.slice(6))).toEqual({type:'delta',text});expect(aiRun).toHaveBeenCalledOnce();expect(sessionDb.prepare('SELECT after_json FROM turn_snapshots').get()?.after_json).toBeNull();
  }
  controller.enqueue(chunk('','stop'));controller.close();for(;;){const part=await reader.read();if(part.done)break;wire+=decoder.decode(part.value);}await Promise.all(work);
@@ -701,4 +700,47 @@ it('does not compress or resend after native tool fragments precede context over
  const requestId=crypto.randomUUID(),wire=await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId,content:'继续'})).text();await Promise.all(work);
  expect(terminal(wire)).toMatchObject({status:'error',content:'',candidates:[]});expect(aiRun).toHaveBeenCalledOnce();expect(sessionDb.prepare('SELECT after_json FROM turn_snapshots').get()?.after_json).toBeNull();
  expect((await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId})).json() as {replayed:boolean}).replayed).toBe(true);expect(aiRun).toHaveBeenCalledOnce();
+});
+
+
+it.each(['assistant','user'] as const)('regenerates a historical %s in place and permanently truncates its future',async role=>{
+ const {s}=await seed();for(const content of ['第一轮','第二轮']){await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content})).text();await Promise.all(work);}
+ const before=await(await call('/api/sessions/'+s.id)).json() as {messages:Message[]};const target=before.messages.find(m=>m.ordinal===(role==='assistant'?2:1))!;const removedRequest=before.messages.at(-1)!.requestId!;
+ const wire=await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),regenerate:true,messageId:target.id})).text();await Promise.all(work);expect(terminal(wire).status).toBe('completed');
+ const after=await(await call('/api/sessions/'+s.id)).json() as {messages:Message[];activities:unknown[]};expect(after.messages).toHaveLength(3);expect(after.messages[1].id).toBe(before.messages[1].id);expect(after.messages[2].id).not.toBe(before.messages[2].id);expect(db.prepare('SELECT count(*) n FROM sessions').get()?.n).toBe(1);
+ expect((await call('/api/sessions/'+s.id+'/generate','POST',{requestId:removedRequest,content:'第二轮'})).status).toBe(409);
+});
+it('persists actual tool and Director results in the stream and subsequent reads',async()=>{
+ const {s}=await seed();aiRun.mockResolvedValueOnce(tool('search_memory',{query:'你好'})).mockResolvedValueOnce(completion('我仍在旅店。'));
+ const wire=await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'回想开场'})).text();await Promise.all(work);
+ const events=wire.trim().split('\n\n').map(line=>JSON.parse(line.slice(6))).filter(e=>e.type==='activity');expect(events.some(e=>e.activity.kind==='tool'&&e.activity.status==='running')).toBe(true);
+ const saved=await(await call('/api/sessions/'+s.id)).json() as {activities:import('../shared/types').AgentActivity[]};const memory=saved.activities.find(a=>a.kind==='tool')!;expect(memory.status).toBe('completed');expect(JSON.parse(memory.result as string)[0].text).toBe('你好，旅人。');expect(saved.activities.find(a=>a.kind==='director')).toMatchObject({status:'completed',result:{candidates:['去港口。','问问来路。','坐下喝茶。']}});
+});
+it('runs status from text without inference and reports the current prompt estimate',async()=>{
+ const {s}=await seed();const response=await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'/status'});expect(await response.json()).toEqual({ok:true});expect(aiRun).not.toHaveBeenCalled();
+ const saved=await(await call('/api/sessions/'+s.id)).json() as import('../shared/types').SessionDetail;expect(saved.messages).toHaveLength(1);expect(saved.context.contextTokens).toBe(16384);expect(saved.context.estimatedTokens).toBeGreaterThan(256);expect(saved.activities.at(-1)).toMatchObject({kind:'status',status:'completed',result:{state:emptyState()}});
+ await call('/api/sessions/'+s.id,'PATCH',{settings:{...DEFAULT_SETTINGS,persona:'新增的角色设定。'.repeat(80)}});const changed=await(await call('/api/sessions/'+s.id)).json() as import('../shared/types').SessionDetail;expect(changed.context.estimatedTokens).toBeGreaterThan(saved.context.estimatedTokens);
+});
+it('compresses on explicit command, preserves raw history, and replays without another model request',async()=>{
+ const {s}=await seed();for(const content of ['旧行动'.repeat(400),'最近的行动。']){await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content})).text();await Promise.all(work);}
+ const before=sessionDb.prepare('SELECT * FROM messages').all(),requestId=crypto.randomUUID(),at=aiRun.mock.calls.length;
+ expect((await call('/api/sessions/'+s.id+'/command','POST',{requestId,content:'/compress'})).status).toBe(200);await Promise.all(work);
+ const result=await(await call('/api/sessions/'+s.id)).json() as import('../shared/types').SessionDetail;expect(result.messages).toHaveLength(5);expect(sessionDb.prepare('SELECT * FROM messages').all()).toEqual(before);expect(result.activities.at(-1)).toMatchObject({kind:'compression',status:'completed'});expect(result.context.coveredMessages).toBeGreaterThan(0);expect(result.session.generationId).toBeNull();expect(aiRun.mock.calls.length).toBeGreaterThan(at);
+ const count=aiRun.mock.calls.length;await call('/api/sessions/'+s.id+'/command','POST',{requestId,content:'/compress'});await Promise.all(work);expect(aiRun).toHaveBeenCalledTimes(count);
+});
+it('stops manual compression without publishing its checkpoint',async()=>{
+ const {s}=await seed();for(const content of ['旧行动'.repeat(400),'最近的行动。']){await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content})).text();await Promise.all(work);}const requestId=crypto.randomUUID();aiRun.mockImplementationOnce(async()=>new ReadableStream());
+ await call('/api/sessions/'+s.id+'/command','POST',{requestId,content:'/compress'});await vi.waitFor(()=>expect(sessionDb.prepare('SELECT generation_id FROM sessions').get()?.generation_id).toBe(requestId));await call('/api/sessions/'+s.id+'/stop','POST',{generationId:requestId});await Promise.all(work);
+ const saved=await(await call('/api/sessions/'+s.id)).json() as import('../shared/types').SessionDetail;expect(saved.session.generationId).toBeNull();expect(saved.activities.at(-1)).toMatchObject({kind:'compression',status:'stopped'});expect(sessionDb.prepare('SELECT summary_json FROM sessions').get()?.summary_json).toBeNull();
+});
+it('preserves OOC and dialogue in one editable input and projects OOC as non-story instruction',async()=>{
+ const {s}=await seed(),content='/ooc 放慢节奏，不要跳时。\n我把行囊放在桌边。';await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content})).text();await Promise.all(work);
+ const saved=await(await call('/api/sessions/'+s.id)).json() as {messages:Message[]};expect(saved.messages[1].content).toBe(content);const query=aiRun.mock.calls[0][0].query as {messages:{role:string;content:string}[]};expect(query.messages.at(-1)).toMatchObject({role:'user'});expect(query.messages.at(-1)?.content).toContain('[OOC：用户给叙事系统的非角色指令，不是已发生剧情]');expect(query.messages.at(-1)?.content).toContain('我把行囊放在桌边。');
+});
+
+it('releases the active turn and closes its stream when activity finalization cannot persist',async()=>{
+ const {s}=await seed();let injected=false;beforeRun=(sql,values)=>{if(!injected&&sql.startsWith('INSERT INTO agent_activities')&&JSON.parse(values[3] as string).status==='error'){injected=true;throw Error('activity persistence unavailable');}};
+ aiRun.mockResolvedValueOnce(new ReadableStream({start(c){c.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"实际短稿。"},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n'));c.close();}}));
+ const wire=await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'继续'})).text();await Promise.all(work);expect(injected).toBe(true);expect(wire).not.toContain('"type":"done"');
+ const saved=await(await call('/api/sessions/'+s.id)).json() as import('../shared/types').SessionDetail;expect(saved.session.generationId).toBeNull();expect(saved.messages.at(-1)).toMatchObject({content:'实际短稿。',status:'aborted'});expect((await call('/api/sessions/'+s.id,'DELETE')).status).toBe(200);
 });

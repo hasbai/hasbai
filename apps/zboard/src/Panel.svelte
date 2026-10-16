@@ -1,4 +1,5 @@
 <script lang="ts">
+ import { pageMotion } from "@hasbai/ui/motion";
   import { onMount } from "svelte";
   import { Button } from "@hasbai/ui/button";
   import {
@@ -98,7 +99,7 @@
       </div>
     </div>
   </aside>
-  <main id="main-content" class="content" tabindex="-1">
+  <main use:pageMotion={page} id="main-content" class="content" tabindex="-1">
     {#if loading}<div class="stack" role="status" aria-label="正在加载">
         <div class="skeleton"></div>
         <div class="skeleton"></div>

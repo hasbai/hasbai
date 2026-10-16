@@ -1,3 +1,4 @@
+import { splitOoc } from '../shared/commands';
 import { SUMMARY_TASK } from '../shared/instructions';
 import { buildPrompt, estimateTokens, type PromptMessage } from '../shared/prompt';
 import type { Book, JsonObject, Message, Settings } from '../shared/types';
@@ -42,7 +43,8 @@ export class ConversationContext {
  private wireProjection:ReturnType<typeof buildPrompt>|null=null;
  constructor(readonly history: Message[], readonly card: JsonObject, readonly books: Book[], readonly settings: Settings,
   public contextTokens: number | null, readonly options: { protocol: string; inputRatio: number; state?:string; summaryTask?:string },
-  readonly infer: (messages: PromptMessage[]) => Promise<string>) {}
+  readonly infer: (messages: PromptMessage[]) => Promise<string>,
+  readonly onCompression?: (status:'running'|'completed'|'error',result:unknown)=>Promise<void>) {}
  async restore(raw?: string | null) { this.summary = await validSummary(raw, this.history); }
  useProjection(messages:PromptMessage[]){this.wireProjection=this.extend({...this.prompt(),messages:messages.map(m=>structuredClone(m))},[]);}
  prompt(projection: { protocol: string } = this.options, suffix: PromptMessage[] = []) {
@@ -63,12 +65,16 @@ export class ConversationContext {
   return prompt;
  }
  async compress() {
+  const before=this.prompt().estimatedTokens;
+  await this.onCompression?.('running',{estimatedTokens:before});
+  const previous=this.summary;try {
   this.wireProjection=null;
   const offset = this.summary?.covered.length ?? 0, remaining = this.history.slice(offset);
   const turns: Message[][] = [];
   for (const m of remaining) { if (m.role === 'user' || !turns.length) turns.push([]); turns.at(-1)!.push(m); }
   if (turns.length >= 2) {
-   const older = turns.slice(0, Math.max(1, Math.floor(turns.length / 2))).flat();
+   const count=Math.min(turns.length-1,Math.max(turns[0][0].role==='assistant'?2:1,Math.floor(turns.length/2)));
+   const older = turns.slice(0,count).flat();
    const text = await this.summarize(this.summary?.text ?? '', older);
    const covered = this.history.slice(0, offset + older.length);
    this.summary = { text, covered: covered.map(m => m.id), fingerprint: await fingerprint(covered) };
@@ -77,6 +83,9 @@ export class ConversationContext {
     this.summary = { ...this.summary, text: await this.summarize('', [{ ...remaining[0], role: 'user', content: this.summary.text }]) };
    } else throw new Error('当前输入与角色设定超过模型上下文，无法压缩历史');
   }
+  if(this.prompt().estimatedTokens>=before)throw Error('会话压缩未缩短输入');
+  await this.onCompression?.('completed',{summary:this.summary,previousTokens:before,estimatedTokens:this.prompt().estimatedTokens});
+  }catch(error){this.summary=previous;await this.onCompression?.('error',{error:(error as Error).message});throw error;}
  }
  private async summarize(previous:string,history:Message[]){
   const options={contextTokens:this.contextTokens,inputRatio:this.options.inputRatio,infer:this.infer,task:this.options.summaryTask};
@@ -86,10 +95,15 @@ export class ConversationContext {
 }
 
 /** Shared algorithm; callers own separate source checkpoints and context limits. */
-export async function summarizeStory(previous:string,history:Message[],options:{contextTokens:number|null;inputRatio:number;infer:(messages:PromptMessage[])=>Promise<string>;task?:string}):Promise<string>{
+export async function summarizeStory(previous:string,history:Message[],options:Parameters<typeof summarizeSource>[2]):Promise<string>{
+ // Strip control lines before any split. Recursive fragments are already story data.
+ return summarizeSource(previous,history.map(m=>m.role==='user'?{...m,content:splitOoc(m.content).dialogue}:m).filter(m=>m.content.trim()),options);
+}
+
+async function summarizeSource(previous:string,history:Message[],options:{contextTokens:number|null;inputRatio:number;infer:(messages:PromptMessage[])=>Promise<string>;task?:string}):Promise<string>{
   const source = [previous, ...history.map(m => m.content)].filter(Boolean).join('\n');
   const messages: PromptMessage[] = [...(previous?[{role:'user' as const,content:'已有记忆：\n'+previous}]:[]),
-   ...history.map(m=>({role:m.role,content:m.content})),{role:'user',content:options.task ?? SUMMARY_TASK}];
+   ...history.map(m=>({role:m.role,content:m.content})).filter(m=>m.content.trim()),{role:'user',content:options.task ?? SUMMARY_TASK}];
   const cost = 256 + messages.reduce((n, m) => n + Math.ceil(estimateTokens(m.content) * options.inputRatio) + 8, 0);
   let split = options.contextTokens !== null && cost > options.contextTokens;
   if (!split) {
@@ -104,23 +118,23 @@ export async function summarizeStory(previous:string,history:Message[],options:{
    }
   }
   // Each retry reduces the source; no unchanged oversized summary request is repeated.
-  const compressPrevious=async(content:string)=>{const reduction={...options};try{return await summarizeStory('',[{...history[0],role:'user',content}],reduction);}finally{options.contextTokens=reduction.contextTokens;}};
+  const compressPrevious=async(content:string)=>{const reduction={...options};try{return await summarizeSource('',[{...history[0],role:'user',content}],reduction);}finally{options.contextTokens=reduction.contextTokens;}};
   const previousCost = 256 + Math.ceil(estimateTokens((options.task ?? SUMMARY_TASK) + '已有记忆：\n' + previous) * options.inputRatio) + 16;
   if (previous && (history.length === 0 || (options.contextTokens !== null && previousCost >= options.contextTokens))) {
    const shorter = await compressPrevious(previous);
-   return summarizeStory(shorter, history, options);
+   return summarizeSource(shorter, history, options);
   }
   if (history.length > 1) {
    const middle = Math.ceil(history.length / 2);
-   const first = await summarizeStory(previous, history.slice(0, middle), options);
-   return summarizeStory(first, history.slice(middle), options);
+   const first = await summarizeSource(previous, history.slice(0, middle), options);
+   return summarizeSource(first, history.slice(middle), options);
   }
   const m = history[0];
-  if(m&&[...m.content].length===1 && previous){const shorter=await compressPrevious(previous);return summarizeStory(shorter,history, options);}
+  if(m&&[...m.content].length===1 && previous){const shorter=await compressPrevious(previous);return summarizeSource(shorter,history, options);}
   if (!m) throw new Error('模型上下文无法容纳会话摘要');
   const [older,recent]=halveStory(m.content);
-  const first = await summarizeStory(previous, [{ ...m, content: older }], options);
-  return summarizeStory(first, [{ ...m, content: recent }], options);
+  const first = await summarizeSource(previous, [{ ...m, content: older }], options);
+  return summarizeSource(first, [{ ...m, content: recent }], options);
 }
 
 export async function summarizeWithModel(env: Env, username: string, requestId: string, settings: Settings, messages: PromptMessage[], signal: AbortSignal, observe?:(event:Parameters<import('./metrics').InferenceMetrics['observe']>[0],logId:string|null)=>void) {

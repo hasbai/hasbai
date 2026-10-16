@@ -15,7 +15,7 @@ function storage(name:string){let sql=sqlDbs.get(name);if(!sql){sql=new Database
 function target(owner='owner',id='s'){const name=sessionName(owner,id);let object=objects.get(name);if(!object){object=new TavernSession({storage:storage(name),waitUntil:(p:Promise<unknown>)=>work.push(p)} as unknown as DurableObjectState,env);objects.set(name,object);}return object;}
 async function invoke(method:Parameters<TavernSession['invoke']>[2],data:Record<string,unknown>={},owner='owner',id='s'){return JSON.parse(await target(owner,id).invoke(owner,id,method,data));}
 function seed(id='s',owner='owner'){db.prepare('INSERT INTO sessions(id,owner,title,character_json,character_name,settings_json,created_at,updated_at,summary_json) VALUES(?,?,?,?,?,?,?,?,?)').run(id,owner,'旅店',JSON.stringify({name:'岚',first_mes:'你好'}),'岚',JSON.stringify(DEFAULT_SETTINGS),1,2,'historical-checkpoint');db.prepare("INSERT INTO messages(id,session_id,role,content,status,ordinal,created_at,finish_reason,candidates_json) VALUES(?,?,'assistant','旧正文','completed',0,3,'stop',?)").run('m-'+id,id,'["问问往事。"]');}
-beforeEach(()=>{db=new DatabaseSync(':memory:');for(const name of readdirSync(new URL('../migrations/',import.meta.url)).filter(n=>n.endsWith('.sql')).sort())db.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'));sqlDbs=new Map();objects=new Map();work=[];alarms=new Map();intercept=undefined;deleteStorage=undefined;env={DB:{prepare:statement,batch:async(stmts:D1PreparedStatement[])=>{db.exec('BEGIN');try{const result=[];for(const stmt of stmts)result.push(await stmt.run());db.exec('COMMIT');return result;}catch(error){db.exec('ROLLBACK');throw error;}}},SESSIONS:{getByName:(name:string)=>{const [owner,id]=JSON.parse(name);return target(owner,id);}}} as unknown as Env;});
+beforeEach(()=>{db=new DatabaseSync(':memory:');for(const name of readdirSync(new URL('../migrations/',import.meta.url)).filter(n=>n.endsWith('.sql')).sort())db.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'));sqlDbs=new Map();objects=new Map();work=[];alarms=new Map();intercept=undefined;deleteStorage=undefined;env={PROMPTS:{get:async()=>null},DB:{prepare:statement,batch:async(stmts:D1PreparedStatement[])=>{db.exec('BEGIN');try{const result=[];for(const stmt of stmts)result.push(await stmt.run());db.exec('COMMIT');return result;}catch(error){db.exec('ROLLBACK');throw error;}}},SESSIONS:{getByName:(name:string)=>{const [owner,id]=JSON.parse(name);return target(owner,id);}}} as unknown as Env;});
 afterEach(async()=>{await Promise.allSettled(work);db.close();for(const sqlite of sqlDbs.values())sqlite.close();});
 it('imports once, fences every legacy write, retains source IDs and all version metadata',async()=>{
  seed();const old=db.prepare('SELECT * FROM messages').all();const first=await invoke('read');expect(first.ok).toBe(true);expect(first.value.messages[0]).toMatchObject({id:'m-s',content:'旧正文',finishReason:'stop',candidates:['问问往事。']});
@@ -103,14 +103,13 @@ it('ignores legacy transport cancellation before a generation is accepted',async
 it('lets the user stop an old in-flight generation before migration without removing its fence',async()=>{
  seed();db.prepare('UPDATE sessions SET generation_id=?,generation_until=?').run('old-active',Date.now()+180000);db.prepare("INSERT INTO messages(id,session_id,role,content,status,ordinal,created_at) VALUES('old-active','s','assistant','partial','pending',1,4)").run();expect((await invoke('stop',{generationId:'wrong'})).status).toBe(409);expect((await invoke('stop',{generationId:'old-active'})).ok).toBe(true);expect(db.prepare("SELECT status,finish_reason FROM messages WHERE id='old-active'").get()).toEqual({status:'aborted',finish_reason:'stopped'});expect(db.prepare('SELECT storage_backend,generation_id FROM sessions').get()).toEqual({storage_backend:'d1',generation_id:'old-active'});
 });
-it('upgrades an existing private SQLite object without losing IDs and imports recoverable branch snapshots',async()=>{
+it('upgrades existing SQLite storage and edits in place while retaining prior state',async()=>{
  seed();await invoke('read');const sqlite=sqlDbs.get(sessionName('owner','s'))!;sqlite.exec('DROP TABLE turn_snapshots; DROP TABLE model_projections');objects.delete(sessionName('owner','s'));await invoke('read');expect(sqlite.prepare('SELECT id FROM messages').get()?.id).toBe('m-s');expect(sqlite.prepare('SELECT count(*) n FROM turn_snapshots').get()?.n).toBe(0);
  const store=new SessionStore(storage(sessionName('owner','s')),'s'),before={scene:null,facts:{},relationships:{},inventory:{},goals:{}};store.claim('a',Date.now());store.start('a',undefined,{id:'a',role:'assistant',content:'抵达北港',status:'pending',ordinal:1,requestId:'r',createdAt:5});store.beginState('a',before);store.finish('a','抵达北港','completed','stop',[],{...before,scene:'北港'});
  sqlite.prepare("INSERT INTO messages VALUES('u','s','user','新问题','completed',2,NULL,6,NULL,NULL)").run();
- let failed=false;intercept=sql=>{if(sql.startsWith('UPDATE messages')&&!failed){failed=true;throw Error('temporary import failure');}};
- await expect(invoke('fork',{messageId:'u',content:'改问'})).rejects.toThrow('temporary');intercept=undefined;const row=db.prepare("SELECT id FROM sessions WHERE id<>'s'").get();const recovered=await invoke('read',{},'owner',row!.id as string);expect(recovered.value.session.state.scene).toBe('北港');expect(recovered.value.messages.at(-1).content).toBe('改问');
+ expect((await invoke('changeMessage',{action:'edit',messageId:'u',content:'改问'})).ok).toBe(true);const recovered=await invoke('read');expect(db.prepare('SELECT count(*) n FROM sessions').get()?.n).toBe(1);expect(recovered.value.session.state.scene).toBe('北港');expect(recovered.value.messages.at(-1).content).toBe('改问');
 });
-it('keeps goal snapshots before an edited branch and excludes completed future goals',async()=>{
+it('keeps prior goal snapshots and removes future goals after an in-place edit',async()=>{
  seed();await invoke('read');const store=new SessionStore(storage(sessionName('owner','s')),'s');
  const paused={task:'核对货单',actor:'character' as const,status:'paused' as const,progress:'已登记',pauseReason:'用户休息',completionEvidence:null};
  const before={scene:null,facts:{},relationships:{},inventory:{},goals:{warehouse:paused}};
@@ -118,9 +117,9 @@ it('keeps goal snapshots before an edited branch and excludes completed future g
  const sql=sqlDbs.get(sessionName('owner','s'))!;sql.prepare("INSERT INTO messages VALUES('u','s','user','现在恢复','completed',2,NULL,6,NULL,NULL)").run();
  const completed={...before,goals:{warehouse:{...paused,status:'completed' as const,pauseReason:null,completionEvidence:'核对完成。'}}};
  store.claim('b',Date.now());store.start('b',undefined,{id:'b',role:'assistant',content:'核对完成。',status:'pending',ordinal:3,requestId:'r2',createdAt:7},before);store.finish('b','核对完成。','completed','stop',[],completed);
- const branch=await invoke('fork',{messageId:'u',content:'继续休息'});const saved=await invoke('read',{},'owner',branch.value.id);
+ expect((await invoke('changeMessage',{action:'edit',messageId:'u',content:'继续休息'})).ok).toBe(true);const saved=await invoke('read');
  expect(saved.value.session.state.goals).toEqual(before.goals);expect(saved.value.messages.at(-1)).toMatchObject({role:'user',content:'继续休息'});expect(saved.value.messages.some((m:{content:string})=>m.content==='核对完成。')).toBe(false);
- objects.delete(sessionName('owner',branch.value.id));expect((await invoke('read',{},'owner',branch.value.id)).value.session.state.goals).toEqual(before.goals);
+ objects.delete(sessionName('owner','s'));expect((await invoke('read')).value.session.state.goals).toEqual(before.goals);
 });
 
 it.each(['before','capacity','initialization'])('stops an explicit request before stream headers: %s',async stage=>{
@@ -145,4 +144,11 @@ it('validates explicit request stops and leaves a different active request runni
  store.claim('new',Date.now());store.start('new',undefined,{id:'new',role:'assistant',content:'进行中',status:'pending',ordinal:1,requestId,createdAt:4});Object.assign(target(),{active:{requestId,id:'new',abort}});
  expect((await invoke('stop',{requestId:crypto.randomUUID()})).ok).toBe(true);expect(abort.signal.aborted).toBe(false);expect(store.pending('new')).toBe(true);
  expect((await invoke('stop',{requestId})).ok).toBe(true);expect(abort.signal.aborted).toBe(true);expect(store.findMessage('new')).toMatchObject({status:'aborted',finish_reason:'stopped'});
+});
+
+it('honors a command request cancelled while context preparation is still pending',async()=>{
+ seed();await invoke('read');let entered!:()=>void,release!:()=>void;const started=new Promise<void>(r=>entered=r),paused=new Promise<void>(r=>release=r),requestId=crypto.randomUUID();
+ readIntercept=async sql=>{if(sql.includes('FROM model_capabilities')){entered();await paused;}};
+ const command=invoke('command',{requestId,content:'/compress'});await started;expect((await invoke('stop',{requestId})).ok).toBe(true);release();expect((await command).status).toBe(409);readIntercept=undefined;
+ const saved=await invoke('read');expect(saved.value.session.generationId).toBeNull();expect(saved.value.activities).toEqual([]);
 });

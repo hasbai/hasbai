@@ -1,4 +1,5 @@
 <script lang="ts">
+ import { pageMotion } from "@hasbai/ui/motion";
   import { onMount } from "svelte";
   import {
     Wallet,
@@ -156,7 +157,7 @@
         ></Popover.Root
       >
     </header>
-    <main
+    <main use:pageMotion={path}
       id="main"
       class:transaction-main={editingTransaction}
       class="app-main mx-auto min-w-0 max-w-5xl pl-[max(16px,env(safe-area-inset-left))] pr-[max(16px,env(safe-area-inset-right))] pt-[calc(20px+env(safe-area-inset-top))] pb-[calc(156px+env(safe-area-inset-bottom))] sm:px-8"

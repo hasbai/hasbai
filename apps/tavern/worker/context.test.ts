@@ -68,3 +68,9 @@ it('uses the turn snapshot for summary rules and its user task including split r
  const c=new ConversationContext([message('u','user','中'.repeat(1800)),message('a','assistant','事实'.repeat(900)),message('n','user','后来')],card,[],DEFAULT_SETTINGS,2048,{protocol:'保存的正文规则',inputRatio:1.2,summaryTask:'保存的压缩任务'},infer);
  await c.fit();expect(infer).toHaveBeenCalled();expect(c.prompt().messages[0].content).toContain('保存的正文规则');
 });
+
+it('strips long OOC once before recursive summary splitting can lose its command marker',async()=>{
+ const infer=vi.fn(async(messages:PromptMessage[])=>{const source=messages.slice(0,-1).map(m=>m.content).join('');expect(source).not.toContain('系统专用指令');expect(source).not.toContain('/ooc');if(source.length>300)throw new SummaryRetry();return '旅人坐下。';});
+ const raw='/ooc '+('系统专用指令'.repeat(200))+'\n'+('旅人坐在桌边喝茶。'.repeat(150));
+ expect(await summarizeStory('',[message('ooc','user',raw)],{contextTokens:null,inputRatio:1.2,infer})).toBe('旅人坐下。');expect(infer.mock.calls.length).toBeGreaterThan(1);
+});

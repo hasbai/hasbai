@@ -48,7 +48,8 @@
         "candidates",
         "candidate-tail",
         "composer",
-        "model-controls"
+        "model-controls",
+        "agent-controls"
       ]
     },
     {
@@ -371,6 +372,26 @@
             "about.png",
             "about-context.png",
             "about-dark.png"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "agent-controls",
+      "kind": "screenshot",
+      "description": "命令浮层、上下文占用、可展开工具与压缩结果，线性编辑删除和历史重生成。",
+      "evidence": [
+        {
+          "spec": "e2e/tavern.spec.ts",
+          "test": "agent commands context and expandable results preserve a linear history",
+          "projects": [
+            "iphone",
+            "desktop"
+          ],
+          "snapshots": [
+            "chat-commands.png",
+            "chat-agent-results.png",
+            "chat-context.png"
           ]
         }
       ]

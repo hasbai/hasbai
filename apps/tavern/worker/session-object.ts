@@ -1,3 +1,7 @@
+import { directCommand } from '../shared/commands';
+import type { AgentActivity, ContextUsage } from '../shared/types';
+import { sessionContext, contextUsage } from './session-context';
+import { summarizeWithModel } from './context';
 import { DurableObject } from 'cloudflare:workers';
 import { SessionStore, SESSION_SCHEMA } from './session-store';
 import { storyMessages } from './agent';
@@ -73,7 +77,7 @@ export class TavernSession extends DurableObject<Env> {
   if(!this.store){if(!this.hasSchema())return;const row=this.ctx.storage.sql.exec<SessionRow & Record<string,SqlStorageValue>>('SELECT * FROM sessions LIMIT 1').toArray()[0];if(!row)return;const stored=new SessionStore(this.ctx.storage,row.id);if(stored.deleted())this.store=stored;else await this.load(row.owner,row.id);}
   try{await this.sync();}catch{await this.ctx.storage.setAlarm(Date.now()+10000);}
  }
- private async read(owner:string,id:string){const store=await this.load(owner,id);return {session:{...session(store.get(),true),state:store.state()},messages:currentMessages(store.messages())};}
+ private async read(owner:string,id:string){const store=await this.load(owner,id);const context=await sessionContext(this.env,this.ctx,owner,store,async()=>{throw Error('只读请求不能调用模型');});this.available(store);return {session:{...session(store.get(),true),state:store.state()},messages:currentMessages(store.messages()),activities:store.activities(),context:contextUsage(context)};}
  private async stopRequest(owner:string,id:string,requestId:string){
   if(!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(requestId))throw new HttpError(400,'请求 ID 无效');
   const store=await this.load(owner,id);store.cancelRequest(requestId);
@@ -104,19 +108,31 @@ export class TavernSession extends DurableObject<Env> {
   if(!reserved.meta.changes)throw new HttpError(409,'世界书状态已改变，请重试');
   store.update(JSON.stringify(opts),JSON.stringify(ids),title);await this.scheduleSync();return session(store.get(),true);
  }
- private async fork(owner:string,id:string,data:Record<string,unknown>){
-  const store=await this.load(owner,id),row=store.idle();const text=string(data.content).trim();if(!text||text.length>24000)throw new HttpError(400,'消息需为 1–24000 字符');
-  const all=currentMessages(store.messages()),index=all.findIndex(m=>m.id===data.messageId);if(index<0)throw new HttpError(404,'消息不存在');
-  const prior=storyMessages(store.messages()).filter(m=>m.ordinal<all[index].ordinal);
-  const next=crypto.randomUUID(),now=Date.now(),copied=[...prior,{...all[index],content:text,status:'completed' as const}];
-  const ids=copied.map(()=>crypto.randomUUID());
-  const snapshots=prior.flatMap((m,i)=>{const s=store.snapshot(m.id);return s?[{...s,message_id:ids[i],steps_json:'[]'}]:[];});
-  const result=await this.env.DB.batch([
-   this.env.DB.prepare("INSERT INTO sessions(id,owner,title,character_json,character_name,settings_json,book_ids_json,created_at,updated_at,storage_backend,generation_id,generation_until,agent_seed_json) SELECT ?,?,?,?,?,?,?,?,?,'do',?,?,? WHERE (SELECT count(*) FROM worldbooks WHERE owner=? AND id IN(SELECT value FROM json_each(?)))=json_array_length(?)").bind(next,owner,row.title+' · 分支',row.character_json,row.character_name,row.settings_json,row.book_ids_json,now,now,'do:'+next,Number.MAX_SAFE_INTEGER,JSON.stringify(snapshots),owner,row.book_ids_json,row.book_ids_json),
-   ...copied.map((m,i)=>this.env.DB.prepare('INSERT INTO messages(id,session_id,role,content,status,ordinal,created_at,finish_reason) SELECT ?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM sessions WHERE id=?)').bind(ids[i],next,m.role,m.content,m.status,i,now+i,m.finishReason??null,next))
-  ]);
-  if(!result[0].meta.changes)throw new HttpError(409,'世界书状态已改变，请重试');
-  const saved=await callSession(this.env,owner,next,'read');return saved.session;
+ private async changeMessage(owner:string,id:string,data:Record<string,unknown>){
+  const store=await this.load(owner,id);if(this.active)throw new HttpError(409,'请先停止生成');
+  const action=data.action;if(action!=='edit'&&action!=='delete')throw new HttpError(400,'消息操作无效');
+  const content=string(data.content).trim();if(action==='edit'&&(!content||content.length>24000))throw new HttpError(400,'消息需为 1–24000 字符');
+  store.truncate(string(data.messageId),action,content);await this.scheduleSync();return {ok:true};
+ }
+ private async command(owner:string,id:string,data:Record<string,unknown>){
+  const store=await this.load(owner,id),command=directCommand(string(data.content));
+  if(!command)throw new HttpError(400,'命令无效');
+  const requestId=string(data.requestId);if(!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(requestId))throw new HttpError(400,'请求 ID 无效');
+  if(store.activities().some(a=>a.id===requestId))return {ok:true};
+  const context=await sessionContext(this.env,this.ctx,owner,store,messages=>summarizeWithModel(this.env,string(data.username),requestId,settings(JSON.parse(store.get().settings_json)),messages,abort.signal));
+  this.available(store);if(store.activities().some(a=>a.id===requestId))return {ok:true};if(store.cancelled(requestId))throw new HttpError(409,'命令已停止');
+  const abort=new AbortController(),value:AgentActivity={id:requestId,messageId:null,ordinal:Math.max(-1,...store.messages().map(m=>m.ordinal)),kind:command==='compress'?'compression':'status',title:command==='compress'?'压缩上下文':'当前状态',status:'running',createdAt:Date.now()};
+  if(command==='status'){store.activity({...value,status:'completed',result:{state:store.state(),context:contextUsage(context),generationId:store.get().generation_id}});return {ok:true};}
+  if(this.active||!store.claim(requestId,Date.now()))throw new HttpError(409,'请先停止生成');
+  try{store.activity(value);}catch(error){store.release(requestId);throw error;}this.active={id:requestId,requestId,abort};
+  const timer=setInterval(()=>{if(!store.renew(requestId))abort.abort();},1000);
+  const work=(async()=>{try{
+   const before=contextUsage(context);await context.compress();
+   if(abort.signal.aborted||!store.owns(requestId))throw Error('压缩已停止');
+   store.transaction(()=>{store.saveCheckpoint(requestId,JSON.stringify(context.summary));store.activity({...value,status:'completed',result:{summary:context.summary,before,after:contextUsage(context)}});});
+  }catch(error){store.activity({...value,status:abort.signal.aborted?'stopped':'error',error:(error as Error).message});}
+  finally{clearInterval(timer);try{store.release(requestId);}finally{await this.settled(requestId);}}})();
+  this.ctx.waitUntil(work);return {ok:true};
  }
  private async remove(owner:string,id:string){
   if(this.active)throw new HttpError(409,'请先停止生成');
@@ -134,7 +150,7 @@ export class TavernSession extends DurableObject<Env> {
  }
  private async export(owner:string,id:string){const store=await this.load(owner,id),row=store.get();return {row,messages:store.messages(),snapshots:store.snapshots()};}
  async invoke(owner:string,id:string,method:SessionMethod,data:Record<string,unknown>={}){
-  const mutation=['update','fork','remove'].includes(method);
+  const mutation=['update','changeMessage','command','remove'].includes(method);
   try{
    if(method!=='stop'&&method!=='remove')await this.load(owner,id);
    if(mutation){if(this.mutating||this.syncing)throw new HttpError(409,'会话状态已改变，请重试');this.mutating=true;}
@@ -144,7 +160,8 @@ export class TavernSession extends DurableObject<Env> {
      case 'read':value=await this.read(owner,id);break;
      case 'stop':value=data.requestId!==undefined?await this.stopRequest(owner,id,string(data.requestId)):await this.stop(owner,id,string(data.generationId));break;
      case 'update':value=await this.update(owner,id,data);break;
-     case 'fork':value=await this.fork(owner,id,data);break;
+     case 'changeMessage':value=await this.changeMessage(owner,id,data);break;
+     case 'command':value=await this.command(owner,id,data);break;
      case 'remove':value=await this.remove(owner,id);break;
      case 'export':value=await this.export(owner,id);break;
     }
@@ -157,14 +174,15 @@ export class TavernSession extends DurableObject<Env> {
   try{
    const owner=request.headers.get('X-Tavern-Owner')??'',id=request.headers.get('X-Tavern-Session')??'',username=decodeURIComponent(request.headers.get('X-Tavern-Username')??'');
    const store=await this.load(owner,id),data=await body(request);this.available(store);if(this.mutating)throw new HttpError(409,'会话状态已改变，请重试');
+   if(directCommand(string(data.content)))return json(await this.command(owner,id,{...data,username}));
    return await generate(request,this.env,this.ctx,owner,id,data,username,store,(id)=>this.settled(id),(assistantId,abort)=>{this.active={requestId:String(data.requestId),id:assistantId,abort};},()=>{this.available(store);if(this.mutating)throw new HttpError(409,'会话状态已改变，请重试');});
   }catch(e){if(e instanceof HttpError)return json({message:e.message},e.status);throw e;}
  }
 }
 
 export type SessionResults={
- read:{session:ReturnType<typeof session>;messages:ReturnType<typeof message>[]};
- stop:{ok:boolean};update:ReturnType<typeof session>;fork:ReturnType<typeof session>;remove:{ok:boolean};
+ read:{session:ReturnType<typeof session>;messages:ReturnType<typeof message>[];activities:AgentActivity[];context:ContextUsage};
+ stop:{ok:boolean};update:ReturnType<typeof session>;changeMessage:{ok:boolean};command:{ok:boolean};remove:{ok:boolean};
  export:{row:SessionRow;messages:ReturnType<typeof message>[];snapshots:ReturnType<SessionStore['snapshots']>};
 };
 export type SessionMethod=keyof SessionResults;
