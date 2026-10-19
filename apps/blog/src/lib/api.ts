@@ -3,7 +3,6 @@ import { createDataClient, dataApiUrl } from "@hasbai/data";
 import { defaultLocale } from "./locales";
 import type { Translation } from "./content";
 import type { Article, Content, Note, Page, Tag, StudioContent } from "./content";
-import { articleSchema, noteSchema, pageSchema } from "./content";
 
 const metadata =
   "id,kind,source_locale,sequence,slug,legacy_path,cover_id,status,published_at,created_at,updated_at";
@@ -114,6 +113,7 @@ export function repository(
     id?: string,
     updatedAt?: string,
   ) {
+    const { articleSchema, noteSchema, pageSchema } = await import("./content-schema");
     const parsed = (kind === "article" ? articleSchema : kind === "page" ? pageSchema : noteSchema).safeParse(value);
     if(!parsed.success) throw new Error(parsed.error.issues[0].message);
     const fields=parsed.data;

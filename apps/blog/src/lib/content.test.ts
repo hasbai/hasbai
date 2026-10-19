@@ -1,5 +1,7 @@
 import { expect, it } from "vitest";
-import { dateLabel, yearLabel, articlePath, articleSchema, excerptFromMarkdown, notePath, noteSchema, pagePath, pageSchema, pageSlugSchema, reservedPageSlugs } from "./content";
+import { dateLabel, yearLabel, articlePath, excerptFromMarkdown, notePath, pagePath } from "./content";
+import { articleSchema, noteSchema, pageSchema, pageSlugSchema } from "./content-schema";
+import { reservedPageSlugs, isPageSlug } from "./content-paths";
 import { renderMarkdown } from "./markdown";
 import { boundedImage, imageType, maxImageBytes } from "./images";
 it("preserves public content structure while rejecting executable HTML and links", async () => {
@@ -63,4 +65,10 @@ it("formats public dates at the Shanghai year boundary", () => {
   expect(yearLabel("2026-12-31T15:59:59Z")).toBe("2026");
   expect(yearLabel("2026-12-31T16:00:00Z")).toBe("2027");
   expect(dateLabel(null)).toBe("草稿");
+});
+
+it("uses the same public path rules for matching and editor validation", () => {
+  for (const slug of [...reservedPageSlugs, "about", "a", "a-b-1", "a".repeat(160), "a".repeat(161), "", "About", "a/b", "a?b", "a\n"]) {
+    expect(isPageSlug(slug)).toBe(pageSlugSchema.safeParse(slug).success);
+  }
 });

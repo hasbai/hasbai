@@ -13,7 +13,6 @@
   import { repository } from "$lib/api";
   import {
     site,
-    pageSlugSchema,
     pagePath,
     articlePath,
     imagePath,
@@ -21,6 +20,7 @@
     type Page,
     type Tag,
   } from "$lib/content";
+  import { pageSlugSchema } from "$lib/content-schema";
   import MarkdownEditor from "./MarkdownEditor.svelte";
   import { Button } from "@hasbai/ui/button";
   import { Input } from "@hasbai/ui/input";
