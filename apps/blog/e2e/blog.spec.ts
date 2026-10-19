@@ -138,6 +138,13 @@ test('editor writes articles and titleless notes through Data API', async ({ pag
   await page.getByLabel('Markdown 源码').fill('## 标题\n\n保存并发布。');
   await page.getByRole('button', { name: 'Markdown', exact: true }).click();
   await expect(page).toHaveScreenshot('editor.png', { fullPage: true });
+  const title = page.getByLabel('标题', { exact: true });
+  await title.focus();
+  await expect(title).toHaveCSS('outline-style', 'none');
+  const slug = page.getByLabel('文章网址');
+  await slug.focus();
+  await expect(slug).toHaveCSS('outline-offset', '-2px');
+  await expect(slug).toHaveCSS('outline-width', '2px');
   const articleSave = page.waitForRequest((request) => request.method() === 'POST' && new URL(request.url()).pathname === '/api/content');
   await page.getByRole('button', { name: '发布文章', exact: true }).click();
   expect((await articleSave).postDataJSON()).toMatchObject({ kind:'article', value:{status:'published',markdown:expect.stringContaining('## 标题')} });

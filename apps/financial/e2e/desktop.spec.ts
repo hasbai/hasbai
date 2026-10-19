@@ -10,8 +10,15 @@ test("desktop overview and keyboard editor dialog", async ({ page, app }) => {
   await fitsViewport(page);
   await expect(page).toHaveScreenshot("overview.png", { fullPage: true });
   await page.getByRole("link", { name: "记一笔" }).focus();
+  await expect(page.getByRole("link", { name: "记一笔" })).toHaveCSS("outline-offset", "-2px");
   await page.keyboard.press("Enter");
   await expect(page.getByRole("dialog", { name: "新增交易" })).toBeVisible();
+  const field = page.getByRole("textbox", { name: "商户 / 交易摘要" });
+  const restingShadow = await field.evaluate(el => getComputedStyle(el).boxShadow);
+  await field.focus();
+  await expect(field).toHaveCSS("outline-offset", "-2px");
+  await expect(field).toHaveCSS("outline-width", "2px");
+  await expect(field).toHaveCSS("box-shadow", restingShadow);
   await expect(page).toHaveScreenshot("editor-dialog.png");
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
