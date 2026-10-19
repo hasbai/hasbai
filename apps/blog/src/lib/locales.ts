@@ -1,5 +1,6 @@
 export const defaultLocale = "zh-CN";
 export const defaultLocales = ["zh-CN", "zh-TW", "en-US"];
+const canonicalLocales = new Map<string, string>();
 export function normalizeLocale(value?: string) {
   if (!value) return defaultLocale;
   // Internal links repeatedly pass these canonical values during SSR.
@@ -12,11 +13,19 @@ export function normalizeLocale(value?: string) {
     "zh-hk": "zh-TW",
   };
   if (aliases[value.toLowerCase()]) return aliases[value.toLowerCase()];
+  const cached = canonicalLocales.get(value);
+  if (cached !== undefined) return cached;
+  let canonical: string;
   try {
-    return Intl.getCanonicalLocales(value)[0];
+    canonical = Intl.getCanonicalLocales(value)[0];
   } catch {
-    return value;
+    canonical = value;
   }
+  if (value.length <= 128) {
+    if (canonicalLocales.size >= 128) canonicalLocales.clear();
+    canonicalLocales.set(value, canonical);
+  }
+  return canonical;
 }
 export function resolveLocale(value: string, supported: string[]) {
   const canonical = normalizeLocale(value);
