@@ -4,6 +4,7 @@ import { importCard, parseBook, parseCard, string, strings } from '../shared/car
 import { normalizeSettings } from '../shared/settings';
 import { validateCandidates } from '../shared/candidates';
 import { HttpError } from './http';
+import type { AvatarImage } from '../shared/avatar';
 export type CharacterRow = {id:string;name:string;description:string;creator:string;tags_json:string;card_json:string;format:string;source:string;source_url:string;original_key:string;original_filename:string;avatar_key:string|null;avatar_type:string|null};
 export type SessionRow = {id:string;owner:string;title:string;character_name:string;character_json:string;settings_json:string;book_ids_json:string;generation_id:string|null;generation_until:number|null;created_at:number;updated_at:number;summary_json?:string|null;storage_backend?:string;deleted_at?:number|null;agent_seed_json?:string|null};
 export type MessageRow = {id:string;role:'user'|'assistant';content:string;status:Message['status'];ordinal:number;request_id:string|null;created_at:number;finish_reason:Message['finishReason'];candidates_json?:string|null};
@@ -28,16 +29,17 @@ export async function ownedBooks(env:Env,owner:string,ids:unknown) {
  const list=strings(ids);if (!Array.isArray(ids) || ids.length!==list.length || list.length>10 || new Set(list).size!==list.length) throw new HttpError(400,'世界书选择无效');
  const rows:BookRow[]=[];for(const id of list){const r=await env.DB.prepare('SELECT * FROM worldbooks WHERE owner=? AND id=?').bind(owner,id).first<BookRow>();if(!r)throw new HttpError(400,'世界书不存在');rows.push(r);}return rows;
 }
-export async function installCard(env:Env,owner:string,bytes:Uint8Array,filename:string,source='',sourceUrl='',sourceId='') {
+export async function installCard(env:Env,owner:string,bytes:Uint8Array,filename:string,source='',sourceUrl='',sourceId='',avatar?:AvatarImage) {
  const imported=importCard(bytes,filename),card=imported.card;
+ if(avatar){imported.avatar=avatar.bytes;imported.avatarType=avatar.type;}
  const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(card.raw))))).map(n=>n.toString(16).padStart(2,'0')).join('');
- const existing=await env.DB.prepare('SELECT * FROM characters WHERE owner=? AND content_hash=?').bind(owner,hash).first<CharacterRow>();if(existing)return character(existing,true);
+ const existing=await env.DB.prepare('SELECT * FROM characters WHERE owner=? AND content_hash=?').bind(owner,hash).first<CharacterRow>();if(existing){if(avatar)throw new HttpError(409,'角色已存在，请在编辑角色中更换头像');return character(existing,true);}
  const id=crypto.randomUUID(),root=`${encodeURIComponent(owner)}/${id}`,originalKey=root+'/original',avatarKey=imported.avatar?root+'/avatar':null;
  await env.FILES.put(originalKey,bytes,{httpMetadata:{contentType:'application/octet-stream'}});
  try {
   if(imported.avatar&&avatarKey)await env.FILES.put(avatarKey,imported.avatar,{httpMetadata:{contentType:imported.avatarType}});
   await env.DB.prepare('INSERT INTO characters(id,owner,name,description,creator,tags_json,card_json,format,source,source_url,source_id,original_key,original_filename,avatar_key,avatar_type,content_hash,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,owner,card.data.name,card.data.description.slice(0,350),card.data.creator,JSON.stringify(card.data.tags),JSON.stringify(card.raw),card.format,source,sourceUrl,sourceId,originalKey,filename.slice(0,200),avatarKey,imported.avatarType??null,hash,Date.now()).run();
- }catch(e){await env.FILES.delete([originalKey,...(avatarKey?[avatarKey]:[])]);const duplicate=await env.DB.prepare('SELECT * FROM characters WHERE owner=? AND content_hash=?').bind(owner,hash).first<CharacterRow>();if(duplicate)return character(duplicate,true);throw e;}
+ }catch(e){await env.FILES.delete([originalKey,...(avatarKey?[avatarKey]:[])]);const duplicate=await env.DB.prepare('SELECT * FROM characters WHERE owner=? AND content_hash=?').bind(owner,hash).first<CharacterRow>();if(duplicate){if(avatar)throw new HttpError(409,'角色已存在，请在编辑角色中更换头像');return character(duplicate,true);}throw e;}
  const row=await env.DB.prepare('SELECT * FROM characters WHERE id=? AND owner=?').bind(id,owner).first<CharacterRow>();return character(row!,true);
 }
 export const asJson=(v:unknown)=>JSON.stringify(v);

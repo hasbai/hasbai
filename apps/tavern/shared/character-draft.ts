@@ -1,4 +1,4 @@
-import { object, parseCard } from './cards';
+import { object, parseCard, string } from './cards';
 import type { JsonObject } from './types';
 
 // The generation schema describes the card structure; users control its content.
@@ -20,8 +20,19 @@ export type CharacterDraft = Record<CharacterField, string> & { alternate_greeti
 export function emptyCharacterDraft(): CharacterDraft {
  return { name: '', description: '', personality: '', scenario: '', first_mes: '', mes_example: '', creator_notes: '', system_prompt: '', post_history_instructions: '', creator: '', character_version: '', alternate_greetings: [], tags: [] };
 }
-export function characterCard(draft: CharacterDraft): JsonObject {
- return { spec: 'chara_card_v2', spec_version: '2.0', data: { ...draft, extensions: {} } };
+export function characterDraft(raw: JsonObject): CharacterDraft {
+ const { data } = parseCard(raw), draft = emptyCharacterDraft();
+ for (const key of Object.keys(CHARACTER_FIELDS) as CharacterField[]) draft[key] = string(data[key]);
+ draft.tags = [...data.tags]; draft.alternate_greetings = [...data.alternate_greetings];
+ return draft;
+}
+export function characterCard(draft: CharacterDraft, original?: JsonObject): JsonObject {
+ if (!original) return { spec: 'chara_card_v2', spec_version: '2.0', data: { ...draft, extensions: {} } };
+ const raw = structuredClone(original), before = characterDraft(original), data = raw.spec ? object(raw.data) : raw;
+ for (const key of Object.keys(draft) as (keyof CharacterDraft)[]) {
+  if (JSON.stringify(draft[key]) !== JSON.stringify(before[key])) data[key] = draft[key];
+ }
+ return raw;
 }
 const arrayFields = ['alternate_greetings', 'tags'] as const;
 const properties = {

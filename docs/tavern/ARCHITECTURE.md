@@ -9,14 +9,14 @@ Saki 角色卡、账号绑定与消息中台契约见 [MESSAGING](MESSAGING.md)�
 
 | 页面 | 可执行功能 |
 | --- | --- |
-| 角色库 | 搜索已安装角色，导入 JSON/PNG/CHARX，表单创建与 AI 补全。编辑、查看设定与来源、导出原卡、删除、选择开场白开始对话 |
+| 角色库 | 搜索已安装角色，导入 JSON/PNG/CHARX。创建、查看与编辑复用角色表单，支持头像上传与 AI 生成。查看来源、导出原卡、删除、选择开场白开始对话 |
 | 发现 | 输入关键词、选择公开来源。按热度/近期热门/发布或更新时间/评分排序，选择分类与自定义标签。分页、查看作者/源页面、安装角色；安装相同内容去重，不自动覆盖本地编辑 |
 | 世界书 | 独立 JSON 导入/导出、查看编辑原文、条目数量、启用/停用，给会话选择世界书；内嵌角色书自动生效 |
 | 对话 | 会话列表、角色与用户 persona。右侧用户气泡、无气泡角色正文、单行自动伸展输入、圆形发送/停止、回答末尾操作。持久化历史、重试、重新生成、任意历史消息编辑、删除和重生成，原会话内截断后续、导出 JSONL、删除会话 |
 | 关于 | 从设置进入；按用例同时切换上下文流程与 KV 提示词。登录用户可查看；管理员可在线编辑保存 |
 | 设置 | RP模型、默认关闭思考、采样参数、用户名称/persona、系统提示、主题；模型路由由服务端固定，不接受客户端覆盖 |
 
-当前不执行外来 JS/Lua、正则替换脚本或扩展工具，不提供多人群聊、图像生成、语音或全量 SillyTavern 插件兼容。未知扩展和资源留在原始卡及导出中；兼容导入不等于执行全部扩展。不会提供伪造角色推荐、示例历史、评分或人数。只有 e2e 独立夹具有合成内容。
+当前不执行外来 JS/Lua、正则替换脚本或扩展工具，不提供多人群聊、语音或全量 SillyTavern 插件兼容。图像生成仅用于角色头像。未知扩展和资源留在原始卡及导出中；兼容导入不等于执行全部扩展。不会提供伪造角色推荐、示例历史、评分或人数。只有 e2e 独立夹具有合成内容。
 
 ## Agent 操作
 
@@ -66,7 +66,15 @@ sessions 保存会话目录、可靠世界书引用与迁移占用哨兵。messa
 
 ## 角色卡与世界书
 
-创建角色使用分组表单，按基本信息、人物设定、开场与对白填写，高级作者信息及提示词折叠。用户可手写后直接保存，也可填写部分内容或生成要求后点击 AI 生成。生成结果回填同一表单，支持修改及撤销本次生成；点击保存才通过既有角色导入接口入库。已有导入角色继续使用原始 JSON 编辑，保留 V1/V2/V3、世界书及未知扩展。
+创建、查看与编辑角色复用同一表单。字段按基本信息、人物设定、开场与对白分组，作者与高级设定折叠。查看模式只读，保留来源、导出、删除与开场选择。
+
+用户可手写，或填写角色构想后点击 AI 生成。生成结果可修改或撤销，保存失败保留草稿。编辑仅覆盖发生变化的字段，保留 V1/V2/V3、内嵌世界书、资源与未知扩展。
+
+头像支持 PNG、JPEG、WebP，最大 5 MB，服务端检查文件签名。上传或生成后先预览，点击保存才与卡片一次提交。POST/PATCH 角色接口接受 multipart 的 `card` 与 `avatar`，原有 JSON 请求保持兼容。
+
+替换头像先写私有 R2，再更新 D1；更新失败清理新对象，成功后清理旧对象。原文件导出保留导入时内容。头像读取使用本人 JWT 和 `no-store`，保存后重新加载。重复创建相同卡片并附头像时返回 409，提示通过编辑更换。
+
+`POST /api/characters/avatar/generate {prompt}` 需要本人 JWT 与 username。固定使用 Workers AI `@cf/black-forest-labs/flux-1-schnell`，通过 Gateway `default` 记录 `app`、`task: character-avatar` 与 `username`。接口返回图片，不写 D1/R2。关闭表单取消请求并丢弃迟到结果。
 
 `POST /api/characters/generate` 验证本人 JWT 与账户 username，复用固定 Gateway `dynamic/rp`，metadata task 为 `character-generation`。输入为 `{brief,draft}`，输出为 `{card}`，不写 D1/R2。使用 strict CCv2 JSON Schema（固定版本、完整字段、禁止额外属性），可靠 stop 后再次严格校验并经 `parseCard` 检查。
 
@@ -135,6 +143,7 @@ KV 使用自身缓存，不叠加进程缓存；更新最终一致，页面提�
 - GET/PUT /api/prompts：登录读取、管理员更新全站应用提示词。
 - GET /health：service 与 Worker version，不含配置或密钥。
 - POST /api/characters/generate {brief,draft}：生成可编辑 CCv2 草稿；
+- POST /api/characters/avatar/generate {prompt}：生成头像预览，不保存。
 - GET/POST /api/characters；GET/PATCH/DELETE /api/characters/:id；GET /api/characters/:id/export；GET /api/characters/:id/avatar。
 - GET /api/discover?q=&source=&page=&sort=&tags=；POST /api/install {source,id}；固定适配器，不提供任意 URL 代理。
 - GET/POST /api/worldbooks；PATCH/DELETE /api/worldbooks/:id；GET /api/worldbooks/:id/export。

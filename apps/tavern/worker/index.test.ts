@@ -777,3 +777,37 @@ it('releases the active turn and closes its stream when activity finalization ca
  const wire=await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'继续'})).text();await Promise.all(work);expect(injected).toBe(true);expect(wire).not.toContain('"type":"done"');
  const saved=await(await call('/api/sessions/'+s.id)).json() as import('../shared/types').SessionDetail;expect(saved.session.generationId).toBeNull();expect(saved.messages.at(-1)).toMatchObject({content:'实际短稿。',status:'aborted'});expect((await call('/api/sessions/'+s.id,'DELETE')).status).toBe(200);
 });
+
+const avatarPng = Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a6gAAAABJRU5ErkJggg==','base64'));
+async function saveAvatar(path:string,method:string,raw:unknown,bytes:Uint8Array=avatarPng){
+ const form=new FormData();form.set('card',JSON.stringify(raw));form.set('avatar',new File([Uint8Array.from(bytes)],'avatar.png',{type:'image/png'}));
+ return worker.fetch(new Request('https://tavern.test'+path,{method,body:form}),env,ctx);
+}
+it('saves a private avatar with its card, replaces it, and preserves the original export',async()=>{
+ const response=await saveAvatar('/api/characters','POST',card);expect(response.status).toBe(201);const c=await response.json() as {id:string;hasAvatar:boolean};expect(c.hasAvatar).toBe(true);
+ const first=await call('/api/characters/'+c.id+'/avatar');expect(first.headers.get('Cache-Control')).toBe('no-store');expect(new Uint8Array(await first.arrayBuffer())).toEqual(avatarPng);
+ const old=db.prepare('SELECT avatar_key FROM characters').get()!.avatar_key as string;
+ const changed=structuredClone(card);changed.data.name='新名字';const updated=await saveAvatar('/api/characters/'+c.id,'PATCH',changed);expect(updated.status).toBe(200);expect(await updated.json()).toMatchObject({name:'新名字',hasAvatar:true});await Promise.all(work);
+ expect(files.has(old)).toBe(false);expect(files.size).toBe(2);expect(await(await call('/api/characters/'+c.id+'/export?original=true')).json()).toEqual(card);
+ vi.mocked(identity).mockResolvedValue({sub:'auth0|other',email:'other',username:'其他用户',admin:true});expect((await saveAvatar('/api/characters/'+c.id,'PATCH',changed)).status).toBe(404);expect((await call('/api/characters/'+c.id+'/avatar')).status).toBe(404);
+});
+it('rejects invalid and duplicate avatar creation before changing existing resources',async()=>{
+ const invalid=await saveAvatar('/api/characters','POST',card,new TextEncoder().encode('<svg/>'));expect(invalid.status).toBe(400);expect(files.size).toBe(0);expect(db.prepare('SELECT COUNT(*) AS n FROM characters').get()!.n).toBe(0);
+ const {c}=await seed();const duplicate=await saveAvatar('/api/characters','POST',card);expect(duplicate.status).toBe(409);expect(await duplicate.json()).toMatchObject({message:expect.stringContaining('编辑角色')});expect((await call('/api/characters/'+c.id+'/avatar')).status).toBe(404);expect(files.size).toBe(1);
+});
+it('cleans up a new avatar on a failed DB update and keeps the old card and avatar',async()=>{
+ const c=await(await saveAvatar('/api/characters','POST',card)).json() as {id:string};const savedKeys=[...files.keys()];
+ beforeRun=sql=>{if(sql.startsWith('UPDATE characters'))throw Error('database unavailable');};
+ const changed=structuredClone(card);changed.data.name='不应保存';expect((await saveAvatar('/api/characters/'+c.id,'PATCH',changed)).status).toBe(500);expect([...files.keys()]).toEqual(savedKeys);expect(await(await call('/api/characters/'+c.id)).json()).toMatchObject({name:card.data.name,hasAvatar:true});
+});
+it('does not change the card when writing the replacement image fails',async()=>{
+ const {c}=await seed();Object.assign(env.FILES,{put:vi.fn(async()=>{throw Error('storage unavailable');})});const changed=structuredClone(card);changed.data.name='不应保存';expect((await saveAvatar('/api/characters/'+c.id,'PATCH',changed)).status).toBe(500);expect(await(await call('/api/characters/'+c.id)).json()).toMatchObject({name:card.data.name,hasAvatar:false});
+});
+it('generates an avatar through the fixed model and attributed gateway without persisting it',async()=>{
+ const run=vi.fn(async()=>({image:Buffer.from(avatarPng).toString('base64')}));Object.assign(env.AI,{run});
+ const response=await call('/api/characters/avatar/generate','POST',{prompt:'a silver haired traveller',model:'override',url:'https://invalid'});expect(response.status).toBe(200);expect(response.headers.get('Content-Type')).toBe('image/png');expect(new Uint8Array(await response.arrayBuffer())).toEqual(avatarPng);
+ expect(run).toHaveBeenCalledWith('@cf/black-forest-labs/flux-1-schnell',expect.objectContaining({prompt:expect.stringContaining('a silver haired traveller'),steps:4}),expect.objectContaining({gateway:expect.objectContaining({id:'default',skipCache:true,collectLog:true,metadata:{app:'tavern',task:'character-avatar',username:'月石'}}),signal:expect.any(AbortSignal)}));expect(files.size).toBe(0);expect(db.prepare('SELECT COUNT(*) AS n FROM characters').get()!.n).toBe(0);
+});
+it('rejects empty avatar prompts and returns an explicit generation error',async()=>{
+ const run=vi.fn(async()=>({image:''}));Object.assign(env.AI,{run});expect((await call('/api/characters/avatar/generate','POST',{prompt:''})).status).toBe(400);expect(run).not.toHaveBeenCalled();expect((await call('/api/characters/avatar/generate','POST',{prompt:'traveller'})).status).toBe(502);expect(files.size).toBe(0);
+});
