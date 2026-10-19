@@ -6,6 +6,35 @@ const card={name:'岚',description:'旅店主人'};
 const message=(id:string,role:Message['role'],content:string):Message=>({id,role,content,status:'completed',ordinal:0,requestId:null,createdAt:0});
 vi.mock('./gateway',async(original)=>({...await original<typeof import('./gateway')>(),runRoleplay:async(env:Env,username:string,requestId:string,input:Record<string,unknown>,signal:AbortSignal)=>env.AI.gateway('default').run({provider:'compat',endpoint:'chat/completions',headers:{},query:input},{gateway:{id:'default',skipCache:true,collectLog:true,eventId:requestId,retries:{maxAttempts:1},metadata:{app:'tavern',task:'roleplay',username}},signal})}));
 const options={protocol:'',inputRatio:1.2};
+it('compresses all past turns at once while preserving only the current input',async()=>{
+ const history=Array.from({length:9},(_,i)=>message(String(i),i%2?'user':'assistant',('第'+i+'段剧情。').repeat(100)));
+ history.push(message('current','user','现在怎么办？'));
+ const infer=vi.fn(async(_messages:PromptMessage[])=>'旅人在港城旅店停留。');
+ const context=new ConversationContext(history.slice(0,-1),card,[],DEFAULT_SETTINGS,32768,{...options,currentInput:history.at(-1)},infer);
+ await context.compress();
+ expect(infer).toHaveBeenCalledTimes(1);
+ expect(context.summary?.covered).toEqual(history.slice(0,-1).map(m=>m.id));
+ expect(context.prompt().messages.slice(1).map(m=>m.content)).toEqual(['现在怎么办？']);
+ expect(infer.mock.calls[0]?.[0].slice(0,-1).map(m=>m.content)).toEqual(history.slice(0,-1).map(m=>m.content));
+});
+it('manually compresses the latest exchange too and merges an existing checkpoint',async()=>{
+ const history=[message('g','assistant','旧开场。'.repeat(100)),message('u','user','我走进旅店。'.repeat(100)),message('a','assistant','她招呼我坐下。'.repeat(100))];
+ const infer=vi.fn(async(_messages:PromptMessage[])=>'旅人进店坐下。');
+ const context=new ConversationContext(history,card,[],DEFAULT_SETTINGS,32768,options,infer);
+ await context.compress();
+ expect(context.summary?.covered).toEqual(['g','u','a']);
+ expect(context.prompt().budget.includedMessages).toBe(0);
+ const later=[...history,message('u2','user','我询问灯塔。'.repeat(100)),message('a2','assistant','灯塔今夜亮起。'.repeat(100))];
+ const next=new ConversationContext(later,card,[],DEFAULT_SETTINGS,32768,options,infer);
+ await next.restore(JSON.stringify(context.summary));await next.compress();
+ expect(infer.mock.calls[1][0][0].content).toContain('旅人进店坐下。');
+ expect(infer.mock.calls[1][0].slice(1,-1).map(m=>m.content)).toEqual(later.slice(3).map(m=>m.content));
+ expect(next.summary?.covered).toEqual(later.map(m=>m.id));expect(next.prompt().budget.includedMessages).toBe(0);
+});
+it('can manually compress a single greeting without requiring another turn',async()=>{
+ const context=new ConversationContext([message('g','assistant','开场剧情。'.repeat(100))],card,[],DEFAULT_SETTINGS,null,options,async()=>'开场。');
+ await context.compress();expect(context.summary?.covered).toEqual(['g']);expect(context.prompt().budget.includedMessages).toBe(0);
+});
 it('requires every summary to be nonempty and shorter than its source',async()=>{
  const history=[message('short','assistant','雨')];
  await expect(summarizeStory('',history,{contextTokens:null,inputRatio:1.2,infer:async()=> '岚与旅人在雨夜相遇。'})).rejects.toThrow('有效摘要');
@@ -24,7 +53,7 @@ it('stops splitting a single supplementary character instead of repeating the sa
 });
 it('does not summarize below discovered capacity or when unknown, and checkpoints overflow without editing source',async()=>{
  const history=[message('u','user','中'.repeat(1800)),message('a','assistant','未承诺出发。'.repeat(400)),message('new','user','现在呢？')],before=JSON.stringify(history);
- const infer=vi.fn(async()=>'此前未承诺出发。');const c=new ConversationContext(structuredClone(history),card,[],DEFAULT_SETTINGS,null,options,infer);
+ const infer=vi.fn(async()=>'此前未承诺出发。');const c=new ConversationContext(structuredClone(history.slice(0,-1)),card,[],DEFAULT_SETTINGS,null,{...options,currentInput:history.at(-1)},infer);
  await c.fit();expect(infer).not.toHaveBeenCalled();c.contextTokens=65536;await c.fit();expect(infer).not.toHaveBeenCalled();c.contextTokens=4096;await c.fit();expect(infer).toHaveBeenCalled();expect(c.prompt().needsCompression).toBe(false);expect(c.prompt().messages.at(-1)?.content).toBe('现在呢？');expect(JSON.stringify(history)).toBe(before);
  expect(await validSummary(JSON.stringify(c.summary),history)).toEqual(c.summary);
  expect(await validSummary(JSON.stringify(c.summary),[{...history[0],id:'different'},...history.slice(1)])).toBeNull();expect(await validSummary(JSON.stringify(c.summary),[{...history[0],content:'更正'},...history.slice(1)])).toBeNull();
@@ -54,7 +83,7 @@ it('shrinks existing memory when a single-character addition still cannot comple
 });
 
 it('preserves assistant source roles before the final user compression task',async()=>{
- const infer=vi.fn(async(_messages:{role:string;content:string}[])=> '尚未出港。');const c=new ConversationContext([message('g','assistant','旧角色正文'.repeat(900)),message('u','user','后来呢')],card,[],DEFAULT_SETTINGS,16384,options,infer);await c.compress();
+ const infer=vi.fn(async(_messages:{role:string;content:string}[])=> '尚未出港。');const c=new ConversationContext([message('g','assistant','旧角色正文'.repeat(900))],card,[],DEFAULT_SETTINGS,16384,{...options,currentInput:message('u','user','后来呢')},infer);await c.compress();
  const messages=infer.mock.calls[0]?.[0] as {role:string;content:string}[]|undefined;expect(messages?.map(m=>m.role)).toEqual(['assistant','user']);expect(messages?.[0]?.content).toBe('旧角色正文'.repeat(900));expect(messages?.at(-1)?.content).toMatch(/^本次任务是压缩/);
 });
 

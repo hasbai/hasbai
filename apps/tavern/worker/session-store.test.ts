@@ -2,6 +2,7 @@ import {it,expect} from 'vitest';
 import {DatabaseSync} from 'node:sqlite';
 import {SessionStore,SESSION_SCHEMA} from './session-store';
 import {emptyState} from './agent';
+import {fingerprint,validSummary} from './context';
 function fixture(){
  const db=new DatabaseSync(':memory:');db.exec(SESSION_SCHEMA);let fail=false;
  const storage={sql:{exec:(sql:string,...values:unknown[])=>{if(fail&&sql.startsWith('UPDATE messages SET content=?,candidates_json='))throw Error('final unavailable');return {toArray:()=>db.prepare(sql).all(...values as never[])};}},transactionSync:<T>(fn:()=>T)=>{db.exec('BEGIN');try{const result=fn();db.exec('COMMIT');return result;}catch(e){db.exec('ROLLBACK');throw e;}}};
@@ -48,5 +49,17 @@ it('rolls back an entire history cut if message deletion fails',()=>{
 it.each(['edit','delete'] as const)('clears replaced snapshots, derived memories and future events on %s',action=>{
  const f=fixture();try{f.store.finish('draft','旧结局','completed','stop',['旧候选'],f.before);f.db.exec("CREATE TABLE lore_chunks(id TEXT PRIMARY KEY); INSERT INTO lore_chunks VALUES('future'); INSERT INTO director_synopsis VALUES('s','future'); INSERT INTO model_projections VALUES('draft','{}')");f.db.prepare("UPDATE sessions SET summary_json='old-checkpoint'").run();f.store.activity({id:'tool',messageId:'draft',ordinal:1,kind:'tool',title:'工具',status:'completed',result:'未来事实',createdAt:1});
  f.store.truncate('draft',action,'编辑后');expect(f.store.state()).toEqual(emptyState());expect(f.store.get().summary_json).toBeNull();expect(f.store.snapshots()).toEqual([]);expect(f.store.activities()).toEqual([]);expect(f.db.prepare('SELECT * FROM lore_chunks').all()).toEqual([]);expect(f.store.projection('draft')).toBeNull();expect(f.store.synopsis()).toBeNull();expect(f.store.cancelled('request')).toBe(true);expect(f.store.messages()).toHaveLength(action==='edit'?1:0);
+ }finally{f.db.close();}
+});
+it.each(['edit','delete','regenerate'] as const)('preserves a compressed prefix when %s only affects later messages',async action=>{
+ const f=fixture();try{
+  f.store.finish('draft','旧剧情。'.repeat(300),'completed','stop',[],f.before);
+  const source=f.store.messages(),checkpoint=JSON.stringify({text:'旧剧情摘要。',covered:source.map(m=>m.id),fingerprint:await fingerprint(source)});
+  f.db.prepare('UPDATE sessions SET summary_json=?').run(checkpoint);
+  f.db.prepare("INSERT INTO messages(id,session_id,role,content,status,ordinal,created_at) VALUES('later','s','user','最近的行动','completed',2,3)").run();
+  f.store.truncate('later',action,'修改最近行动');
+  expect(f.store.get().summary_json).toBe(checkpoint);
+  expect(await validSummary(checkpoint,f.store.messages())).not.toBeNull();
+  f.store.truncate('draft','delete');expect(f.store.get().summary_json).toBeNull();
  }finally{f.db.close();}
 });

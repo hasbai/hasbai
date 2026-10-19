@@ -52,6 +52,8 @@ export class SessionStore {
  truncate(messageId:string,action:'edit'|'delete'|'regenerate',content?:string,claimedBy?:string){const mutate=()=>{
   if(claimedBy){if(!this.owns(claimedBy))throw new HttpError(409,'会话生成已接管');}else this.idle();
   const target=this.findMessage(messageId);if(!target)throw new HttpError(404,'消息不存在');
+  let checkpoint=this.get().summary_json??null;
+  if(checkpoint){try{const summary=JSON.parse(checkpoint) as Summary,source=storyMessages(this.messages()).slice(0,summary.covered.length);if(!Array.isArray(summary.covered)||!summary.covered.length||source.length!==summary.covered.length||source.some((m,i)=>m.id!==summary.covered[i]||m.ordinal>=target.ordinal))checkpoint=null;}catch{checkpoint=null;}}
   const keep=action==='edit'||action==='regenerate'&&target.role==='user';
   const cutoff=target.ordinal+(keep?1:0);
   this.write('INSERT OR IGNORE INTO cancelled_requests SELECT session_id,request_id FROM messages WHERE session_id=? AND ordinal>=? AND request_id IS NOT NULL',this.id,target.ordinal);
@@ -63,7 +65,7 @@ export class SessionStore {
   this.write('UPDATE messages SET candidates_json=NULL WHERE session_id=?',this.id);
   this.write('DELETE FROM model_projections');this.write('DELETE FROM director_synopsis');
   if(this.rows("SELECT name FROM sqlite_master WHERE type='table' AND name='lore_chunks'").length)this.write('DELETE FROM lore_chunks');
-  this.write('UPDATE sessions SET summary_json=NULL,updated_at=? WHERE id=?',Date.now(),this.id);this.dirty();
+  this.write('UPDATE sessions SET summary_json=?,updated_at=? WHERE id=?',checkpoint,Date.now(),this.id);this.dirty();
   return target;
  };return claimedBy?mutate():this.transaction(mutate);}
  saveCheckpoint(assistantId:string,summary:string|null){if(!this.owns(assistantId))throw new HttpError(409,'生成已停止');this.write('UPDATE sessions SET summary_json=? WHERE id=?',summary,this.id);this.write('DELETE FROM model_projections');this.write('DELETE FROM director_synopsis');this.dirty();}

@@ -713,7 +713,7 @@ it.each(['assistant','user'] as const)('regenerates a historical %s in place and
 it('persists actual tool and Director results in the stream and subsequent reads',async()=>{
  const {s}=await seed();aiRun.mockResolvedValueOnce(tool('search_memory',{query:'你好'})).mockResolvedValueOnce(completion('我仍在旅店。'));
  const wire=await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'回想开场'})).text();await Promise.all(work);
- const events=wire.trim().split('\n\n').map(line=>JSON.parse(line.slice(6))).filter(e=>e.type==='activity');expect(events.some(e=>e.activity.kind==='tool'&&e.activity.status==='running')).toBe(true);
+ const events=wire.trim().split('\n\n').map(line=>JSON.parse(line.slice(6))).filter(e=>e.type==='activity');expect(events.some(e=>e.activity.kind==='tool'&&e.activity.status==='running')).toBe(true);expect(events.some(e=>e.activity.kind==='body')).toBe(false);
  const saved=await(await call('/api/sessions/'+s.id)).json() as {activities:import('../shared/types').AgentActivity[]};const memory=saved.activities.find(a=>a.kind==='tool')!;expect(memory.status).toBe('completed');expect(JSON.parse(memory.result as string)[0].text).toBe('你好，旅人。');expect(saved.activities.find(a=>a.kind==='director')).toMatchObject({status:'completed',result:{candidates:['去港口。','问问来路。','坐下喝茶。']}});
 });
 it('runs status from text without inference and reports the current prompt estimate',async()=>{
@@ -725,13 +725,46 @@ it('compresses on explicit command, preserves raw history, and replays without a
  const {s}=await seed();for(const content of ['旧行动'.repeat(400),'最近的行动。']){await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content})).text();await Promise.all(work);}
  const before=sessionDb.prepare('SELECT * FROM messages').all(),requestId=crypto.randomUUID(),at=aiRun.mock.calls.length;
  expect((await call('/api/sessions/'+s.id+'/command','POST',{requestId,content:'/compress'})).status).toBe(200);await Promise.all(work);
- const result=await(await call('/api/sessions/'+s.id)).json() as import('../shared/types').SessionDetail;expect(result.messages).toHaveLength(5);expect(sessionDb.prepare('SELECT * FROM messages').all()).toEqual(before);expect(result.activities.at(-1)).toMatchObject({kind:'compression',status:'completed'});expect(result.context.coveredMessages).toBeGreaterThan(0);expect(result.session.generationId).toBeNull();expect(aiRun.mock.calls.length).toBeGreaterThan(at);
+ const result=await(await call('/api/sessions/'+s.id)).json() as import('../shared/types').SessionDetail;expect(result.messages).toHaveLength(5);expect(sessionDb.prepare('SELECT * FROM messages').all()).toEqual(before);expect(result.activities.at(-1)).toMatchObject({kind:'compression',status:'completed'});expect(result.context.coveredMessages).toBe(result.messages.length);expect(result.context.includedMessages).toBe(0);expect(result.session.generationId).toBeNull();expect(aiRun.mock.calls.length).toBeGreaterThan(at);
  const count=aiRun.mock.calls.length;await call('/api/sessions/'+s.id+'/command','POST',{requestId,content:'/compress'});await Promise.all(work);expect(aiRun).toHaveBeenCalledTimes(count);
 });
 it('stops manual compression without publishing its checkpoint',async()=>{
  const {s}=await seed();for(const content of ['旧行动'.repeat(400),'最近的行动。']){await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content})).text();await Promise.all(work);}const requestId=crypto.randomUUID();aiRun.mockImplementationOnce(async()=>new ReadableStream());
  await call('/api/sessions/'+s.id+'/command','POST',{requestId,content:'/compress'});await vi.waitFor(()=>expect(sessionDb.prepare('SELECT generation_id FROM sessions').get()?.generation_id).toBe(requestId));await call('/api/sessions/'+s.id+'/stop','POST',{generationId:requestId});await Promise.all(work);
  const saved=await(await call('/api/sessions/'+s.id)).json() as import('../shared/types').SessionDetail;expect(saved.session.generationId).toBeNull();expect(saved.activities.at(-1)).toMatchObject({kind:'compression',status:'stopped'});expect(sessionDb.prepare('SELECT summary_json FROM sessions').get()?.summary_json).toBeNull();
+});
+it('keeps prompt usage compressed when deleting messages after a summary checkpoint',async()=>{
+ const {s}=await seed();
+ await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'早期行动。'.repeat(400)})).text();await Promise.all(work);
+ await call('/api/sessions/'+s.id+'/command','POST',{requestId:crypto.randomUUID(),content:'/compress'});await Promise.all(work);
+ const compressed=await(await call('/api/sessions/'+s.id)).json() as import('../shared/types').SessionDetail;
+ const checkpoint=sessionDb.prepare('SELECT summary_json FROM sessions').get()?.summary_json;
+ await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'最近的行动。'})).text();await Promise.all(work);
+ const later=await(await call('/api/sessions/'+s.id)).json() as import('../shared/types').SessionDetail;
+ expect((await call('/api/sessions/'+s.id+'/messages','DELETE',{messageId:later.messages.at(-2)!.id})).status).toBe(200);
+ const saved=await(await call('/api/sessions/'+s.id)).json() as import('../shared/types').SessionDetail;
+ expect(sessionDb.prepare('SELECT summary_json FROM sessions').get()?.summary_json).toBe(checkpoint);
+ expect(saved.context.coveredMessages).toBe(compressed.context.coveredMessages);
+ expect(saved.context.includedMessages).toBe(0);expect(saved.context.estimatedTokens).toBeLessThanOrEqual(later.context.estimatedTokens);
+});
+it('allows deleting history without a generation profile claim',async()=>{
+ const {s}=await seed();vi.mocked(identity).mockResolvedValue({sub:'auth0|owner',email:'owner',username:undefined,admin:true});
+ const current=await(await call('/api/sessions/'+s.id)).json() as import('../shared/types').SessionDetail;
+ expect((await call('/api/sessions/'+s.id+'/messages','DELETE',{messageId:current.messages[0].id,username:'伪造'})).status).toBe(200);
+ expect(aiRun).not.toHaveBeenCalled();expect(sessionDb.prepare('SELECT * FROM messages').all()).toHaveLength(0);
+});
+it('rebuilds a summary from remaining messages when deletion cuts its covered history',async()=>{
+ const {s}=await seed();
+ for(const content of ['保留的剧情。'.repeat(400),'将删除的剧情。']){await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content})).text();await Promise.all(work);}
+ const before=await(await call('/api/sessions/'+s.id)).json() as import('../shared/types').SessionDetail;
+ await call('/api/sessions/'+s.id+'/command','POST',{requestId:crypto.randomUUID(),content:'/compress'});await Promise.all(work);
+ const at=aiRun.mock.calls.length;
+ expect((await call('/api/sessions/'+s.id+'/messages','DELETE',{messageId:before.messages.at(-2)!.id})).status).toBe(200);
+ const saved=await(await call('/api/sessions/'+s.id)).json() as import('../shared/types').SessionDetail;
+ expect(saved.messages).toHaveLength(3);expect(saved.context.coveredMessages).toBe(3);expect(saved.context.includedMessages).toBe(0);
+ expect(saved.session.generationId).toBeNull();expect(saved.activities.at(-1)).toMatchObject({kind:'compression',status:'completed'});
+ const summaryRequest=aiRun.mock.calls[at][0].query as {messages:{content:string}[]};expect(JSON.stringify(summaryRequest.messages)).not.toContain('将删除的剧情');
+ expect(JSON.stringify(summaryRequest.messages)).toContain('保留的剧情');
 });
 it('preserves OOC and dialogue in one editable input and projects OOC as non-story instruction',async()=>{
  const {s}=await seed(),content='/ooc 放慢节奏，不要跳时。\n我把行囊放在桌边。';await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content})).text();await Promise.all(work);
@@ -740,7 +773,7 @@ it('preserves OOC and dialogue in one editable input and projects OOC as non-sto
 
 it('releases the active turn and closes its stream when activity finalization cannot persist',async()=>{
  const {s}=await seed();let injected=false;beforeRun=(sql,values)=>{if(!injected&&sql.startsWith('INSERT INTO agent_activities')&&JSON.parse(values[3] as string).status==='error'){injected=true;throw Error('activity persistence unavailable');}};
- aiRun.mockResolvedValueOnce(new ReadableStream({start(c){c.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"实际短稿。"},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n'));c.close();}}));
+ aiRun.mockResolvedValueOnce(completion('实际短稿。','tool_calls',[{index:0,id:'invalid-search',type:'function',function:{name:'search_memory',arguments:'{"query":0}'}}]));
  const wire=await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'继续'})).text();await Promise.all(work);expect(injected).toBe(true);expect(wire).not.toContain('"type":"done"');
  const saved=await(await call('/api/sessions/'+s.id)).json() as import('../shared/types').SessionDetail;expect(saved.session.generationId).toBeNull();expect(saved.messages.at(-1)).toMatchObject({content:'实际短稿。',status:'aborted'});expect((await call('/api/sessions/'+s.id,'DELETE')).status).toBe(200);
 });
