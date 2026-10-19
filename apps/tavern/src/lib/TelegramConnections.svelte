@@ -1,0 +1,31 @@
+<script lang="ts">
+ import { Button } from '@hasbai/ui/button';
+ import { Notice } from '@hasbai/ui/notice';
+ import type { Api } from './api';
+ let {api,onopen}:{api:Api;onopen:(id:string)=>void}=$props();
+ type Route={id:string;chat_id:number;thread_id:number;session_id:string;active:number};
+ type Job={update_id:number;phase:string;error:string|null};
+ let loaded=$state(false),busy=$state(false),error=$state(''),configured=$state(false),bot=$state(''),routes=$state<Route[]>([]),characters=$state<{id:string;name:string}[]>([]),characterId=$state(''),code=$state<{command:string;expiresAt:number}|null>(null),jobs=$state<Record<string,Job[]>>({});
+ async function load(){busy=true;error='';try{const [value,cards]=await Promise.all([api.request<{configured:boolean;botUsername:string;routes:Route[]}>('messaging/telegram'),api.request<{characters:{id:string;name:string}[]}>('characters')]);configured=value.configured;bot=value.botUsername;routes=value.routes;characters=cards.characters;loaded=true;for(const route of routes)await status(route.id);}catch(e){error=(e as Error).message;}finally{busy=false;}}
+ async function status(id:string){jobs[id]=(await api.request<{jobs:Job[]}>(`messaging/telegram/${id}/status`)).jobs;}
+ async function create(kind:'private'|'group'){busy=true;error='';try{code=await api.request('messaging/telegram/codes','POST',{kind,...(characterId?{characterId}:{})});}catch(e){error=(e as Error).message;}finally{busy=false;}}
+ async function remove(id:string){busy=true;error='';try{await api.request(`messaging/telegram/${id}`,'DELETE');await load();}catch(e){error=(e as Error).message;}finally{busy=false;}}
+ async function resolve(id:string,action:'retry'|'skip'){busy=true;error='';try{await api.request(`messaging/telegram/${id}/resolve`,'POST',{action});await status(id);}catch(e){error=(e as Error).message;}finally{busy=false;}}
+</script>
+<details class="connections" ontoggle={e=>{if(e.currentTarget.open&&!loaded&&!busy)void load();}}>
+ <summary>Telegram 接入</summary>
+ {#if error}<Notice variant="error">{error}</Notice>{/if}
+ {#if loaded}
+  <p>先将私聊绑定码发送给 @{bot}。群管理员再将群聊绑定码发送到目标群或话题。每次绑定新建独立会话。</p>
+  <label for="telegram-character">对话角色</label><select id="telegram-character" bind:value={characterId} disabled={busy}><option value="">Saki（祥子）</option>{#each characters as character}<option value={character.id}>{character.name}</option>{/each}</select>
+  <div class="actions"><Button disabled={busy||!configured} onclick={()=>create('private')}>生成私聊绑定码</Button><Button variant="outline" disabled={busy||!configured} onclick={()=>create('group')}>生成群聊绑定码</Button><Button variant="ghost" disabled={busy} onclick={load}>刷新绑定</Button></div>
+  {#if !configured}<Notice>Telegram 尚未配置。</Notice>{/if}
+  {#if code}<div class="binding-code"><p>将以下命令发送到对应 Telegram 对话，十分钟内有效，使用一次后失效。</p><code>{code.command}</code></div>{/if}
+  {#each routes as route}<div class="connection"><div class="actions"><span>会话 {route.chat_id}{route.thread_id?' · 话题 '+route.thread_id:''}</span><Button variant="ghost" onclick={()=>onopen(route.session_id)}>查看对话</Button><Button variant="outline" disabled={busy} onclick={()=>remove(route.id)}>解绑</Button></div>
+   {#each jobs[route.id]??[] as job}<div class="job"><span>消息 {job.update_id} · {job.error??(job.phase==='sending'?'正在发送':'等待回复')}</span>{#if job.phase==='attention'}<p>先核对 Telegram 是否已收到。重试可能重复发送。</p><div class="actions"><Button variant="outline" disabled={busy} onclick={()=>resolve(route.id,'retry')}>重试发送</Button><Button variant="ghost" disabled={busy} onclick={()=>resolve(route.id,'skip')}>跳过此消息</Button></div>{/if}</div>{/each}
+  </div>{/each}
+ {:else if busy}<p role="status">正在加载接入配置…</p>{:else}<Button variant="outline" onclick={load}>加载接入配置</Button>{/if}
+</details>
+<style>
+ .connections{margin-top:28px;border:1px solid var(--border);border-radius:12px;padding:16px;max-width:840px}.connections summary{cursor:pointer;min-height:44px;line-height:44px;font-weight:550}.connections p{font-size:13px;line-height:1.8;color:var(--muted-foreground);margin:10px 0}.connections label{display:block;font-size:13px;margin:16px 0 8px}.connections select{width:100%;min-height:44px;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--background)}.connections .actions{margin-top:12px;flex-wrap:wrap}.binding-code{padding:12px;background:var(--muted);border-radius:8px;margin-top:16px}.binding-code code{overflow-wrap:anywhere;font-size:13px}.connection{border-top:1px solid var(--border);margin-top:16px;padding-top:12px}.job{margin-top:12px;font-size:13px}
+</style>

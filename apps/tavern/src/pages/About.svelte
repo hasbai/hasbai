@@ -33,7 +33,7 @@
   <div class="about-section-head"><span class="section-number">01</span><h2 id="journey-title">对话流程</h2></div>
   <ol class="journey">{#each journey as item,i}<li><span class="journey-icon"><item.icon size={21} strokeWidth={1.5} aria-hidden="true"/></span><span class="journey-order">0{i+1}</span><h3>{item.title}</h3><p>{item.subtitle}</p>{#if i<3}<ArrowRight class="journey-arrow" size={18} aria-hidden="true"/>{/if}</li>{/each}</ol>
   <div class="storage-note"><span><strong>D1</strong>角色、世界书、设置与目录</span><span><strong>R2</strong>私有原始资源</span><span><strong>DO</strong>会话、线性消息、状态与摘要</span><span><strong>KV</strong>应用提示词</span></div>
-  <div class="agent-guide"><p>历史消息支持编辑、删除和重新生成；操作后删除后续消息，保留来源未变的摘要。</p><p>正文直接流式显示；Director 和工具记录可展开查看。手动命令保留在执行时的位置，压缩只显示执行结果。</p><p>自动和手动压缩使用同一算法，全部历史合成摘要，本轮输入单独保留。输入框显示上下文占用估算。点击输入框可用 /compress 将全部有效历史合成摘要、/status 查看状态；/ooc 本行填写非角色指令，换行后可继续输入对白，一次发送。</p></div>
+  <div class="agent-guide"><p>历史消息支持编辑、删除和重新生成；操作后删除后续消息，保留来源未变的摘要。</p><p>正文直接流式显示；Director 和工具记录可展开查看。手动命令保留在执行时的位置，压缩只显示执行结果。</p><p>自动和手动压缩使用同一算法，全部历史合成摘要，本轮输入单独保留。输入框显示上下文占用估算。点击输入框可用 /compress 将全部有效历史合成摘要、/status 查看状态；/ooc 本行填写非角色指令，换行后可继续输入对白，一次发送。</p><p>Telegram 在设置中绑定。消息中台负责接收、排队和投递；角色、记忆、工具和模型复用酒馆。Saki 是普通角色卡，私聊、群和话题分别使用独立会话。</p></div>
  </section>
 
  <section class="context-section" aria-labelledby="context-title">

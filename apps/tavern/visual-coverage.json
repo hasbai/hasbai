@@ -57,7 +57,8 @@
       "scenarios": [
         "settings",
         "page-states",
-        "model-controls"
+        "model-controls",
+        "telegram"
       ]
     },
     {
@@ -393,6 +394,26 @@
             "chat-agent-results.png",
             "chat-context.png",
             "chat-command-history.png"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "telegram",
+      "kind": "screenshot",
+      "description": "Telegram 角色绑定、单次绑定码与不明发送处理。",
+      "evidence": [
+        {
+          "spec": "e2e/tavern.spec.ts",
+          "test": "telegram binds a character and resolves uncertain delivery without changing browser settings",
+          "projects": [
+            "iphone",
+            "desktop"
+          ],
+          "snapshots": [
+            "telegram.png",
+            "telegram-code.png",
+            "telegram-attention.png"
           ]
         }
       ]

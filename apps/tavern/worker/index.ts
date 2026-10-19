@@ -4,6 +4,9 @@ import { discover, download } from './discovery';
 import { modelInput, modelOptions } from './models';
 import { callSession, sessionStub } from './session-object';
 export { TavernSession } from './session-object';
+export { MessageInbox } from './message-inbox';
+import { telegramWebhook } from './telegram-webhook';
+import { channelApi } from './channels';
 import { character, installCard, jsonFile, ownedBooks, session, settings, userSettings, worldbook, type BookRow, type CharacterRow } from './store';
 import { MAX_FILE_BYTES, object, parseBook, parseCard, string } from '../shared/cards';
 import { macros } from '../shared/prompt';
@@ -14,9 +17,11 @@ export default {
   const url=new URL(request.url),p=url.pathname,method=request.method;
   try {
    if(p==='/health')return json({ok:true,service:'tavern',version:env.VERSION.id});
+   if(p==='/api/messaging/telegram/webhook'&&method==='POST')return await telegramWebhook(request,env);
    if(!p.startsWith('/api/'))return env.ASSETS.fetch(request);
    const user=await identity(request,env),owner=user.sub;
    if(method!=='GET' && request.headers.has('Origin') && request.headers.get('Origin')!==url.origin)throw new HttpError(403,'请求来源无效');
+   if(p.startsWith('/api/messaging/')){const response=await channelApi(request,env,user,p,()=>body(request));if(response)return response;}
    if(p==='/api/models' && method==='GET')return json({models:await modelOptions(env,ctx)});
    if(p==='/api/prompts'){
     if(method==='GET')return json({...await readPrompts(env),admin:user.admin});

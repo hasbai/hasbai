@@ -16,6 +16,7 @@
 | 任务 | 文档 | 代码入口（相对 `apps/tavern`） |
 | --- | --- | --- |
 | 卡片、来源、UI、API 与资源 | [ARCHITECTURE](ARCHITECTURE.md) | `shared`、`worker/index.ts`、`worker/discovery.ts`、`src/pages` |
+| Telegram、Saki 卡片、绑定与收发恢复 | [MESSAGING](MESSAGING.md) | `worker/channels.ts`、`worker/message-inbox.ts`、`packages/messaging` |
 | 状态、工具、检索、摘要、DO 恢复/删除 | [AGENT](AGENT.md) | `worker/agent.ts`、`worker/session-object.ts`、`worker/session-store.ts` |
 | 长程语义与实际缓存评测 | [评测入口](AGENT.md#长程与缓存评测) | `scripts/evaluate-agent.mjs`、`scripts/agent-evaluation-cases.mjs` |
 | 正文流式响应、复读检查与恢复 | [流式契约](AGENT.md#正文流式展示与检查) | `worker/generation.ts`、`worker/narrative.ts` |

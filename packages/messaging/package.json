@@ -1,0 +1,1 @@
+{"name":"@hasbai/messaging","private":true,"type":"module","exports":{".":"./src/telegram.ts"}}

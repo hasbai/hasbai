@@ -4,6 +4,9 @@
 
 ## 状态与工具
 
+Telegram 通过消息中台调用同一会话入口，不另建 Agent。
+收发状态与会话记忆分开，绑定与投递契约见 [MESSAGING](MESSAGING.md)。
+
 每个 assistant 版本保存 before/after 状态和工具步骤。scene、facts、relationships、inventory 采用有界 JSON patch，省略保留，null 删除；白名单、深度、字节和单项长度有界，不预建游戏引擎。
 
 `goals` 按稳定名称保存委托、执行主体、状态和已确认进展。

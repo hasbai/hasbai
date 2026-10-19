@@ -20,6 +20,7 @@ async function fixture(page:Page,{empty=false,fail=false,delay=false,streamDelay
   if(p==='/api/models')data={models:[{id:'rp',name:'RP 动态路由',available:true,contextTokens:16384,parameters:{topK:true,penalties:true,thinking:true,topKMax:1000}}]};
   else if(p==='/api/prompts'){if(method==='PUT')promptTexts=body.texts;data={revision:'fixture',texts:promptTexts,admin:promptAdmin};}
   else if(p==='/api/settings'){if(method==='PUT')savedSettings=body;data=savedSettings;}
+  else if(p==='/api/messaging/telegram')data={configured:true,botUsername:'saki_main_bot',routes:[]};
   else if(p==='/api/characters'&&method==='GET')data={characters:cards};
   else if(p==='/api/characters'&&method==='POST'){const uploaded=req.headers()['x-filename']?raw:req.postDataJSON();expect(uploaded).not.toBeNull();cards.push({...character,id:'c2',name:uploaded.data.name,description:uploaded.data.description,card:uploaded});data=cards.at(-1);}
   else if(p==='/api/characters/c1'&&method==='PATCH'){Object.assign(cards[0],{card:body.card,name:body.card.data.name});data=cards[0];}
@@ -176,6 +177,17 @@ test('manual character creation and closing a generation preserve isolation',asy
  await page.getByRole('button',{name:'创建角色'}).click();await page.getByLabel('角色名称').fill('旧草稿');await page.getByRole('button',{name:'AI 生成',exact:true}).click();await expect.poll(()=>started).toBe(true);await page.getByRole('button',{name:'取消生成并关闭'}).click();await expect(page.getByRole('dialog')).toHaveCount(0);await page.getByRole('button',{name:'创建角色'}).click();await expect(page.getByLabel('角色名称')).toHaveValue('');release!();await page.getByLabel('角色名称').fill('手写角色');await page.getByRole('button',{name:'保存角色',exact:true}).click();await expect(page.getByRole('heading',{name:'手写角色',exact:true})).toBeVisible();
 });
 
+test('telegram binds a character and resolves uncertain delivery without changing browser settings',async({page})=>{
+ await fixture(page);await nav(page,'设置');await page.getByText('Telegram 接入',{exact:true}).click();await expect(page.getByLabel('对话角色',{exact:true})).toBeVisible();await shot(page,'telegram.png');
+ await page.route('**/api/messaging/telegram/codes',route=>route.fulfill({json:{command:'/start 58cbca04-1b3a-493d-b0de-ccf38ac46a88',expiresAt:Date.now()+600000}}));
+ await page.getByLabel('对话角色',{exact:true}).selectOption('c1');const created=page.waitForRequest(r=>r.url().endsWith('/messaging/telegram/codes'));await page.getByRole('button',{name:'生成私聊绑定码'}).click();expect((await created).postDataJSON()).toEqual({kind:'private',characterId:'c1'});await expect(page.getByText('/start 58cbca04-1b3a-493d-b0de-ccf38ac46a88',{exact:true})).toBeVisible();await shot(page,'telegram-code.png');
+ await page.route('**/api/messaging/telegram',route=>route.fulfill({json:{configured:true,botUsername:'saki_main_bot',routes:[{id:'route',chat_id:-100123,thread_id:10,session_id:'s1',active:1}]}}));
+ await page.route('**/api/messaging/telegram/route/status',route=>route.fulfill({json:{jobs:[{update_id:42,phase:'attention',error:'发送结果不明，请确认后重试或跳过'}]}}));
+ await page.getByRole('button',{name:'刷新绑定'}).click();await expect(page.getByText('消息 42 · 发送结果不明，请确认后重试或跳过',{exact:true})).toBeVisible();await shot(page,'telegram-attention.png');
+ const retry=page.waitForRequest(r=>r.url().endsWith('/route/resolve'));await page.getByRole('button',{name:'重试发送'}).click();expect((await retry).postDataJSON()).toEqual({action:'retry'});
+ const unlink=page.waitForRequest(r=>r.url().endsWith('/telegram/route')&&r.method()==='DELETE');await page.getByRole('button',{name:'解绑',exact:true}).click();await unlink;
+ await page.getByRole('button',{name:'查看对话'}).click();await expect(page).toHaveURL(/#chat$/);await expect(page.locator('#message-input')).toBeVisible();
+});
 test('about visualizes the dialogue context and exposes the same application prompts',async({page})=>{
  const capture=async(name:string)=>{await page.evaluate(()=>{if(document.activeElement instanceof HTMLElement)document.activeElement.blur();window.scrollTo(0,0);});await expect.poll(()=>page.evaluate(()=>window.scrollY)).toBe(0);await shot(page,name);};
  await fixture(page);await nav(page,'设置');await page.getByRole('link',{name:'关于',exact:true}).click();await expect(page).toHaveURL(/#about$/);await expect(page.getByRole('heading',{name:'关于酒馆',exact:true})).toBeVisible();await expect(page.getByText('AI SDK → AI Gateway',{exact:true})).toBeVisible();await expect(page.getByText(CAPABILITY_RULES.body,{exact:true})).toBeVisible();

@@ -28,6 +28,12 @@
 
 ## 已有 Auth0 API 与权限
 
+酒馆 `/api/messaging/telegram` 管理接口验证共享用户 JWT，并按 `sub` 隔离。
+Webhook 仅验 Telegram secret，不接受用户自报 owner。
+单次绑定码关联已验证 Auth0 身份；群绑定另查 Telegram 管理员身份。
+新建独立群会话，不复用私人会话。
+绑定与投递规则见 [MESSAGING](tavern/MESSAGING.md)。
+
 Hasbai 应用权限统一使用 `scope.resource:action`。四个应用的全量管理权限为 `financial.all:all`、`blog.all:all`、`tavern.all:all`、`zboard.all:all`。同一 audience 的 Vaultwarden 使用 `vaultwarden.all:all`，实现位于独立仓库。代码不接受旧权限名；Auth0 已删除五个旧定义及角色授权。已签发旧令牌须重新登录取得新权限，改名不撤销现有 JWT。
 
 | API | audience | 使用情况 | RBAC | Access Token 权限 |

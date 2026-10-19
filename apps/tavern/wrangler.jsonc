@@ -22,11 +22,12 @@
       "/health"
     ]
   },
-  "secrets": { "required": ["AIG_RP_RUN_TOKEN"] },
+  "secrets": { "required": ["AIG_RP_RUN_TOKEN", "TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET"] },
   "vars": {
     "AUTH0_DOMAIN": "auth.hasbai.xyz",
     "AUTH0_AUDIENCE": "https://financial.hasbai.xyz/api",
-    "AIG_GATEWAY_ID": "default"
+    "AIG_GATEWAY_ID": "default",
+    "TELEGRAM_BOT_USERNAME": "saki_main_bot"
   },
   "ai": {
     "binding": "AI",
@@ -66,6 +67,10 @@
       {
         "name": "SESSIONS",
         "class_name": "TavernSession"
+      },
+      {
+        "name": "MESSAGE_INBOX",
+        "class_name": "MessageInbox"
       }
     ]
   },
@@ -75,6 +80,10 @@
       "new_sqlite_classes": [
         "TavernSession"
       ]
+    },
+    {
+      "tag": "messaging-v1",
+      "new_sqlite_classes": ["MessageInbox"]
     }
   ]
 }
