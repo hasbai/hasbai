@@ -42,14 +42,15 @@ export class ConversationContext {
  summary: Summary | null = null;
  private wireProjection:ReturnType<typeof buildPrompt>|null=null;
  constructor(readonly history: Message[], readonly card: JsonObject, readonly books: Book[], readonly settings: Settings,
-  public contextTokens: number | null, readonly options: { protocol: string; inputRatio: number; state?:string; summaryTask?:string },
+  public contextTokens: number | null, readonly options: { protocol: string; inputRatio: number; state?:string; summaryTask?:string; currentInput?:Message },
   readonly infer: (messages: PromptMessage[]) => Promise<string>,
   readonly onCompression?: (status:'running'|'completed'|'error',result:unknown)=>Promise<void>) {}
  async restore(raw?: string | null) { this.summary = await validSummary(raw, this.history); }
  useProjection(messages:PromptMessage[]){this.wireProjection=this.extend({...this.prompt(),messages:messages.map(m=>structuredClone(m))},[]);}
  prompt(projection: { protocol: string } = this.options, suffix: PromptMessage[] = []) {
   if(this.wireProjection)return this.extend(this.wireProjection,suffix);
-  const base = buildPrompt(this.card,this.books,this.history.slice(this.summary?.covered.length??0),this.settings,this.contextTokens,
+  const history=[...this.history.slice(this.summary?.covered.length??0),...(this.options.currentInput?[this.options.currentInput]:[])];
+  const base = buildPrompt(this.card,this.books,history,this.settings,this.contextTokens,
    {...this.options,...projection,summary:this.summary?.text});
   return suffix.length ? this.extend(base,suffix) : base;
  }
@@ -67,25 +68,20 @@ export class ConversationContext {
  async compress() {
   const before=this.prompt().estimatedTokens;
   await this.onCompression?.('running',{estimatedTokens:before});
-  const previous=this.summary;try {
+  const previous=this.summary,previousProjection=this.wireProjection;try {
   this.wireProjection=null;
-  const offset = this.summary?.covered.length ?? 0, remaining = this.history.slice(offset);
-  const turns: Message[][] = [];
-  for (const m of remaining) { if (m.role === 'user' || !turns.length) turns.push([]); turns.at(-1)!.push(m); }
-  if (turns.length >= 2) {
-   const count=Math.min(turns.length-1,Math.max(turns[0][0].role==='assistant'?2:1,Math.floor(turns.length/2)));
-   const older = turns.slice(0,count).flat();
-   const text = await this.summarize(this.summary?.text ?? '', older);
-   const covered = this.history.slice(0, offset + older.length);
-   this.summary = { text, covered: covered.map(m => m.id), fingerprint: await fingerprint(covered) };
+  const remaining = this.history.slice(this.summary?.covered.length ?? 0);
+  if (remaining.length) {
+   const text = await this.summarize(this.summary?.text ?? '', remaining);
+   this.summary = { text, covered: this.history.map(m => m.id), fingerprint: await fingerprint(this.history) };
   } else {
    if (this.summary) {
-    this.summary = { ...this.summary, text: await this.summarize('', [{ ...remaining[0], role: 'user', content: this.summary.text }]) };
+    this.summary = { ...this.summary, text: await this.summarize(this.summary.text, []) };
    } else throw new Error('当前输入与角色设定超过模型上下文，无法压缩历史');
   }
   if(this.prompt().estimatedTokens>=before)throw Error('会话压缩未缩短输入');
   await this.onCompression?.('completed',{summary:this.summary,previousTokens:before,estimatedTokens:this.prompt().estimatedTokens});
-  }catch(error){this.summary=previous;await this.onCompression?.('error',{error:(error as Error).message});throw error;}
+  }catch(error){this.summary=previous;this.wireProjection=previousProjection;await this.onCompression?.('error',{error:(error as Error).message});throw error;}
  }
  private async summarize(previous:string,history:Message[]){
   const options={contextTokens:this.contextTokens,inputRatio:this.options.inputRatio,infer:this.infer,task:this.options.summaryTask};

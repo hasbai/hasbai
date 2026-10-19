@@ -59,8 +59,10 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
   lore=new LoreIndex(store.storage.sql,[...(embedded?[{id:'character',book:parseBook(embedded)}]:[]),...books.filter(b=>b.enabled).map(b=>({id:b.id,book:parseBook(JSON.parse(b.book_json),b.name)}))],(texts,signal)=>embeddings(env,texts,username,requestId,signal),abort.signal,base);
   agent=new AgentTurn(before,base,regenerate?[...base].reverse().find(m=>m.role==='user'):userMessage,(hit,offset)=>lore.read(hit,offset));
   projectionContext={character:JSON.parse(row.character_json),books:books.map(b=>[b.id,b.enabled,b.book_json]),settings:JSON.parse(row.settings_json),tools:AGENT_TOOLS,prompts:promptDocument,contextOptions,directorRule,promptVersion:9};
-  conversation=new ConversationContext([...base,...(regenerate?[]:[userMessage])],JSON.parse(row.character_json),books.filter(b=>b.enabled).map(b=>parseBook(JSON.parse(b.book_json),b.name)),settings(JSON.parse(row.settings_json)),capability.contextTokens,{...contextOptions,inputRatio:capability.inputRatio,state:stateContext(before)},messages=>summarizeWithModel(env,username,requestId,settings(JSON.parse(row.settings_json)),messages,abort.signal),observeCompression);
-  if(!regenerate)await conversation.restore(row.summary_json);
+  const currentInput=regenerate?(base.at(-1)?.role==='user'?base.at(-1):undefined):userMessage;
+  const contextHistory=currentInput&&base.at(-1)?.id===currentInput.id?base.slice(0,-1):base;
+  conversation=new ConversationContext(contextHistory,JSON.parse(row.character_json),books.filter(b=>b.enabled).map(b=>parseBook(JSON.parse(b.book_json),b.name)),settings(JSON.parse(row.settings_json)),capability.contextTokens,{...contextOptions,inputRatio:capability.inputRatio,state:stateContext(before),currentInput},messages=>summarizeWithModel(env,username,requestId,settings(JSON.parse(row.settings_json)),messages,abort.signal),observeCompression);
+  await conversation.restore(row.summary_json);
   prompt=conversation.prompt();
   {const previous=base.at(-1),saved=previous?store.projection(previous.id):null;
    if(saved&&saved.messages[0]?.content===prompt.messages[0]?.content&&saved.key===await contentHash([projectionContext,base.map(m=>[m.id,m.content])])){
@@ -71,7 +73,7 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
   modelInput(settings(JSON.parse(row.settings_json)));
   await owns();store.start(assistantId,regenerate?undefined:userMessage,{id:assistantId,role:'assistant',content:'',status:'pending',ordinal:assistantOrdinal,requestId,createdAt:messageTime+1},before,target?.id);ready=true;
  }catch(error){clearInterval(stopWatcher);abort.abort();try{store.release(assistantId);}finally{await onSettled(assistantId);}if(error instanceof Error&&error.message.includes('上下文上限'))throw new HttpError(400,error.message);throw error;}
- const sourceHistory=structuredClone(conversation.history);let checkpoint=regenerate?null:row.summary_json;
+ const sourceHistory=structuredClone([...conversation.history,...(conversation.options.currentInput?[conversation.options.currentInput]:[])]);let checkpoint=conversation.summary?JSON.stringify(conversation.summary):null;
  let disconnected=false;let output='';let finishReason:FinishReason='interrupted';let model='';let gatewayLogId:string|null=null;let metrics=new InferenceMetrics();let firstModelStarted:number|null=null;let modelRequests=0;let firstBodyAt:number|null=null;let candidates:string[]=[];let parser=new CandidateStream(candidateDelimiter());let parserFinished=false;let candidateOutcome='not-started';let candidateError='';let bodyModel='';let bodyGatewayLogId:string|null=null;let bodyFinishedAt:number|null=null;let candidateStartedAt:number|null=null;let candidateFirstAt:number|null=null;let candidateFinishedAt:number|null=null;let bodyRequests=0;let director:DirectorAgent|undefined;let synopsisRequests=0;let synopsisSource='not-started';let synopsisCovered=0;let synopsisMetrics:ReturnType<InferenceMetrics['snapshot']>|null=null;let synopsisGatewayLogId:string|null=null;let synopsisModel='';let synopsisElapsedMs=0;let directorStartedAt:number|null=null;let bodyMetrics:ReturnType<InferenceMetrics['snapshot']>|null=null;
 
  let transport!:TransformStreamDefaultController<Uint8Array>,ending=false;
@@ -95,7 +97,6 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
   let status:Message['status']='completed';let failure='';
   try{
    await send({type:'start',messageId:assistantId,requestId});
-   await report('body','body','running','对话生成');
    const opts=settings(JSON.parse(row.settings_json));
    prompt=await conversation.fit();await publishContext();
    const saveSummary=async()=>{await owns();if(conversation.summary?.covered.includes(assistantId))return;checkpoint=conversation.summary?JSON.stringify(conversation.summary):null;const saved=store.saveSummary(assistantId,checkpoint);if(!saved){abort.abort();throw new Error('生成已停止');}if(conversation.contextTokens!==null)await recordFeedback(env,capability,{contextLimit:conversation.contextTokens});};
@@ -150,7 +151,6 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
    if(problems.length){finishReason='invalid_output';throw Error('正文输出异常');}
    finishReason='stop';
    await owns();if(!store.saveOutput(assistantId,output))throw Error('生成已停止');
-   await report('body','body','completed','对话生成',{characters:output.length,usage:bodyMetrics});
    await report('director','director','running','Director · 下一步');
    await send({type:'candidates_pending',messageId:assistantId});
    const committedHistory=storyMessages([...store.messages().filter(m=>m.id!==assistantId),{id:assistantId,role:'assistant',content:output,status:'completed',ordinal:store.findMessage(assistantId)!.ordinal,requestId,createdAt:now}]);
@@ -170,7 +170,7 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
     let fallback:ConversationContext|undefined;
     const rebuild=async(limit:number|null)=>{
      if(!fallback){
-      fallback=new ConversationContext(structuredClone(committedHistory.filter(m=>m.id!==assistantId)),conversation.card,conversation.books,opts,limit,{...contextOptions,inputRatio:capability.inputRatio},synopsisOptions.infer,observeCompression);
+      fallback=new ConversationContext(structuredClone(committedHistory.filter(m=>m.id!==assistantId&&m.id!==conversation.options.currentInput?.id)),conversation.card,conversation.books,opts,limit,{...contextOptions,inputRatio:capability.inputRatio,currentInput:conversation.options.currentInput},synopsisOptions.infer,observeCompression);
       await fallback.restore(conversation.summary?JSON.stringify(conversation.summary):null);
      }
      fallback.contextTokens=limit;

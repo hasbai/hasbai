@@ -1,7 +1,7 @@
 import { directCommand } from '../shared/commands';
 import type { AgentActivity, ContextUsage } from '../shared/types';
 import { sessionContext, contextUsage } from './session-context';
-import { summarizeWithModel } from './context';
+import { summarizeWithModel, validSummary } from './context';
 import { DurableObject } from 'cloudflare:workers';
 import { SessionStore, SESSION_SCHEMA } from './session-store';
 import { storyMessages } from './agent';
@@ -112,9 +112,12 @@ export class TavernSession extends DurableObject<Env> {
   const store=await this.load(owner,id);if(this.active)throw new HttpError(409,'请先停止生成');
   const action=data.action;if(action!=='edit'&&action!=='delete')throw new HttpError(400,'消息操作无效');
   const content=string(data.content).trim();if(action==='edit'&&(!content||content.length>24000))throw new HttpError(400,'消息需为 1–24000 字符');
-  store.truncate(string(data.messageId),action,content);await this.scheduleSync();return {ok:true};
+  const hadSummary=await validSummary(store.get().summary_json,storyMessages(store.messages()));
+  store.truncate(string(data.messageId),action,content);await this.scheduleSync();
+  if(hadSummary&&!store.get().summary_json&&storyMessages(store.messages()).length&&string(data.username).trim())await this.command(owner,id,{content:'/compress',requestId:crypto.randomUUID(),username:data.username},true);
+  return {ok:true};
  }
- private async command(owner:string,id:string,data:Record<string,unknown>){
+ private async command(owner:string,id:string,data:Record<string,unknown>,waitForCompletion=false){
   const store=await this.load(owner,id),command=directCommand(string(data.content));
   if(!command)throw new HttpError(400,'命令无效');
   const requestId=string(data.requestId);if(!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(requestId))throw new HttpError(400,'请求 ID 无效');
@@ -132,7 +135,7 @@ export class TavernSession extends DurableObject<Env> {
    store.transaction(()=>{store.saveCheckpoint(requestId,JSON.stringify(context.summary));store.activity({...value,status:'completed',result:{summary:context.summary,before,after:contextUsage(context)}});});
   }catch(error){store.activity({...value,status:abort.signal.aborted?'stopped':'error',error:(error as Error).message});}
   finally{clearInterval(timer);try{store.release(requestId);}finally{await this.settled(requestId);}}})();
-  this.ctx.waitUntil(work);return {ok:true};
+  this.ctx.waitUntil(work);if(waitForCompletion)await work;return {ok:true};
  }
  private async remove(owner:string,id:string){
   if(this.active)throw new HttpError(409,'请先停止生成');

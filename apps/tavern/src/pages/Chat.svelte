@@ -12,7 +12,7 @@
  let {api,initialId='',onlibrary}:{api:Api;initialId?:string;onlibrary:()=>void}=$props();
  let text=$state('');
  let activities=$state<AgentActivity[]>([]),context=$state<ContextUsage>(),commandOpen=$state(false),commandIndex=$state(-1),contextOpen=$state(false),deleteMessage=$state<Message>(),messageDeleteOpen=$state(false);
- const commands=[{id:'compress',label:'/compress',description:'压缩较早上下文'},{id:'ooc',label:'/ooc',description:'本行写系统指令，换行写对白'},{id:'status',label:'/status',description:'查看状态与上下文'}] as const;
+ const commands=[{id:'compress',label:'/compress',description:'压缩全部对话上下文'},{id:'ooc',label:'/ooc',description:'本行写系统指令，换行写对白'},{id:'status',label:'/status',description:'查看状态与上下文'}] as const;
  let availableCommands=$derived(commands.filter(c=>!text.trim().startsWith('/')||c.label.startsWith(text.trim())));
  let usedTokens=$derived((context?.estimatedTokens??0)+Math.ceil(estimateTokens(userPrompt(text))*(context?.inputRatio??1.2))+(text.trim()?8:0));
  let percent=$derived(context?.contextTokens?Math.round(usedTokens/context.contextTokens*100):null);
@@ -71,12 +71,12 @@
    <!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard users must be able to scroll the reading region.) -->
    <div class="message-log" bind:this={log} role="log" tabindex="0" aria-label="消息历史" aria-live="off">
     <div class="reading-column">
-     {#each messages as m(m.id)}
+     <AgentActivities activities={activities.filter(a=>a.messageId===null&&a.ordinal<(messages[0]?.ordinal??Infinity))}/>
+     {#each messages as m,i(m.id)}
       <article class="message" class:from-user={m.role==='user'} aria-label={`${m.role==='user'?'你的消息':'角色回复'}，第 ${m.ordinal+1} 条`}>
        <div class="message-body">
         {#if m.content}<p class="message-text">{m.content}</p>{/if}
         <AgentActivities activities={activities.filter(a=>a.messageId===m.id)}/>
-        {#if m.status==='pending'}<span class="status" role="status">{activities.filter(a=>a.messageId===m.id&&a.status==='running').at(-1)?.title??'对话生成 · 等待模型输出'}</span>{/if}
         {#if m.status==='error'||m.status==='aborted'}
          <div class="message-outcome" role="status"><span>{m.finishReason?generationNotice(m.finishReason):m.status==='aborted'?'已停止生成':'生成失败，请重试'}</span>
          </div>
@@ -99,8 +99,8 @@
         {/if}
        </div>
       </article>
+      <AgentActivities activities={activities.filter(a=>a.messageId===null&&a.ordinal>=m.ordinal&&a.ordinal<(messages[i+1]?.ordinal??Infinity))}/>
      {/each}
-     <AgentActivities activities={activities.filter(a=>a.messageId===null)}/>
     </div>
    </div>
    <form class="composer" onsubmit={e=>{e.preventDefault();void send();}}>

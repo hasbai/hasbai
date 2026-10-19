@@ -103,7 +103,7 @@ export default {
      return new Response(lines.map(l=>JSON.stringify(l)).join('\n')+'\n',{headers:{'Content-Type':'application/x-ndjson','Content-Disposition':`attachment; filename*=UTF-8''${encodeURIComponent(row.title+'.jsonl')}`,'Cache-Control':'no-store'}});
     }
     if(method==='POST'&&chat[2]==='command')return json(await callSession(env,owner,id,'command',{...await body(request),username:authenticatedUsername(user)}));
-    if((method==='PATCH'||method==='DELETE')&&chat[2]==='messages')return json(await callSession(env,owner,id,'changeMessage',{...await body(request),action:method==='DELETE'?'delete':'edit'}));
+    if((method==='PATCH'||method==='DELETE')&&chat[2]==='messages')return json(await callSession(env,owner,id,'changeMessage',{...await body(request),action:method==='DELETE'?'delete':'edit',username:user.username}));
     if(!chat[2]&&method==='GET')return json(await callSession(env,owner,id,'read'));
     if(!chat[2]&&method==='PATCH')return json(await callSession(env,owner,id,'update',await body(request)));
     if(!chat[2]&&method==='DELETE')return json(await callSession(env,owner,id,'remove'));

@@ -128,9 +128,9 @@ try{
  recalled=await(await call('memory','read')).json();assert.equal(recalled.value.messages.at(-1).status,'completed');assert.equal((await(await call('memory','generate',{requestId:memoryRequest})).json()).replayed,true);assert.equal((await(await call('memory','remove')).json()).ok,true);
  const proseRestored=await(await call('tool-prose','read')).json();assert.equal(proseRestored.value.messages.at(-1).content,'😀'.repeat(2201));assert.equal(proseRestored.value.session.state.scene,null);assert.equal((await(await call('tool-prose','remove')).json()).ok,true);
  for(const [id,content,expected]of [['restart-draft','正文时重启','重启前半句。'],['restart-review','候选时重启','你好。']]){
-  const pending=await call(id,'generate',{requestId:crypto.randomUUID(),content}),reader=pending.body.getReader();await reader.read();
+  const pending=await call(id,'generate',{requestId:crypto.randomUUID(),content}),reader=pending.body.getReader();let wire=new TextDecoder().decode((await reader.read()).value);
   // This fixture never sends stop: body must arrive while the upstream request is still open.
-  if(id==='restart-draft'){let frame='';while(!frame.includes('\"type\":\"delta\"'))frame=new TextDecoder().decode((await reader.read()).value);assert.match(frame,/重启前半句。/);}
+  if(id==='restart-draft'){while(!wire.includes('\"type\":\"delta\"'))wire+=new TextDecoder().decode((await reader.read()).value);assert.match(wire,/重启前半句。/);}
   let checkpoint;for(let n=0;n<100;n++){checkpoint=await(await call(id,'inspect')).json();if(checkpoint.drafts.length)break;await new Promise(r=>setTimeout(r,10));}assert.equal(checkpoint.drafts[0]?.content,expected);
   assert.equal((await(await call(id,'read')).json()).value.messages.at(-1).content,id==='restart-draft'?'':expected);await runtime.dispose();runtime=new Miniflare(convertV4MiniflareOptions(options));
   const recovered=await(await call(id,'read')).json();assert.equal(recovered.value.messages.at(-1).content,expected);assert.equal(recovered.value.messages.at(-1).status,'aborted');assert.equal(recovered.value.messages.at(-1).finishReason,'interrupted');assert.equal(recovered.value.session.state.scene,null);assert.deepEqual((await(await call(id,'inspect')).json()).drafts,[]);assert.equal((await(await call(id,'remove')).json()).ok,true);
