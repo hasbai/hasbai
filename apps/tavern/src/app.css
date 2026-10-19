@@ -169,7 +169,7 @@ input:not([type=checkbox]),select,textarea{border:1px solid var(--border);border
 
 .creator-title{font-size:25px;letter-spacing:-.03em}
 .creator-dialog [data-slot="dialog-header"]{flex-shrink:0;text-align:left;padding-right:24px}
-.creator-scroll{min-height:0;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:20px;padding:2px 6px 12px 2px}
+.creator-scroll{min-height:0;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:20px;padding:2px 2px 12px;scrollbar-width:none}
 .creator-ai{display:flex;flex-direction:column;gap:10px}
 .creator-section-heading{display:flex;align-items:center;gap:10px}
 .creator-section-heading h2{font-size:16px;letter-spacing:-.01em}
@@ -180,13 +180,16 @@ input:not([type=checkbox]),select,textarea{border:1px solid var(--border);border
 .creator-ai-actions button{flex-shrink:0}
 .creator-fields{border:0;margin:0;padding:0;min-width:0;display:flex;flex-direction:column;gap:24px}
 .creator-section{display:flex;flex-direction:column;gap:16px;padding:0 2px}
-.creator-section+.creator-section{border-top:1px solid var(--border);padding-top:24px}
+.creator-section+.creator-section{padding-top:8px}
 .creator-identity{display:grid;grid-template-columns:80px minmax(0,1fr);gap:16px;align-items:center}
 .creator-avatar{display:grid;place-items:center;width:80px;height:80px;background:var(--muted);border-radius:16px;overflow:hidden;color:var(--muted-foreground);flex-shrink:0}
 .creator-avatar img{width:100%;height:100%;object-fit:cover}
 .creator-avatar .avatar{width:80px;height:80px}
 .creator-avatar-actions{display:flex;gap:8px;flex-wrap:wrap}
-.creator-scroll [readonly]{background:transparent;box-shadow:none;color:var(--foreground)}
+.creator-scroll::-webkit-scrollbar,.creator-scroll textarea::-webkit-scrollbar{display:none}
+.creator-scroll textarea{scrollbar-width:none}
+.creator-tools{border:0;padding:0;margin:0;min-width:0}
+.creator-tools .actions{display:flex;gap:8px}
 .creator-greeting{width:100%;min-width:0}
 .creator-greeting select{width:100%;min-width:0}
 .creator-section .field{gap:6px}
@@ -198,14 +201,14 @@ input:not([type=checkbox]),select,textarea{border:1px solid var(--border);border
 .creator-alternates .creator-section-heading{justify-content:space-between}
 .creator-alternate{display:flex;gap:8px;align-items:start}
 .creator-alternate textarea{flex:1;min-width:0}
-.creator-advanced{border-top:1px solid var(--border);padding-top:12px}
+.creator-advanced{padding-top:4px}
 .creator-advanced summary{cursor:pointer;min-height:44px;padding:10px 2px;font-weight:500}
 .creator-advanced .creator-section{padding-top:12px}
 .creator-two-fields{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.creator-footer{margin-top:auto;flex-shrink:0;display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;border-top:1px solid var(--border);padding-top:16px;gap:12px}
+.creator-footer{margin-top:auto;flex-shrink:0;display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;padding-top:8px;gap:12px}
 .creator-footer>span{font-size:12px}
 .creator-footer .actions{display:flex;gap:8px}
-.creator-scroll textarea:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.creator-scroll textarea:focus-visible{outline:1px solid var(--ring);outline-offset:1px}
 
 @media(max-width:640px){[data-slot="dialog-content"].creator-dialog{width:100%;max-width:100%;height:calc(100dvh - 32px);padding:22px 16px max(16px,env(safe-area-inset-bottom));border-radius:20px;gap:16px}
 .creator-dialog [data-slot="dialog-header"]{text-align:left}

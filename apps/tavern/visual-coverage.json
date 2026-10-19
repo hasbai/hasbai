@@ -89,7 +89,8 @@
             "character-edit.png"
           ]
         }
-      ]
+      ],
+      "description": "点开角色直接编辑，初始焦点在弹窗容器；隐藏滚动条与分隔线，保留滚动、保存和取消。"
     },
     {
       "id": "discover",
