@@ -79,22 +79,16 @@ Bot token 和 webhook secret 仅保存在服务端。
 没有覆盖时使用内置角色卡。
 用户已确认不迁移旧聊天记录；新会话从绑定时开始。
 
-旧 Saki DO 和记忆原地保留，不作破坏性清理。
-旧 Worker 仅保留 webhook 兼容转发和页面跳转。
-旧 Agent、模型诊断及工具入口返回 410。
+2026-10-19 已切换到 Tavern，并按用户要求删除旧记录和专属资源。
+旧 Worker、四个 DO namespace、提示词 KV 和兼容域名已删除。
+旧 Access 应用、测试令牌和自动构建配置已删除。
+旧域名不再提供转发或跳转。
+Telegram bot、当前绑定和 Tavern 新会话继续使用。
+共享 Gateway、模型 provider 与构建令牌按实际引用保留。
 
 生产接管须分别核验 webhook、绑定、真实消息收发及 Gateway 路由。
 本地模拟测试不能证明 Telegram 真实投递成功。
 
-切换脚本在应用目录运行：
-
-```sh
-node scripts/saki-cutover.mjs --source <Saki checkout> --inspect
-node scripts/saki-cutover.mjs --source <Saki checkout> --prepare
-node scripts/saki-cutover.mjs --source <Saki checkout> --import-prompt --credentials <local env>
-node scripts/saki-cutover.mjs --source <Saki checkout> --switch
-```
-
-prepare 仅复制两个 Telegram secret。
-import-prompt 通过正常登录把线上角色文案安装为本人私有卡片。
-部署及数据库迁移仍按 [TESTING](../TESTING.md)执行。
+`scripts/saki-cutover.mjs` 仅保留切换实现供追溯。
+旧项目的本地凭据和运行缓存已清理，不再重复执行旧切换流程。
+后续部署及数据库迁移按 [TESTING](../TESTING.md)执行。
