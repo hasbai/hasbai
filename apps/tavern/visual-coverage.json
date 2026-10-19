@@ -404,7 +404,7 @@
     {
       "id": "telegram",
       "kind": "screenshot",
-      "description": "Telegram 角色绑定、单次绑定码与不明发送处理。",
+      "description": "Telegram 角色与对话 ID 绑定、单次绑定码与不明发送处理。",
       "evidence": [
         {
           "spec": "e2e/tavern.spec.ts",
@@ -418,6 +418,12 @@
             "telegram-code.png",
             "telegram-attention.png"
           ]
+        },
+        {
+          "spec": "e2e/tavern.spec.ts",
+          "test": "telegram binds a chat ID with an optional topic and retains values after a rejected request",
+          "projects": ["iphone", "desktop"],
+          "snapshots": ["telegram-id-error.png", "telegram-id-bound.png"]
         }
       ]
     },

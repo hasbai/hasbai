@@ -3,6 +3,8 @@ import { addressed, splitTelegram, telegramApi, TelegramError, telegramText, typ
 import { callSession, sessionStub } from './session-object';
 import { type ChannelRoute } from './channels';
 import { HttpError } from './http';
+import { directCommand } from '../shared/commands';
+import { commandReceipt, telegramControl } from './telegram-commands';
 
 export const INBOX_SCHEMA=`
 CREATE TABLE IF NOT EXISTS inbox_jobs (
@@ -31,7 +33,8 @@ export class MessageInbox extends DurableObject<Env> {
   if(!route)return {accepted:false};
   const m=update.message,id=update.update_id;
   if(this.first('SELECT update_id FROM inbox_jobs WHERE update_id=?',id)||this.first('SELECT update_id FROM inbox_seen WHERE update_id=?',id))return {accepted:true};
-  if(!addressed(m,this.env.TELEGRAM_BOT_USERNAME)){
+  const control=telegramControl(m,this.env.TELEGRAM_BOT_USERNAME);
+  if(!control&&!addressed(m,this.env.TELEGRAM_BOT_USERNAME)){
    this.ctx.storage.transactionSync(()=>{this.ctx.storage.sql.exec('INSERT OR IGNORE INTO inbox_seen VALUES(?,?)',id,Date.now());this.ctx.storage.sql.exec('INSERT OR IGNORE INTO inbox_background VALUES(?,?)',id,telegramText(m));this.ctx.storage.sql.exec('DELETE FROM inbox_background WHERE update_id NOT IN (SELECT update_id FROM inbox_background ORDER BY update_id DESC LIMIT 100)');this.ctx.storage.sql.exec('DELETE FROM inbox_seen WHERE received_at<?',Date.now()-7*86400000);});
    return {accepted:true};
   }
@@ -40,14 +43,14 @@ export class MessageInbox extends DurableObject<Env> {
   const group=this.first<{n:number}>('SELECT count(*) AS n FROM inbox_jobs WHERE received_at>?',now-60000)?.n??0;
   if(rate>=15||group>=60)return {accepted:false};
   const background=this.ctx.storage.sql.exec<{text:string}>('SELECT text FROM inbox_background ORDER BY update_id').toArray();
-  let text=telegramText(m);
+  let text=control?.content??telegramText(m);
   // Latest original input is always retained; oldest unsent background is dropped first.
-  for(let i=background.length-1;i>=0;i--){const next=background[i].text+'\n'+text;if(next.length>23500)break;text=next;}
+  if(!control)for(let i=background.length-1;i>=0;i--){const next=background[i].text+'\n'+text;if(next.length>23500)break;text=next;}
   await this.ctx.storage.setAlarm(now+100);
   this.ctx.storage.transactionSync(()=>{
    if(this.first('SELECT update_id FROM inbox_jobs WHERE update_id=?',id))return;
    this.ctx.storage.sql.exec("INSERT OR IGNORE INTO inbox_jobs VALUES(?,?,?,?,?,'queued',?,NULL)",id,route.id,crypto.randomUUID(),m.from.id,text,now);
-   this.ctx.storage.sql.exec('DELETE FROM inbox_background');
+   if(!control)this.ctx.storage.sql.exec('DELETE FROM inbox_background');
   });
   return {accepted:true};
  }
@@ -100,17 +103,19 @@ export class MessageInbox extends DurableObject<Env> {
    }
    if(job.phase==='generating'){
     const view=await callSession(this.env,route.owner,route.session_id,'read');
-    const result=view.messages.find(m=>m.role==='assistant'&&m.requestId===job.request_id);
-    if(!result){
+    const command=directCommand(job.text),activity=command?view.activities?.find(a=>a.id===job.request_id):undefined;
+    const result=command?undefined:view.messages.find(m=>m.role==='assistant'&&m.requestId===job.request_id);
+    if(!result&&!activity){
      // A crash before acceptance is safe to replay with the persisted request UUID.
      if(!view.session.generationId)this.ctx.storage.sql.exec("UPDATE inbox_jobs SET phase='queued' WHERE update_id=? AND phase='generating'",job.update_id);
      return;
     }
-    if(result.status==='pending')return;
-    if(result.status!=='completed'||result.finishReason!=='stop'){this.fail(job,'Tavern 回复未完成，请在酒馆查看');return;}
+    if(activity?.status==='running'||result?.status==='pending')return;
+    if(result&&(result.status!=='completed'||result.finishReason!=='stop')){this.fail(job,'Tavern 回复未完成，请在酒馆查看');return;}
+    const text=activity?commandReceipt(activity):result!.content;
     this.ctx.storage.transactionSync(()=>{
      if(this.first<{phase:string}>('SELECT phase FROM inbox_jobs WHERE update_id=?',job.update_id)?.phase==='cancelled')return;
-     splitTelegram(result.content).forEach((text,ordinal)=>this.ctx.storage.sql.exec('INSERT OR IGNORE INTO inbox_chunks(update_id,ordinal,text) VALUES(?,?,?)',job.update_id,ordinal,text));
+     splitTelegram(text).forEach((text,ordinal)=>this.ctx.storage.sql.exec('INSERT OR IGNORE INTO inbox_chunks(update_id,ordinal,text) VALUES(?,?,?)',job.update_id,ordinal,text));
      this.ctx.storage.sql.exec("UPDATE inbox_jobs SET phase='sending' WHERE update_id=?",job.update_id);
     });
    }

@@ -189,6 +189,13 @@ test('telegram binds a character and resolves uncertain delivery without changin
  const unlink=page.waitForRequest(r=>r.url().endsWith('/telegram/route')&&r.method()==='DELETE');await page.getByRole('button',{name:'解绑',exact:true}).click();await unlink;
  await page.getByRole('button',{name:'查看对话'}).click();await expect(page).toHaveURL(/#chat$/);await expect(page.locator('#message-input')).toBeVisible();
 });
+test('telegram binds a chat ID with an optional topic and retains values after a rejected request',async({page})=>{
+ await fixture(page);await nav(page,'设置');await page.getByText('Telegram 接入',{exact:true}).click();
+ let attempts=0;await page.route('**/api/messaging/telegram/bind',async route=>{expect(route.request().postDataJSON()).toEqual({chatId:'-100456',threadId:'12',characterId:'c1'});if(++attempts===1)await route.fulfill({status:403,json:{message:'需要本人关联 Telegram 账号的群管理员身份'}});else await route.fulfill({status:201,json:{id:'id-bound',sessionId:'s2'}});});
+ await page.getByLabel('对话角色',{exact:true}).selectOption('c1');await page.getByLabel('Telegram 对话 ID',{exact:true}).fill('-100456');await page.getByLabel('话题 ID（可选）',{exact:true}).fill('12');await page.getByRole('button',{name:'绑定对话',exact:true}).click();
+ await expect(page.getByRole('alert')).toContainText('群管理员');await expect(page.getByLabel('Telegram 对话 ID',{exact:true})).toHaveValue('-100456');await expect(page.getByLabel('话题 ID（可选）',{exact:true})).toHaveValue('12');await shot(page,'telegram-id-error.png');
+ await page.getByRole('button',{name:'绑定对话',exact:true}).click();await expect(page.getByText('已绑定 Telegram 对话。',{exact:true})).toBeVisible();await shot(page,'telegram-id-bound.png');
+});
 test('about visualizes the dialogue context and exposes the same application prompts',async({page})=>{
  const capture=async(name:string)=>{await page.evaluate(()=>{if(document.activeElement instanceof HTMLElement)document.activeElement.blur();window.scrollTo(0,0);});await expect.poll(()=>page.evaluate(()=>window.scrollY)).toBe(0);await shot(page,name);};
  await fixture(page);await nav(page,'设置');await page.getByRole('link',{name:'关于',exact:true}).click();await expect(page).toHaveURL(/#about$/);await expect(page.getByRole('heading',{name:'关于酒馆',exact:true})).toBeVisible();await expect(page.getByText('AI SDK → AI Gateway',{exact:true})).toBeVisible();await expect(page.getByText(CAPABILITY_RULES.body,{exact:true})).toBeVisible();

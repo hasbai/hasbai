@@ -157,6 +157,9 @@ KV 使用自身缓存，不叠加进程缓存；更新最终一致，页面提�
 - GET/POST /api/sessions；GET/DELETE /api/sessions/:id；PATCH /api/sessions/:id 配置及可选 characterId。
 - POST /api/sessions/:id/generate；POST /api/sessions/:id/stop；POST /api/sessions/:id/command；PATCH /api/sessions/:id/messages；DELETE /api/sessions/:id/messages；GET /api/sessions/:id/export。
 - GET/PUT /api/settings；GET /api/models。
+- GET /api/messaging/telegram；POST /api/messaging/telegram/codes；POST /api/messaging/telegram/bind。
+- DELETE /api/messaging/telegram/:id；GET /api/messaging/telegram/:id/status；POST /api/messaging/telegram/:id/resolve。
+- POST /api/messaging/telegram/commands：管理员同步固定 Bot 菜单；详情见 [MESSAGING](MESSAGING.md)。
 
 ## 规范与公开来源
 

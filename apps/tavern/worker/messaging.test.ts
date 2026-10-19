@@ -2,16 +2,18 @@ import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync, readdirSync } from 'node:fs';
 import { addressed, splitTelegram, telegramApi, telegramUpdate, TelegramError, type TelegramUpdate } from '@hasbai/messaging';
-import { bindChannel, channelApi, channelCode, type ChannelRoute } from './channels';
+import { bindChannel, bindChannelId, channelApi, channelCode, type ChannelRoute } from './channels';
 import { INBOX_SCHEMA, MessageInbox } from './message-inbox';
 import { telegramWebhook } from './telegram-webhook';
-import { DEFAULT_SETTINGS } from '../shared/types';
+import { DEFAULT_SETTINGS, type AgentActivity } from '../shared/types';
+import { TELEGRAM_COMMANDS, telegramHelp } from './telegram-commands';
+import { userPrompt } from '../shared/commands';
 vi.mock('cloudflare:workers',()=>({DurableObject:class {constructor(public ctx:DurableObjectState,public env:Env){}}}));
 
-let db:DatabaseSync,env:Env,databases:Map<string,DatabaseSync>,inboxes:Map<string,MessageInbox>,modelCalls:ReturnType<typeof vi.fn<(name:string,request:Request)=>Promise<Response>>>,fetcher:ReturnType<typeof vi.fn<()=>Promise<Response>>>,busy:boolean,accepted:boolean;
+let db:DatabaseSync,env:Env,databases:Map<string,DatabaseSync>,inboxes:Map<string,MessageInbox>,modelCalls:ReturnType<typeof vi.fn<(name:string,request:Request)=>Promise<Response>>>,fetcher:ReturnType<typeof vi.fn<(url:string|URL|Request,options?:RequestInit)=>Promise<Response>>>,busy:boolean,accepted:boolean;
 const user={sub:'auth0|owner',username:'月石',email:'owner',admin:false};
 const other={sub:'auth0|other',username:'其他',email:'other',admin:true};
-const views=new Map<string,{session:{generationId:string|null};messages:Record<string,unknown>[]} >();
+const views=new Map<string,{session:{generationId:string|null};messages:Record<string,unknown>[];activities?:AgentActivity[]} >();
 function statement(sql:string,values:unknown[]=[]):D1PreparedStatement{return {bind:(...v:unknown[])=>statement(sql,v),first:async()=>db.prepare(sql).get(...values as never[])??null,all:async()=>({results:db.prepare(sql).all(...values as never[])}),run:async()=>({meta:{changes:Number(db.prepare(sql).run(...values as never[]).changes)}})} as D1PreparedStatement;}
 function inbox(key:string,fresh=false){
  if(!fresh&&inboxes.has(key))return inboxes.get(key)!;
@@ -35,6 +37,9 @@ beforeEach(()=>{
  modelCalls=vi.fn(async(name:string,request:Request)=>{
   const data=await request.json() as {requestId:string;content:string};
   if(busy)return new Response('{}',{status:409});
+  if(data.content==='/status'||data.content==='/compress'){
+   const prior=views.get(name);views.set(name,{session:{generationId:null},messages:prior?.messages??[],activities:[...(prior?.activities??[]),{id:data.requestId,messageId:null,ordinal:0,kind:data.content==='/status'?'status':'compression',title:'命令',status:'completed',result:data.content==='/status'?{state:{scene:'港城'},context:{estimatedTokens:400,contextTokens:32000}}:{before:{estimatedTokens:400},after:{estimatedTokens:100}},createdAt:1}]});return Response.json({ok:true});
+  }
   if(accepted){const prior=views.get(name);if(!prior?.messages.some(m=>m.requestId===data.requestId))views.set(name,{session:{generationId:null},messages:[...(prior?.messages??[]),{id:data.requestId,role:'assistant',content:'你好。',status:'completed',finishReason:'stop',requestId:data.requestId}]});}
   return new Response('data: {}\n\n',{headers:{'Content-Type':'text/event-stream'}});
  });
@@ -53,10 +58,76 @@ it('requires an owner-linked Telegram account and group administrator before gro
  await bind();fetcher.mockResolvedValueOnce(Response.json({ok:true,result:{status:'member'}}));await expect(bindChannel(env,update(2,-1).message,c.code,'group')).rejects.toThrow('群管理员');
  const group=await bindChannel(env,update(2,-1,10).message,c.code,'group');const topic=await bind('group',-1,11);expect(group.sessionId).not.toBe(topic.sessionId);expect(db.prepare('SELECT count(*) AS n FROM sessions').get()?.n).toBe(3);
 });
+it('generates an explicitly addressed group command and binds through the signed webhook before replying to mentions',async()=>{
+ await bind();const c=await code('group');expect(c.command).toBe('/bind@saki_main_bot '+c.code);expect(c.command).toMatch(/^[\x20-\x7e]+$/);
+ const post=(u:TelegramUpdate)=>telegramWebhook(new Request('https://test/api/messaging/telegram/webhook',{method:'POST',headers:{'x-telegram-bot-api-secret-token':'test-secret'},body:JSON.stringify(u)}),env);
+ const binding=update(20,-1,10);binding.message.text=c.command;expect((await post(binding)).status).toBe(200);
+ const group=db.prepare("SELECT * FROM channel_routes WHERE thread_key='[-1,10]'").get() as ChannelRoute;
+ expect(group).toMatchObject({owner:user.sub,chat_id:-1,thread_id:10,active:1});expect(db.prepare('SELECT count(*) n FROM channel_codes').get()?.n).toBe(0);
+ expect(fetcher).toHaveBeenCalledWith(expect.stringContaining('/sendMessage'),expect.objectContaining({body:expect.stringContaining('已连接酒馆')}));
+ fetcher.mockClear();await post(update(21,-1,10));await inbox(group.thread_key).alarm();
+ expect(modelCalls).toHaveBeenCalledTimes(1);expect(fetcher).toHaveBeenCalledWith(expect.stringContaining('/sendMessage'),expect.objectContaining({body:expect.stringContaining('你好。')}));
+ await post(update(22,-1,11));expect(databases.has('[-1,11]')).toBe(false);
+});
 it('scopes cards, routes, status, revocation and resolution to authenticated owner',async()=>{
  await expect(channelCode(env,other,{kind:'private',characterId:'card'})).rejects.toThrow('角色不存在');
  const b=await bind();expect((await(await api('/api/messaging/telegram','GET',other))!.json() as {routes:unknown[]}).routes).toEqual([]);
  for(const [path,method] of [[`/${b.id}`,'DELETE'],[`/${b.id}/status`,'GET'],[`/${b.id}/resolve`,'POST']])await expect(api('/api/messaging/telegram'+path,method,other,{action:'skip'})).rejects.toThrow('绑定不存在');
+});
+function mockChat(type='supergroup',botStatus='member',memberStatus='administrator'){
+ fetcher.mockImplementation(async(url,options)=>{const body=JSON.parse(String(options?.body??'{}'));if(String(url).endsWith('/getChat'))return Response.json({ok:true,result:{id:body.chat_id,type,is_forum:type==='supergroup'}});if(String(url).endsWith('/getMe'))return Response.json({ok:true,result:{id:99}});return Response.json({ok:true,result:{status:body.user_id===99?botStatus:memberStatus}});});
+}
+it('binds only an already owner-linked private Telegram ID and rejects forged IDs',async()=>{
+ db.prepare('INSERT INTO telegram_accounts VALUES(?,?,?)').run(12,user.sub,user.username);mockChat('private');
+ for(const chatId of [0,'x',1.5,'9007199254740992'])await expect(bindChannelId(env,user,{chatId})).rejects.toThrow('有效');
+ await expect(bindChannelId(env,user,{chatId:13})).rejects.toThrow('本人');await expect(bindChannelId(env,other,{chatId:12})).rejects.toThrow('本人');
+ await expect(bindChannelId(env,user,{chatId:12,threadId:1})).rejects.toThrow('话题群');
+ const b=await bindChannelId(env,user,{chatId:'12',characterId:'card'});expect(route(b.id)).toMatchObject({owner:user.sub,chat_id:12,thread_id:0});
+});
+it('verifies group membership and linked administrator identity for ID binding without consuming pending codes',async()=>{
+ await bind();await code('group');mockChat();const b=await bindChannelId(env,user,{chatId:'-100123',threadId:'10',characterId:'card'});
+ expect(route(b.id)).toMatchObject({chat_id:-100123,thread_id:10,owner:user.sub});expect(db.prepare('SELECT count(*) n FROM channel_codes').get()?.n).toBe(1);
+ expect(db.prepare('SELECT settings_json FROM sessions WHERE id=?').get(b.sessionId)?.settings_json).not.toContain('私人');
+ mockChat('supergroup','left');await expect(bindChannelId(env,user,{chatId:-2})).rejects.toThrow('加入');mockChat('supergroup','member','member');await expect(bindChannelId(env,user,{chatId:-2})).rejects.toThrow('管理员');
+ mockChat('channel');await expect(bindChannelId(env,user,{chatId:-2})).rejects.toThrow('仅支持');expect(db.prepare('SELECT count(*) n FROM channel_routes').get()?.n).toBe(2);
+});
+it('checks another linked account when Telegram explicitly rejects the first, but preserves transient failures',async()=>{
+ await bind();db.prepare('INSERT INTO telegram_accounts VALUES(?,?,?)').run(13,user.sub,user.username);mockChat();const normal=fetcher.getMockImplementation()!;
+ fetcher.mockImplementation(async(url,options)=>{const body=JSON.parse(String(options?.body??'{}'));if(String(url).endsWith('/getChatMember')&&body.user_id===12)return Response.json({ok:false},{status:400});return normal(url,options);});
+ const b=await bindChannelId(env,user,{chatId:-3,characterId:'card'});expect(route(b.id).owner).toBe(user.sub);
+ fetcher.mockImplementation(async(url,options)=>{const body=JSON.parse(String(options?.body??'{}'));if(String(url).endsWith('/getChatMember')&&body.user_id===12)throw new TelegramError('uncertain');return normal(url,options);});
+ await expect(bindChannelId(env,user,{chatId:-4,characterId:'card'})).rejects.toMatchObject({kind:'uncertain'});
+});
+it('restricts menu synchronization to administrators and verifies the fixed menu in each scope',async()=>{
+ await bind();await expect(api('/api/messaging/telegram/commands','POST')).rejects.toThrow('管理员');expect(fetcher).not.toHaveBeenCalled();
+ fetcher.mockImplementation(async url=>Response.json({ok:true,result:String(url).endsWith('/getMyCommands')?TELEGRAM_COMMANDS:true}));
+ const r=await api('/api/messaging/telegram/commands','POST',{...user,admin:true});expect(await r!.json()).toMatchObject({commands:TELEGRAM_COMMANDS,verifiedScopes:4});expect(fetcher).toHaveBeenCalledTimes(8);
+ for(const c of TELEGRAM_COMMANDS)expect(telegramHelp('saki_main_bot',true)).toContain('/'+c.command+'@saki_main_bot');
+});
+const webhook=(u:TelegramUpdate)=>telegramWebhook(new Request('https://test/api/messaging/telegram/webhook',{method:'POST',headers:{'x-telegram-bot-api-secret-token':'test-secret'},body:JSON.stringify(u)}),env);
+it('provides help, IDs and usage without model input and ignores commands for another bot',async()=>{
+ for(const text of ['/help@saki_main_bot','/start','/bind@saki_main_bot','/id@saki_main_bot','/ooc@saki_main_bot']){const u=update(10,-1,10);u.message.text=text;await webhook(u);}
+ expect(fetcher).toHaveBeenCalledTimes(5);expect(modelCalls).not.toHaveBeenCalled();
+ const texts=fetcher.mock.calls.map(call=>JSON.parse(String(call[1]?.body)).text);expect(texts.join('\n')).toContain('对话 ID：-1');expect(texts.join('\n')).toContain('/compress@saki_main_bot');
+ const u=update();u.message.text='/help@other';await webhook(u);expect(fetcher).toHaveBeenCalledTimes(5);
+});
+it('runs native status/compression commands once through persistent activities and preserves background messages',async()=>{
+ await bind();const b=await bind('group',-1),bg=update(30,-1);bg.message.text='群聊背景';await inbox(b.key).receive(b.id,bg);
+ for(const [i,name]of ['status','compress'].entries()){const u=update(40+i,-1);u.message.text='/'+name+'@saki_main_bot';await webhook(u);await inbox(b.key,true).alarm();await webhook(u);await inbox(b.key,true).alarm();}
+ expect(modelCalls).toHaveBeenCalledTimes(2);expect(databases.get(b.key)!.prepare('SELECT count(*) n FROM inbox_background').get()?.n).toBe(1);
+ expect(databases.get(b.key)!.prepare('SELECT phase FROM inbox_jobs ORDER BY update_id').all()).toEqual([{phase:'done'},{phase:'done'}]);
+ expect(fetcher.mock.calls.map(c=>JSON.parse(String(c[1]?.body)).text).join('\n')).toContain('上下文已压缩');expect(fetcher.mock.calls.map(c=>JSON.parse(String(c[1]?.body)).text).join('\n')).toContain('港城');
+});
+it('waits for command activity completion and delivers a terminal failure instead of requeueing forever',async()=>{
+ const b=await bind(),u=update();u.message.text='/compress';
+ modelCalls.mockImplementationOnce(async(name,request)=>{const d=await request.json() as {requestId:string};views.set(name,{session:{generationId:d.requestId},messages:[],activities:[{id:d.requestId,messageId:null,ordinal:0,kind:'compression',title:'压缩',status:'running',createdAt:1}]});return Response.json({ok:true});});
+ await webhook(u);await inbox(b.key).alarm();expect(fetcher).not.toHaveBeenCalled();const view=[...views.values()][0];view.session.generationId=null;view.activities![0].status='error';
+ await inbox(b.key,true).alarm();expect(modelCalls).toHaveBeenCalledTimes(1);expect(databases.get(b.key)!.prepare('SELECT phase FROM inbox_jobs').get()?.phase).toBe('done');expect(fetcher.mock.calls.map(c=>JSON.parse(String(c[1]?.body)).text).join()).toContain('未完成');
+});
+it('keeps OOC on its own instruction line with speaker identity and denies other members control of the session',async()=>{
+ await bind();const b=await bind('group',-1),u=update(30,-1);u.message.text='/ooc@saki_main_bot 放慢节奏\n我走到窗边';
+ await webhook(u);const content=String(databases.get(b.key)!.prepare('SELECT text FROM inbox_jobs').get()?.text);await inbox(b.key).alarm();expect(content).toContain('"id":12');expect(userPrompt(content)).toContain('[OOC：');expect(userPrompt(content)).toContain('放慢节奏');expect(userPrompt(content)).toContain('我走到窗边');
+ const outsider=update(31,-1);outsider.message.from.id=13;outsider.message.text='/status@saki_main_bot';await webhook(outsider);await inbox(b.key).alarm();expect(modelCalls).toHaveBeenCalledTimes(1);expect(fetcher.mock.calls.map(c=>JSON.parse(String(c[1]?.body)).text).join()).toContain('绑定账号');
 });
 it('cannot take over an already linked Telegram account with another owner code',async()=>{
  await bind();const c=await channelCode(env,other,{kind:'private',characterId:'other-card'});
