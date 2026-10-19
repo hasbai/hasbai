@@ -24,6 +24,7 @@
 ## 校验与交付
 
 环境摘要运行 `node scripts/local-environment.mjs info`；依赖准备和快捷操作见 [Codex 本地环境](README.md#codex-本地环境)。
+云环境的 x86_64 本地开发使用 `node scripts/cloud-dev.mjs run <命令>`，复用 CI 的版本与配置。ARM CI 和截图基线流程保持不变。
 
 修改前按[TESTING](docs/TESTING.md)确认本地检查、截图、迁移与交付路径。该文档统一维护必需状态、CI 等待、子代理发布、squash 合并、允许直推和自动部署核验规则，应用文档不重复流程。
 

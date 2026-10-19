@@ -36,6 +36,11 @@ git diff --check
 
 视觉 CI 与本地截图统一使用 `docker/visual-ci/Dockerfile` 构建的 Linux ARM64 镜像，并按镜像 digest 固定 Playwright 1.63.0、Node 24、pnpm 10.33.2 和 CJK 字体。镜像发布工作流是 `.github/workflows/visual-image.yml`；四个应用的视觉 job 使用同一个 digest，单元任务仍运行在 Ubuntu。日常 `pnpm visual:local` 从相对 `origin/main` 的 Financial 页面改动选择清单场景；Blog、Zboard、Tavern 分别用 `pnpm visual:blog`、`pnpm visual:zboard`、`pnpm visual:tavern`。
 
+云环境的 x86_64 本地开发使用 [amd64 开发镜像](../README.md#codex-本地环境)，避免 ARM 模拟开销。
+该镜像复用 CI 的安装步骤与版本，适用于本地检查和服务启动。
+需要局部预览时，可通过 `cloud-dev.mjs run` 执行 `node scripts/visual-capture.mjs <应用> <场景ID>`。
+这些截图仅作本地预览；导入 CI 基线仍须使用上述 ARM64 截图流程。
+
 共享组件、样式、夹具或 `packages/` 改动须指定可重复的 `--page <源页面>` 或 `--all`。首次生成 Linux 基线运行 `--all`。审阅图在各应用忽略的 `.local-visual/<时间>/review/`；审阅后从仓库根运行 `pnpm visual:baseline:import-local <该次运行目录> --reviewed`，校验源码和 PNG 后导入本次截图。旧 macOS PNG 已清理；日常只维护 `linux-ci` 基线。
 
 普通运行使用 `updateSnapshots: none`，缺少图片或超出差异即失败；PR 的 CI 不自动更新、不重试掩盖不稳定。远端候选截图模式已移除；审阅并导入本地 PNG 后，普通 PR 严格比较。

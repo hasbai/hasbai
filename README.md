@@ -37,6 +37,24 @@ Zboard 与酒馆的 API 操作先构建，再启动本地 Worker。
 API 命令为 `node scripts/local-environment.mjs api <zboard|tavern>`。
 类型检查不替代[提交前检查](docs/TESTING.md#运行)。
 
+云环境的 Linux x86_64 开发使用本地 amd64 镜像：
+
+```sh
+node scripts/cloud-dev.mjs build
+node scripts/cloud-dev.mjs run env CI=true pnpm install --frozen-lockfile
+node scripts/cloud-dev.mjs run pnpm --filter blog typecheck
+node scripts/cloud-dev.mjs run --publish 127.0.0.1:5174:5174 -- pnpm dev:blog --host 0.0.0.0
+```
+
+不传命令时进入 Bash。`run` 自动构建缺失或配置已变的镜像。
+镜像名为 `hasbai-cloud-dev:pw1.63.0-node24-pnpm10.33.2-amd64-v1`，仅存于本地 Docker。
+
+构建复用 CI Dockerfile 的安装步骤，只替换同一官方发布的架构 digest。
+Node、pnpm、浏览器、字体和环境配置沿用 CI；代理证书临时挂载。
+容器使用当前用户挂载仓库，文件修改会保留。
+pnpm 缓存保存在忽略的 `.local-visual/cloud-dev-pnpm-store`。
+完整 Playwright 与截图基线仍按[测试规范](docs/TESTING.md#运行)验收。
+
 清理脚本只删除各应用的 `dist`、`dist-e2e`、`coverage` 和 `.svelte-kit`。
 依赖缓存、凭据、本地数据库及测试和截图证据保留。
 设置和清理脚本不复制凭据、不迁移数据库，也不启动服务或部署。
