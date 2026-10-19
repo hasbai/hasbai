@@ -6,7 +6,6 @@ import remarkFrontmatter from "remark-frontmatter";
 import remarkDirective from "remark-directive";
 import remarkRehype from "remark-rehype";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
-import rehypeKatex from "rehype-katex";
 import rehypeStringify from "rehype-stringify";
 import { markdownMetadata } from "./metadata";
 export { markdownMetadata } from "./metadata";
@@ -113,6 +112,20 @@ function captions() {
   };
 }
 
+// Ordinary prose does not need KaTeX's formula tables and module initialization.
+function mathRenderer() {
+  return async (tree: unknown, file: unknown) => {
+    const hasMath = (node: Node): boolean => {
+      const classes = node.properties?.className;
+      return (node.type === "element" && Array.isArray(classes) && classes.some(value => value === "math-inline" || value === "math-display" || value === "language-math")) || Boolean(node.children?.some(hasMath));
+    };
+    if (!hasMath(tree as Node)) return;
+    const { default: rehypeKatex } = await import("rehype-katex");
+    const renderer = unified().use(rehypeKatex, { trust: false, strict: "ignore", maxSize: 20, maxExpand: 1000 });
+    await renderer.run(tree as Parameters<typeof renderer.run>[0], file as Parameters<typeof renderer.run>[1]);
+  };
+}
+
 const processor = parser()
   .use(extensions)
   .use(remarkRehype, { footnoteLabel: "参考资料", footnoteBackLabel: "返回引用", clobberPrefix: "md-" })
@@ -128,7 +141,7 @@ const processor = parser()
       code: [["className", /^language-./, "math-inline", "math-display"]],
     },
   })
-  .use(rehypeKatex, { trust: false, strict: "ignore", maxSize: 20, maxExpand: 1000 })
+  .use(mathRenderer)
   .use(rehypeStringify);
 
 export async function renderMarkdown(markdown: string) {

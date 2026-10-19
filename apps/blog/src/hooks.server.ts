@@ -1,7 +1,6 @@
 import { localeFromPath, withoutLocale } from "$lib/locales";
-import { supportedLocales } from "$lib/server/translation";
+import { localesResponse, supportedLocales } from "$lib/server/settings";
 import type { Handle } from "@sveltejs/kit";
-import { blogHttp } from "$lib/server/http";
 export const handle: Handle = async ({ event, resolve }) => {
   const path = event.url.pathname;
   const locales =
@@ -9,8 +8,10 @@ export const handle: Handle = async ({ event, resolve }) => {
       ? undefined
       : await supportedLocales(event.platform?.env);
   const response =
-    path === "/api" || path.startsWith("/api/") || path.startsWith("/images/")
-      ? await blogHttp.fetch(event.request, { platform: event.platform })
+    path === "/api/locales" && (event.request.method === "GET" || event.request.method === "HEAD")
+      ? await localesResponse(event.platform?.env, event.request.method)
+      : path === "/api" || path.startsWith("/api/") || path.startsWith("/images/")
+      ? await (await import("$lib/server/http")).blogHttp.fetch(event.request, { platform: event.platform })
       : await resolve(event, {
           transformPageChunk: ({ html }) =>
             html.replace(
