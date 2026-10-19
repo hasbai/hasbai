@@ -6,10 +6,10 @@ import { DurableObject } from 'cloudflare:workers';
 import { SessionStore, SESSION_SCHEMA } from './session-store';
 import { storyMessages } from './agent';
 import { body, HttpError, json } from './http';
-import { currentMessages, getSession, message, ownedBooks, session, settings, type MessageRow, type SessionRow } from './store';
+import { currentMessages, getSession, message, ownedBooks, session, settings, type CharacterRow, type MessageRow, type SessionRow } from './store';
 import { generate } from './generation';
 import { modelInput } from './models';
-import { string } from '../shared/cards';
+import { parseCard, string } from '../shared/cards';
 
 export const sessionName=(owner:string,id:string)=>JSON.stringify([owner,id]);
 export const sessionStub=(env:Env,owner:string,id:string)=>(env.SESSIONS as DurableObjectNamespace<TavernSession>).getByName(sessionName(owner,id));
@@ -65,7 +65,7 @@ export class TavernSession extends DurableObject<Env> {
   this.syncing=(async()=>{
    const store=this.store;if(!store)return;
    for(;;){const meta=store.syncState();if(meta.deleted){await this.purge(store);return;}if(meta.revision===meta.synced_revision)return;const row=store.directory();
-    const result=await this.env.DB.prepare("UPDATE sessions SET title=?,settings_json=?,book_ids_json=?,updated_at=? WHERE id=? AND owner=? AND storage_backend='do' AND deleted_at IS NULL").bind(row.title,row.settings_json,row.book_ids_json,row.updated_at,row.id,row.owner).run();
+    const result=await this.env.DB.prepare("UPDATE sessions SET title=?,settings_json=?,book_ids_json=?,character_json=?,character_name=?,updated_at=? WHERE id=? AND owner=? AND storage_backend='do' AND deleted_at IS NULL").bind(row.title,row.settings_json,row.book_ids_json,row.character_json,row.character_name,row.updated_at,row.id,row.owner).run();
     if(!result.meta.changes)throw new Error('会话目录同步失败');store.synced(meta.revision);
    }
   })();
@@ -98,7 +98,14 @@ export class TavernSession extends DurableObject<Env> {
  /** Older outer Worker versions may still send transport-cancel RPCs during deployment. */
  async cancel(owner:string,id:string,_requestId:string){await this.load(owner,id);}
  private async update(owner:string,id:string,data:Record<string,unknown>){
+  if(this.active)throw new HttpError(409,'请先停止生成');
   const store=await this.load(owner,id),row=store.idle(),opts=data.settings?settings(data.settings):settings(JSON.parse(row.settings_json));
+  let character:{json:string;name:string}|undefined;
+  if(data.characterId!==undefined){
+   const card=await this.env.DB.prepare('SELECT * FROM characters WHERE owner=? AND id=?').bind(owner,string(data.characterId)).first<CharacterRow>();
+   if(!card)throw new HttpError(404,'角色不存在');
+   const parsed=parseCard(JSON.parse(card.card_json));character={json:JSON.stringify(parsed.raw),name:parsed.data.name};
+  }
   const ids=data.bookIds??JSON.parse(row.book_ids_json);await ownedBooks(this.env,owner,ids);if(data.settings)modelInput(opts);
   const title=data.title===undefined?row.title:string(data.title).trim();if(!title||title.length>120)throw new HttpError(400,'会话名称无效');
   // Reserve old and new bindings before the DO commits; a failed sync never releases a live reference.
@@ -106,7 +113,7 @@ export class TavernSession extends DurableObject<Env> {
   store.dirty();await this.scheduleSync();
   const reserved=await this.env.DB.prepare("UPDATE sessions SET book_ids_json=? WHERE id=? AND owner=? AND deleted_at IS NULL AND (SELECT count(*) FROM worldbooks WHERE owner=? AND id IN(SELECT value FROM json_each(?)))=?").bind(JSON.stringify(union),id,owner,owner,JSON.stringify(ids),(ids as string[]).length).run();
   if(!reserved.meta.changes)throw new HttpError(409,'世界书状态已改变，请重试');
-  store.update(JSON.stringify(opts),JSON.stringify(ids),title);await this.scheduleSync();return session(store.get(),true);
+  store.update(JSON.stringify(opts),JSON.stringify(ids),title,character);await this.scheduleSync();return session(store.get(),true);
  }
  private async changeMessage(owner:string,id:string,data:Record<string,unknown>){
   const store=await this.load(owner,id);if(this.active)throw new HttpError(409,'请先停止生成');

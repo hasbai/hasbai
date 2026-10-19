@@ -62,6 +62,11 @@ sessions 保存会话目录、可靠世界书引用与迁移占用哨兵。messa
 
 会话角色快照、设置、有效线性消息、摘要与生成占用由每会话SQLite DO统一管理；旧 D1 原文按 AGENT 的惰性迁移契约保留。已安装角色删除不删除既有会话快照。R2 原文件私有，头像由 Bearer API 转 Blob URL；不创建公共桶，不自动加载角色扩展资源；发现页只显示经过HTTPS/固定头像域校验的公开Chub缩略图。
 
+编辑角色库不会自动修改已有会话。
+`PATCH /api/sessions/:id` 可通过 `characterId` 显式更新角色快照。
+角色须属于同一账号，生成期间拒绝更新。
+更新保留历史、状态、摘要和会话设置，并同步 D1 目录。
+
 导入大小限制、PNG chunk 长度/CRC、ZIP 条目数量/未压缩总量/路径遍历验证在解析前执行。CHARX 支持 card.json 与内嵌主头像，原压缩包完整保留可下载；资源脚本不执行。远端安装 URL 只由适配器构造、固定 HTTPS 主机，重定向逐跳校验，有限时与响应大小。HTML 永远转义；聊天按纯文本显示角色动作和对白，链接不自动触发抓取。
 
 ## 角色卡与世界书
@@ -147,7 +152,7 @@ KV 使用自身缓存，不叠加进程缓存；更新最终一致，页面提�
 - GET/POST /api/characters；GET/PATCH/DELETE /api/characters/:id；GET /api/characters/:id/export；GET /api/characters/:id/avatar。
 - GET /api/discover?q=&source=&page=&sort=&tags=；POST /api/install {source,id}；固定适配器，不提供任意 URL 代理。
 - GET/POST /api/worldbooks；PATCH/DELETE /api/worldbooks/:id；GET /api/worldbooks/:id/export。
-- GET/POST /api/sessions；GET/DELETE /api/sessions/:id；PATCH /api/sessions/:id 配置。
+- GET/POST /api/sessions；GET/DELETE /api/sessions/:id；PATCH /api/sessions/:id 配置及可选 characterId。
 - POST /api/sessions/:id/generate；POST /api/sessions/:id/stop；POST /api/sessions/:id/command；PATCH /api/sessions/:id/messages；DELETE /api/sessions/:id/messages；GET /api/sessions/:id/export。
 - GET/PUT /api/settings；GET /api/models。
 
