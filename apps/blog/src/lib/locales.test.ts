@@ -63,3 +63,20 @@ it('falls back from an existing incomplete translation on public content',()=>{
  const row={id:'x',status:'published',source_locale:'zh-CN',translation:[{locale:'zh-CN',title:'原文',is_complete:true},{locale:'en-US',title:'Empty',is_complete:false}]} as Article & {translation:Translation[]};
  expect(localize(row,'en-US')).toMatchObject({title:'原文',locale:'zh-CN'});
 });
+
+
+it("preserves canonicalization and current supported locales across repeated navigation", () => {
+  for (let pass = 0; pass < 3; pass++) {
+    for (const value of ["fr-FR", "FR-fr", "de-de", "articles", "about", "my-page", "invalid_42"]) {
+      let expected = value;
+      try { expected = Intl.getCanonicalLocales(value)[0]; } catch {}
+      expect(normalizeLocale(value)).toBe(expected);
+    }
+    expect(normalizeLocale("zh-hant")).toBe("zh-TW");
+    expect(normalizeLocale("en")).toBe("en-US");
+    expect(localeFromPath("/fr/about", ["zh-CN", "fr-FR"])).toBe("fr-FR");
+    expect(localeFromPath("/fr/about", ["zh-CN", "en-US"])).toBe("zh-CN");
+    expect(withoutLocale("/fr/about", ["zh-CN", "fr-FR"])).toBe("/about");
+    expect(withoutLocale("/fr/about", ["zh-CN", "en-US"])).toBe("/fr/about");
+  }
+});
