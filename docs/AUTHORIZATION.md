@@ -32,6 +32,10 @@
 Webhook 仅验 Telegram secret，不接受用户自报 owner。
 单次绑定码关联已验证 Auth0 身份；群绑定另查 Telegram 管理员身份。
 新建独立群会话，不复用私人会话。
+
+按对话 ID 绑定仍验证本人关联的 Telegram 用户及群管理员身份。
+群内酒馆控制命令仅允许绑定账号执行。
+同步全站 Bot 命令菜单需要 `tavern.all:all`，不接受自定义命令清单。
 绑定与投递规则见 [MESSAGING](tavern/MESSAGING.md)。
 
 Hasbai 应用权限统一使用 `scope.resource:action`。四个应用的全量管理权限为 `financial.all:all`、`blog.all:all`、`tavern.all:all`、`zboard.all:all`。同一 audience 的 Vaultwarden 使用 `vaultwarden.all:all`，实现位于独立仓库。代码不接受旧权限名；Auth0 已删除五个旧定义及角色授权。已签发旧令牌须重新登录取得新权限，改名不撤销现有 JWT。
