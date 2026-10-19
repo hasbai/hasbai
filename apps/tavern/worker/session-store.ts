@@ -130,6 +130,6 @@ export class SessionStore {
  cancelRequest(requestId:string){this.write('INSERT OR IGNORE INTO cancelled_requests VALUES(?,?)',this.id,requestId);}
  cancelled(requestId:string){return !!this.rows('SELECT request_id FROM cancelled_requests WHERE session_id=? AND request_id=?',this.id,requestId)[0];}
  stop(assistantId:string,reason:FinishReason='stopped'){if(!this.owns(assistantId))throw new HttpError(409,'生成状态已改变');this.write("UPDATE messages SET status='aborted',finish_reason=? WHERE session_id=? AND id=? AND status='pending'",reason,this.id,assistantId);}
- update(settings:string,books:string,title:string){this.transaction(()=>{this.idle();this.write('UPDATE sessions SET settings_json=?,book_ids_json=?,title=?,updated_at=? WHERE id=?',settings,books,title,Date.now(),this.id);this.dirty();});}
+ update(settings:string,books:string,title:string,character?:{json:string;name:string}){this.transaction(()=>{const row=this.idle();this.write('UPDATE sessions SET settings_json=?,book_ids_json=?,title=?,character_json=?,character_name=?,updated_at=? WHERE id=?',settings,books,title,character?.json??row.character_json,character?.name??row.character_name,Date.now(),this.id);this.dirty();});}
  remove(){this.transaction(()=>{this.idle();this.write('UPDATE session_meta SET deleted=1,revision=revision+1 WHERE id=?',this.id);});}
 }

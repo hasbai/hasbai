@@ -49,6 +49,34 @@ it('isolates both owners and sessions in independent SQLite storage',async()=>{
  seed();seed('other');expect((await invoke('read',{},'stranger')).status).toBe(404);await invoke('read');await invoke('read',{},'owner','other');await invoke('update',{title:'改变'});
  expect((await invoke('read',{},'owner','other')).value.session.title).toBe('旅店');expect(sqlDbs.get(sessionName('owner','other'))!.prepare('SELECT id FROM messages').all()).toEqual([{id:'m-other'}]);
 });
+function characterCard(owner='owner',id='card'){
+ const card={spec:'chara_card_v2',spec_version:'2.0',data:{name:'Saki（祥子）',description:'认真回应群友，把想法说完整。',mes_example:'<START>\n{{user}}: 今天好累。\n{{char}}: 先坐一会儿吧。愿意的话，我陪你聊聊。'}};
+ db.prepare('INSERT INTO characters(id,owner,name,description,creator,tags_json,card_json,format,original_key,original_filename,content_hash,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').run(id,owner,card.data.name,'摘要','','[]',JSON.stringify(card),'V2','cards/'+id,'saki.json',id,1);
+ return card;
+}
+it('explicitly refreshes an owned character snapshot without changing history, settings or state across restart',async()=>{
+ seed();const card=characterCard(),before=(await invoke('read')).value;
+ const refreshed=await invoke('update',{characterId:'card'});
+ expect(refreshed.value).toMatchObject({title:before.session.title,character:card,characterName:card.data.name,settings:before.session.settings});
+ expect(db.prepare('SELECT character_json,character_name FROM sessions').get()).toEqual({character_json:JSON.stringify(card),character_name:card.data.name});
+ objects.delete(sessionName('owner','s'));const after=(await invoke('read')).value;
+ expect(after.messages).toEqual(before.messages);expect(after.session.state).toEqual(before.session.state);expect(after.session.character).toEqual(card);
+ await invoke('update',{title:'新标题'});expect((await invoke('read')).value.session.character).toEqual(card);
+});
+it('rejects foreign, missing and busy character refreshes without changing the snapshot',async()=>{
+ seed();characterCard('other','foreign');characterCard();const before=(await invoke('read')).value.session.character;
+ for(const characterId of ['foreign','missing',''])expect((await invoke('update',{characterId})).status).toBe(404);
+ expect((await invoke('update',{characterId:'card'},'other')).status).toBe(404);
+ Object.assign(target(),{active:{requestId:'r',id:'a',abort:new AbortController()}});
+ expect((await invoke('update',{characterId:'card'})).status).toBe(409);
+ expect((await invoke('read')).value.session.character).toEqual(before);
+});
+it('retries character directory synchronization from the durable snapshot after restart',async()=>{
+ seed();const card=characterCard();await invoke('read');intercept=sql=>{if(sql.startsWith('UPDATE sessions SET title'))throw Error('D1 unavailable');};
+ expect((await invoke('update',{characterId:'card'})).ok).toBe(true);expect(db.prepare('SELECT character_name FROM sessions').get()?.character_name).toBe('岚');
+ objects.delete(sessionName('owner','s'));intercept=undefined;await target().alarm();
+ expect(db.prepare('SELECT character_json,character_name FROM sessions').get()).toEqual({character_json:JSON.stringify(card),character_name:card.data.name});
+});
 it('deallocates all private tables and alarm, and never recreates a deleted object on stale calls',async()=>{
  seed();seed('other');await invoke('read',{},'owner','other');await invoke('remove');const name=sessionName('owner','s'),sqlite=sqlDbs.get(name)!;
  expect(sqlite.prepare("SELECT count(*) n FROM sqlite_master WHERE type='table'").get()?.n).toBe(0);expect(alarms.has(name)).toBe(false);
