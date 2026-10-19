@@ -6,6 +6,15 @@ const card={name:'岚',description:'旅店主人'};
 const message=(id:string,role:Message['role'],content:string):Message=>({id,role,content,status:'completed',ordinal:0,requestId:null,createdAt:0});
 vi.mock('./gateway',async(original)=>({...await original<typeof import('./gateway')>(),runRoleplay:async(env:Env,username:string,requestId:string,input:Record<string,unknown>,signal:AbortSignal)=>env.AI.gateway('default').run({provider:'compat',endpoint:'chat/completions',headers:{},query:input},{gateway:{id:'default',skipCache:true,collectLog:true,eventId:requestId,retries:{maxAttempts:1},metadata:{app:'tavern',task:'roleplay',username}},signal})}));
 const options={protocol:'',inputRatio:1.2};
+it('projects Telegram history and current input for body and summary while preserving original checkpoint sources',async()=>{
+ const raw=JSON.stringify({speaker:{id:12,name:'@alice'},text:'今天的事情。'.repeat(20)}),history=[message('old','user',raw)];
+ const infer=vi.fn(async(_messages:PromptMessage[])=>'她谈起今天的事。');
+ const context=new ConversationContext(history,card,[],DEFAULT_SETTINGS,32768,{...options,telegram:true,currentInput:message('now','user',JSON.stringify({speaker:{id:13,name:'@bob'},text:'后来呢？'}))},infer);
+ expect(context.prompt().messages.slice(1).map(m=>m.content)).toEqual(['@alice: '+'今天的事情。'.repeat(20),'@bob: 后来呢？']);
+ const browser=new ConversationContext(history,card,[],DEFAULT_SETTINGS,32768,options,infer);expect(browser.prompt().messages[1].content).toBe(raw);
+ await context.compress();expect(infer.mock.calls[0][0][0].content).toBe('@alice: '+'今天的事情。'.repeat(20));
+ expect(history[0].content).toBe(raw);expect(await validSummary(JSON.stringify(context.summary),history)).toEqual(context.summary);
+});
 it('compresses all past turns at once while preserving only the current input',async()=>{
  const history=Array.from({length:9},(_,i)=>message(String(i),i%2?'user':'assistant',('第'+i+'段剧情。').repeat(100)));
  history.push(message('current','user','现在怎么办？'));

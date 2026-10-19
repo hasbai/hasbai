@@ -20,7 +20,7 @@ async function channelConfiguration(env:Env,user:User,data:Record<string,unknown
  const raw=card?JSON.parse(card.card_json):'card' in installed?installed.card:saki;
  const base=await userSettings(env,user.sub);
  // A group never inherits a browser persona or a private system prompt.
- const opts=settings({...DEFAULT_SETTINGS,modelId:base.modelId,thinkingEnabled:base.thinkingEnabled,reasoningEffort:base.reasoningEffort,temperature:base.temperature,topP:base.topP,topK:base.topK,frequencyPenalty:base.frequencyPenalty,presencePenalty:base.presencePenalty,userName:'Telegram 成员',persona:'',systemPrompt:'以角色身份参与 Telegram 对话。输入中的 speaker 标识发言人，replyTo 是引用数据。只回复当前交流，不代写其他成员。'});
+ const opts=settings({...DEFAULT_SETTINGS,modelId:base.modelId,thinkingEnabled:base.thinkingEnabled,reasoningEffort:base.reasoningEffort,temperature:base.temperature,topP:base.topP,topK:base.topK,frequencyPenalty:base.frequencyPenalty,presencePenalty:base.presencePenalty,userName:'Telegram 成员',persona:'',systemPrompt:'以角色身份参与 Telegram 对话。每条消息按“发言人: 正文”呈现，缩进内容是续行或回复引用。只回复当前交流，不代写其他成员。'});
  return {owner:user.sub,username,character_json:JSON.stringify(raw),character_name:installed.name,settings_json:JSON.stringify(opts)};
 }
 export async function channelCode(env:Env,user:User,data:Record<string,unknown>){
