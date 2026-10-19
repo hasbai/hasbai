@@ -32,7 +32,7 @@ export function activateBook(book: Book, history: Pick<Message, 'content'>[], ex
 }
 export type PromptMessage = { role: 'system' | 'user' | 'assistant' | 'tool'; content: string; tool_call_id?: string; tool_calls?: {id:string;type:'function';function:{name:string;arguments:string}}[] };
 // Context layout changes must update docs/tavern/AGENT.md and src/pages/About.svelte.
-export function buildPrompt(raw: JsonObject, books: Book[], history: Message[], settings: Settings, contextTokens: number | null, options: { protocol?: string; inputRatio?: number; summary?: string; state?:string } = {}) {
+export function buildPrompt(raw: JsonObject, books: Book[], history: Message[], settings: Settings, contextTokens: number | null, options: { protocol?: string; inputRatio?: number; summary?: string; state?:string; telegram?:boolean } = {}) {
   const card = parseCard(raw), c = card.data;
   const char = c.nickname || c.name, expand = (text: string, original = '') => macros(text, char, settings.userName, original);
   const activeHistory = history.filter(m => m.status === 'completed');
@@ -45,7 +45,7 @@ export function buildPrompt(raw: JsonObject, books: Book[], history: Message[], 
   const picked = entries;
   const selectedHistory = activeHistory;
   const system = [systemText(picked), post, options.protocol, options.summary ? SUMMARY_PREFIX + options.summary : ''].filter(Boolean).join('\n\n');
-  const messages: PromptMessage[] = [{ role: 'system', content: system }, ...selectedHistory.map(m => ({ role: m.role, content: expand(m.role==='user'?userPrompt(m.content):m.content) }))];
+  const messages: PromptMessage[] = [{ role: 'system', content: system }, ...selectedHistory.map(m => ({ role: m.role, content: expand(m.role==='user'?userPrompt(m.content,options.telegram):m.content) }))];
   if(options.state){const at=messages.at(-1)?.role==='user'?messages.length-1:messages.length;messages.splice(at,0,stateMessage(options.state));}
   // Template allowance is part of context estimation, not an output budget.
   const estimatedTokens = messages.reduce((sum, m) => sum + count(m.content) + 8, 256);

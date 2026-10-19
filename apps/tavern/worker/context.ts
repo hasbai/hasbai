@@ -1,4 +1,5 @@
 import { splitOoc } from '../shared/commands';
+import { telegramDialogue } from '../shared/telegram-input';
 import { SUMMARY_TASK } from '../shared/instructions';
 import { buildPrompt, estimateTokens, type PromptMessage } from '../shared/prompt';
 import type { Book, JsonObject, Message, Settings } from '../shared/types';
@@ -42,7 +43,7 @@ export class ConversationContext {
  summary: Summary | null = null;
  private wireProjection:ReturnType<typeof buildPrompt>|null=null;
  constructor(readonly history: Message[], readonly card: JsonObject, readonly books: Book[], readonly settings: Settings,
-  public contextTokens: number | null, readonly options: { protocol: string; inputRatio: number; state?:string; summaryTask?:string; currentInput?:Message },
+  public contextTokens: number | null, readonly options: { protocol: string; inputRatio: number; state?:string; summaryTask?:string; currentInput?:Message; telegram?:boolean },
   readonly infer: (messages: PromptMessage[]) => Promise<string>,
   readonly onCompression?: (status:'running'|'completed'|'error',result:unknown)=>Promise<void>) {}
  async restore(raw?: string | null) { this.summary = await validSummary(raw, this.history); }
@@ -84,7 +85,7 @@ export class ConversationContext {
   }catch(error){this.summary=previous;this.wireProjection=previousProjection;await this.onCompression?.('error',{error:(error as Error).message});throw error;}
  }
  private async summarize(previous:string,history:Message[]){
-  const options={contextTokens:this.contextTokens,inputRatio:this.options.inputRatio,infer:this.infer,task:this.options.summaryTask};
+  const options={contextTokens:this.contextTokens,inputRatio:this.options.inputRatio,infer:this.infer,task:this.options.summaryTask,telegram:this.options.telegram};
   try{return await summarizeStory(previous,history,options);}finally{this.contextTokens=options.contextTokens;}
  }
 
@@ -93,10 +94,10 @@ export class ConversationContext {
 /** Shared algorithm; callers own separate source checkpoints and context limits. */
 export async function summarizeStory(previous:string,history:Message[],options:Parameters<typeof summarizeSource>[2]):Promise<string>{
  // Strip control lines before any split. Recursive fragments are already story data.
- return summarizeSource(previous,history.map(m=>m.role==='user'?{...m,content:splitOoc(m.content).dialogue}:m).filter(m=>m.content.trim()),options);
+ return summarizeSource(previous,history.map(m=>m.role==='user'?{...m,content:options.telegram?telegramDialogue(splitOoc(m.content).dialogue):splitOoc(m.content).dialogue}:m).filter(m=>m.content.trim()),options);
 }
 
-async function summarizeSource(previous:string,history:Message[],options:{contextTokens:number|null;inputRatio:number;infer:(messages:PromptMessage[])=>Promise<string>;task?:string}):Promise<string>{
+async function summarizeSource(previous:string,history:Message[],options:{contextTokens:number|null;inputRatio:number;infer:(messages:PromptMessage[])=>Promise<string>;task?:string;telegram?:boolean}):Promise<string>{
   const source = [previous, ...history.map(m => m.content)].filter(Boolean).join('\n');
   const messages: PromptMessage[] = [...(previous?[{role:'user' as const,content:'已有记忆：\n'+previous}]:[]),
    ...history.map(m=>({role:m.role,content:m.content})).filter(m=>m.content.trim()),{role:'user',content:options.task ?? SUMMARY_TASK}];

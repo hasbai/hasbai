@@ -1,4 +1,4 @@
-import { contextUsage } from './session-context';
+import { contextUsage, telegramSession } from './session-context';
 import type { AgentActivity } from '../shared/types';
 import { readPrompts } from './prompts';
 import { capabilityProtocol } from '../shared/agent-protocol';
@@ -27,7 +27,7 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
  const existing=store.findRequest(requestId);
  if(existing)return json({message:message(existing),replayed:true});
  const promptDocument=await readPrompts(env),texts=promptDocument.texts;
- const contextOptions={protocol:capabilityProtocol('body',texts.agent),summaryTask:capabilityProtocol('summary',texts.summaryTask)};
+ const contextOptions={protocol:capabilityProtocol('body',texts.agent),summaryTask:capabilityProtocol('summary',texts.summaryTask),telegram:await telegramSession(env,owner,id)};
  const directorRule=capabilityProtocol('director',texts.director);
  const capability=await capabilities(env,ctx);beforeClaim();if(request.signal.aborted||store.cancelled(requestId))throw new HttpError(409,'生成已停止');const now=Date.now();
  if(data.continue===true)throw new HttpError(400,'续写已移除');
@@ -58,7 +58,7 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
   const embedded=parseCard(JSON.parse(row.character_json)).data.character_book;
   lore=new LoreIndex(store.storage.sql,[...(embedded?[{id:'character',book:parseBook(embedded)}]:[]),...books.filter(b=>b.enabled).map(b=>({id:b.id,book:parseBook(JSON.parse(b.book_json),b.name)}))],(texts,signal)=>embeddings(env,texts,username,requestId,signal),abort.signal,base);
   agent=new AgentTurn(before,base,regenerate?[...base].reverse().find(m=>m.role==='user'):userMessage,(hit,offset)=>lore.read(hit,offset));
-  projectionContext={character:JSON.parse(row.character_json),books:books.map(b=>[b.id,b.enabled,b.book_json]),settings:JSON.parse(row.settings_json),tools:AGENT_TOOLS,prompts:promptDocument,contextOptions,directorRule,promptVersion:9};
+  projectionContext={character:JSON.parse(row.character_json),books:books.map(b=>[b.id,b.enabled,b.book_json]),settings:JSON.parse(row.settings_json),tools:AGENT_TOOLS,prompts:promptDocument,contextOptions,directorRule,promptVersion:10};
   const currentInput=regenerate?(base.at(-1)?.role==='user'?base.at(-1):undefined):userMessage;
   const contextHistory=currentInput&&base.at(-1)?.id===currentInput.id?base.slice(0,-1):base;
   conversation=new ConversationContext(contextHistory,JSON.parse(row.character_json),books.filter(b=>b.enabled).map(b=>parseBook(JSON.parse(b.book_json),b.name)),settings(JSON.parse(row.settings_json)),capability.contextTokens,{...contextOptions,inputRatio:capability.inputRatio,state:stateContext(before),currentInput},messages=>summarizeWithModel(env,username,requestId,settings(JSON.parse(row.settings_json)),messages,abort.signal),observeCompression);

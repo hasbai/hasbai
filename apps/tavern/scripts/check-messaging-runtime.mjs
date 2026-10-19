@@ -19,6 +19,8 @@ globalThis.fetch=async(url,options)=>{
  if(String(url).includes('api.telegram.org/'))return Response.json({ok:true,result:{message_id:123}});
  if(!String(url).includes('/compat/chat/completions'))throw Error('unexpected external request');
  const input=JSON.parse(options.body);if(input.model!=='dynamic/rp')throw Error('unexpected model');
+ if(input.messages.some(m=>m.role==='user'&&m.content.includes('"speaker":')))throw Error('Telegram envelope leaked into model prompt');
+ if(!input.messages.some(m=>m.role==='user'&&m.content.includes('@untrusted-telegram-name: 你好')))throw Error('Telegram dialogue projection missing');
  if(input.messages.some(m=>m.content.includes('口吻更自然'))&&!input.messages.some(m=>m.content.includes('[OOC：')))throw Error('OOC instruction lost');
  const metadata=JSON.parse(options.headers['cf-aig-metadata']);if(metadata.username!=='verified-profile')throw Error('unverified profile');
  const text=input.response_format?JSON.stringify({choices:['继续。','等一会。','看向窗外。']}):'收到你的消息。';
