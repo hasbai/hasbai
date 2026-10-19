@@ -17,7 +17,8 @@
         "library",
         "states",
         "page-states",
-        "character-generation"
+        "character-generation",
+        "character-avatar"
       ]
     },
     {
@@ -84,7 +85,8 @@
             "library.png",
             "character-detail.png",
             "character-invalid.png",
-            "character-create.png"
+            "character-create.png",
+            "character-edit.png"
           ]
         }
       ]
@@ -414,6 +416,25 @@
             "telegram.png",
             "telegram-code.png",
             "telegram-attention.png"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "character-avatar",
+      "kind": "screenshot",
+      "description": "共享角色表单中的头像上传、生成失败恢复与保存。",
+      "evidence": [
+        {
+          "spec": "e2e/tavern.spec.ts",
+          "test": "character avatars upload generate retry and persist through the shared editor",
+          "projects": [
+            "iphone",
+            "desktop"
+          ],
+          "snapshots": [
+            "character-avatar.png",
+            "character-avatar-error.png"
           ]
         }
       ]
