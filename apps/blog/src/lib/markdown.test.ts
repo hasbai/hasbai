@@ -55,3 +55,12 @@ it("keeps bibliography IDs separate from author footnotes and case-sensitive ref
   expect(html).toContain('Second reference');
   expect(html.match(/<li id="md-fn-/g)).toHaveLength(3);
 });
+
+
+it("renders fenced math while leaving ordinary code literal", async () => {
+  const [math, code] = await Promise.all([renderMarkdown("```math\nx^2\n```"), renderMarkdown("```js\nconst price = '$x$';\n```")]);
+  expect(math).toContain('class="katex"');
+  expect(math).toContain('katex-display');
+  expect(code).toContain('class="language-js"');
+  expect(code).not.toContain('class="katex"');
+});

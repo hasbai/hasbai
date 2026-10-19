@@ -7,6 +7,7 @@ import { z } from "zod";
 import { repository } from "$lib/api";
 import { defaultLocale, defaultLocales } from "$lib/locales";
 import { articleSchema, noteSchema, pageSchema } from "$lib/content";
+import { localesResponse } from "./settings";
 import type { BlogBindings } from "./http";
 import {
   localeKey,
@@ -19,10 +20,7 @@ export const contentRoutes = new Hono<{
   Bindings: BlogBindings;
   Variables: { token: string };
 }>();
-contentRoutes.get("/api/locales", async c => {
- const locales=await supportedLocales(c.env.platform?.env);
- return c.json({locales,available:[...new Set([...defaultLocales,...locales])]});
-});
+contentRoutes.get("/api/locales", c => localesResponse(c.env.platform?.env, c.req.method));
 contentRoutes.use("/api/content", bodyLimit({ maxSize: 2 * 1024 * 1024 }));
 contentRoutes.use("/api/translate", bodyLimit({ maxSize: 4096 }));
 contentRoutes.use("/api/settings/locales", bodyLimit({ maxSize: 4096 }));

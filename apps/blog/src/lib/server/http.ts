@@ -4,7 +4,6 @@ import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
 import { contentRoutes } from "./content-routes";
 import { imageRoutes } from "./images";
-import { handleMcp } from "./mcp";
 
 export type BlogBindings = { platform?: App.Platform };
 
@@ -35,7 +34,7 @@ blogHttp.use(
   }),
 );
 blogHttp.use("/api/mcp", bodyLimit({ maxSize: 8 * 1024 * 1024 }));
-blogHttp.post("/api/mcp", (c) => handleMcp(c.req.raw, c.env.platform?.env));
+blogHttp.post("/api/mcp", async (c) => (await import("./mcp")).handleMcp(c.req.raw, c.env.platform?.env));
 blogHttp.all("/api/mcp", (c) =>
   c.json(
     {

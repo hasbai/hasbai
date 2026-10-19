@@ -3,15 +3,8 @@ import { repository } from "$lib/api";
 import { publicRepository } from "$lib/public-api";
 import { defaultLocale, defaultLocales } from "$lib/locales";
 import type { Content, Translation } from "$lib/content";
-export const localeKey = "blog:supported-locales";
-export async function supportedLocales(
-  env?: App.Platform["env"],
-): Promise<string[]> {
-  return (
-    (await env?.BLOG_SETTINGS?.get<string[]>(localeKey, "json")) ??
-    defaultLocales
-  );
-}
+import { supportedLocales } from "./settings";
+export { localeKey, supportedLocales } from "./settings";
 export const translatedText = z.object({
   title: z.string().max(240),
   excerpt: z.string().max(600),

@@ -149,21 +149,19 @@ export function writingPath(writing: Writing) {
 export function imagePath(id: string) {
   return `/images/${encodeURIComponent(id)}`;
 }
-const dateLabelFormatter = new Intl.DateTimeFormat("zh-CN", {
-  timeZone: "Asia/Shanghai", year: "numeric", month: "long", day: "numeric",
-});
-const yearLabelFormatter = new Intl.DateTimeFormat("en", {
-  timeZone: "Asia/Shanghai", year: "numeric",
-});
+let dateLabelFormatter: Intl.DateTimeFormat | undefined;
+let yearLabelFormatter: Intl.DateTimeFormat | undefined;
 export function dateLabel(value: string | null) {
-  return value
-    ? dateLabelFormatter.format(new Date(value))
-    : "草稿";
+  if (!value) return "草稿";
+  dateLabelFormatter ??= new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai", year: "numeric", month: "long", day: "numeric",
+  });
+  return dateLabelFormatter.format(new Date(value));
 }
 export function yearLabel(value: string | null) {
-  return value
-    ? yearLabelFormatter.format(new Date(value))
-    : "草稿";
+  if (!value) return "草稿";
+  yearLabelFormatter ??= new Intl.DateTimeFormat("en", { timeZone: "Asia/Shanghai", year: "numeric" });
+  return yearLabelFormatter.format(new Date(value));
 }
 export function readMinutes(markdown: string) {
   return Math.max(1, Math.ceil(markdown.replace(/\s/g, "").length / 450));

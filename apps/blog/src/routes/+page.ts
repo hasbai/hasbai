@@ -12,10 +12,13 @@ export const load: PageLoad = async ({ url, parent }) => {
       repo.notes({ limit: 6 }),
     ]);
     const recent = [...articles.slice(0, 6), ...notes.slice(0, 6)]
-      .sort((a, b) =>
-        (b.published_at ?? "").localeCompare(a.published_at ?? ""),
-      )
-      .slice(0, 6);
+      .map(writing => {
+        const time = Date.parse(writing.published_at ?? "");
+        return { writing, time: Number.isFinite(time) ? time : -Infinity };
+      })
+      .sort((a, b) => b.time - a.time)
+      .slice(0, 6)
+      .map(({ writing }) => writing);
     return { recent };
   } catch {
     error(503, "内容暂时无法加载");
