@@ -32,5 +32,4 @@
   .notification-content { display: flex; align-items: start; gap: .75rem; }
   .notification-content span { flex: 1; overflow-wrap: anywhere; }
   button { display: grid; place-items: center; flex: 0 0 44px; width: 44px; height: 44px; margin: -.5rem -.5rem -.5rem 0; border-radius: .25rem; }
-  button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 </style>

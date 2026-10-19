@@ -131,7 +131,7 @@
                 <div class="divide-y border-t">
                   {#each subtype.items as account (account.id)}
                     <button
-                      class="flex min-h-16 w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
+                      class="flex min-h-16 w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted"
                       onclick={() => edit(account)}
                     >
                       <span class="font-mono text-sm text-muted-foreground"

@@ -344,10 +344,17 @@ test("empty error loading and keyboard states", async ({ page }) => {
   f.recover();
   await page.getByRole("button", { name: "重试" }).click();
   await page.getByRole("button", { name: "新增节点" }).click();
-  await page.getByLabel("节点名称").focus();
+  const name = page.getByLabel("节点名称");
+  const restingShadow = await name.evaluate(el => getComputedStyle(el).boxShadow);
+  await name.focus();
+  await expect(name).toHaveCSS("outline-offset", "-2px");
+  await expect(name).toHaveCSS("outline-width", "2px");
+  await expect(name).toHaveCSS("box-shadow", restingShadow);
   await page.keyboard.type("键盘节点");
   await page.keyboard.press("Tab");
   await expect(page.getByLabel("协议", { exact: true })).toBeFocused();
+  await expect(page.getByLabel("协议", { exact: true })).toHaveCSS("outline-offset", "-2px");
+  await expect(page.getByLabel("协议", { exact: true })).toHaveCSS("outline-width", "2px");
   await fits(page);
 });
 test("initial loading", async ({ page }) => {
