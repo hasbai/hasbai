@@ -6,7 +6,7 @@ import { verifyUserToken } from "@hasbai/auth/server";
 import { z } from "zod";
 import { repository } from "$lib/api";
 import { defaultLocale, defaultLocales } from "$lib/locales";
-import { articleSchema, noteSchema, pageSchema } from "$lib/content";
+import { articleSchema, noteSchema, pageSchema } from "$lib/content-schema";
 import { localesResponse } from "./settings";
 import type { BlogBindings } from "./http";
 import {

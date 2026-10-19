@@ -10,7 +10,7 @@ import {
   noteSchema,
   pageSchema,
   slugSchema,
-} from "$lib/content";
+} from "$lib/content-schema";
 import { saveContent } from "./translation";
 import { publicRepository } from "$lib/public-api";
 import {

@@ -1,6 +1,6 @@
-import { stripFrontmatter } from "@hasbai/markdown/metadata";
+import { stripFrontmatter } from "@hasbai/markdown/frontmatter";
+import { formatDate } from "./dates";
 import { localizedPath } from "./locales";
-import { z } from "zod";
 
 export const site = { name: "北极小站", origin: "https://hasbai.xyz" };
 export type Tag = {
@@ -61,76 +61,9 @@ export type Page = Content & {
 };
 export type Writing = Article | Note;
 export type StudioContent = Writing | Page;
-export const reservedPageSlugs = [
-  "articles",
-  "notes",
-  "timeline",
-  "tags",
-  "contents",
-  "studio",
-  "auth",
-  "api",
-  "images",
-  "assets",
-  "en",
-  "zh",
-  "en-us",
-  "zh-cn",
-  "zh-tw",
-];
-
-export const slugSchema = z
-  .string()
-  .regex(/^[a-z0-9][a-z0-9-]{0,159}$/, "网址只使用小写字母、数字和连字符");
-export const pageSlugSchema = slugSchema.refine(
-  (slug) => !reservedPageSlugs.includes(slug),
-  "该路径已用于网站功能，请换一个路径",
-);
-const commonFields = {
-  locale: z.string().min(2).max(35).default("zh-CN"),
-  excerpt: z.string().max(600),
-  markdown: z.string().max(1048576),
-  cover_id: z.string().uuid().nullable(),
-  status: z.enum(["draft", "published"]),
-  published_at: z.string().nullable(),
-};
-function publicationCheck(
-  value: {
-    status: "draft" | "published";
-    markdown: string;
-    published_at: string | null;
-  },
-  ctx: z.RefinementCtx,
-) {
-  if (
-    value.status === "published" &&
-    (!value.markdown.trim() || !value.published_at)
-  )
-    ctx.addIssue({
-      code: "custom",
-      message: "发布前请填写正文",
-      path: ["markdown"],
-    });
-}
-export const articleSchema = z
-  .object({
-    title: z.string().trim().min(1, "请填写标题").max(240),
-    slug: slugSchema,
-    tag_ids: z.array(z.string().uuid()).max(30),
-    ...commonFields,
-  })
-  .superRefine(publicationCheck);
-export const pageSchema = z
-  .object({
-    title: z.string().trim().min(1, "请填写标题").max(240),
-    slug: pageSlugSchema,
-    ...commonFields,
-  })
-  .superRefine(publicationCheck);
 export function pagePath(page: Pick<Page, "slug"> & { locale?: string }) {
   return localizedPath(`/${encodeURIComponent(page.slug)}`, page.locale);
 }
-export const noteSchema = z.object(commonFields).superRefine(publicationCheck);
 
 export function articlePath(
   article: Pick<Article, "slug"> & { locale?: string },
@@ -149,14 +82,10 @@ export function writingPath(writing: Writing) {
 export function imagePath(id: string) {
   return `/images/${encodeURIComponent(id)}`;
 }
-let dateLabelFormatter: Intl.DateTimeFormat | undefined;
 let yearLabelFormatter: Intl.DateTimeFormat | undefined;
 export function dateLabel(value: string | null) {
   if (!value) return "草稿";
-  dateLabelFormatter ??= new Intl.DateTimeFormat("zh-CN", {
-    timeZone: "Asia/Shanghai", year: "numeric", month: "long", day: "numeric",
-  });
-  return dateLabelFormatter.format(new Date(value));
+  return formatDate(value, "zh-CN");
 }
 export function yearLabel(value: string | null) {
   if (!value) return "草稿";

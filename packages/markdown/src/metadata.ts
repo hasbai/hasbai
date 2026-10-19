@@ -1,13 +1,7 @@
 import { parseDocument } from "yaml";
 
-function frontmatter(markdown: string) {
-  return /^(?:\uFEFF)?---[ \t]*\r?\n([\s\S]*?)\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/.exec(markdown);
-}
-
-export function stripFrontmatter(markdown: string): string {
-  const match = frontmatter(markdown);
-  return match ? markdown.slice(match[0].length).trimStart() : markdown;
-}
+import { frontmatter } from "./frontmatter";
+export { stripFrontmatter } from "./frontmatter";
 
 export function markdownMetadata(markdown: string): Record<string, unknown> {
   const match = frontmatter(markdown);

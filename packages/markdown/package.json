@@ -5,7 +5,8 @@
   "exports": {
     ".": "./src/markdown.ts",
     "./content": "./src/MarkdownContent.svelte",
-    "./metadata": "./src/metadata.ts"
+    "./metadata": "./src/metadata.ts",
+    "./frontmatter": "./src/frontmatter.ts"
   },
   "peerDependencies": {
     "svelte": "^5.57.0"
