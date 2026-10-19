@@ -1,6 +1,6 @@
 import { error } from "@sveltejs/kit";
 import { publicRepository } from "./public-api";
-import { renderMarkdown } from "./markdown";
+import { renderPublicMarkdown } from "./public-markdown";
 export async function loadArticle(slug: string, locale = "zh-CN") {
   const repo = publicRepository(locale);
   const article = await repo.articleBySlug(slug);
@@ -12,7 +12,7 @@ export async function loadArticle(slug: string, locale = "zh-CN") {
   )
     error(404, "文章不存在");
   const [html, tags] = await Promise.all([
-    renderMarkdown(article.markdown),
+    renderPublicMarkdown(article.markdown),
     repo.tagsForArticle(article.id),
   ]);
   return {

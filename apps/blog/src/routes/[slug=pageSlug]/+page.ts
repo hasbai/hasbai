@@ -1,7 +1,7 @@
 import { localeFromPath, localizedPath } from "$lib/locales";
 import { error } from "@sveltejs/kit";
 import { publicRepository } from "$lib/public-api";
-import { renderMarkdown } from "$lib/markdown";
+import { renderPublicMarkdown } from "$lib/public-markdown";
 import type { PageLoad } from "./$types";
 export const load: PageLoad = async ({ params, url, parent }) => {
   const { locale } = await parent();
@@ -18,5 +18,5 @@ export const load: PageLoad = async ({ params, url, parent }) => {
     new Date(page.published_at) > new Date()
   )
     error(404, "页面不存在");
-  return { page, html: await renderMarkdown(page.markdown) };
+  return { page, html: await renderPublicMarkdown(page.markdown) };
 };
