@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS inbox_chunks (
 );
 CREATE TABLE IF NOT EXISTS inbox_background (update_id INTEGER PRIMARY KEY, text TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS inbox_seen (update_id INTEGER PRIMARY KEY, received_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS inbox_stops (route_id TEXT NOT NULL, request_id TEXT NOT NULL, PRIMARY KEY(route_id,request_id));
 `;
 type Job={update_id:number;route_id:string;request_id:string;sender_id:number;text:string;phase:'queued'|'generating'|'sending'|'done'|'attention'|'cancelled';received_at:number;error:string|null};
 type Chunk={ordinal:number;text:string;state:'ready'|'sending'|'sent';telegram_id:number|null};
@@ -63,12 +64,17 @@ export class MessageInbox extends DurableObject<Env> {
  }
  async revoke(routeId:string){
   this.init();
-  const active=this.first<Job>("SELECT * FROM inbox_jobs WHERE route_id=? AND phase='generating' ORDER BY update_id LIMIT 1",routeId);
   // The route is already inactive before this RPC; no later job may enter sendMessage.
-  this.ctx.storage.sql.exec("UPDATE inbox_jobs SET phase='cancelled' WHERE route_id=? AND phase NOT IN ('done','cancelled')",routeId);
+  this.ctx.storage.transactionSync(()=>{
+   this.ctx.storage.sql.exec("INSERT OR IGNORE INTO inbox_stops SELECT route_id,request_id FROM inbox_jobs WHERE route_id=? AND phase='generating'",routeId);
+   this.ctx.storage.sql.exec("UPDATE inbox_jobs SET phase='cancelled' WHERE route_id=? AND phase NOT IN ('done','cancelled')",routeId);
+  });
   this.ctx.storage.sql.exec('DELETE FROM inbox_background');
   const route=await this.env.DB.prepare('SELECT * FROM channel_routes WHERE id=?').bind(routeId).first<ChannelRoute>();
-  if(route&&active)try{await callSession(this.env,route.owner,route.session_id,'stop',{requestId:active.request_id});}catch(error){if(!(error instanceof HttpError&&error.status===404))throw error;}
+  if(route)for(const stop of this.ctx.storage.sql.exec<{request_id:string}>('SELECT request_id FROM inbox_stops WHERE route_id=?',routeId).toArray()){
+   try{await callSession(this.env,route.owner,route.session_id,'stop',{requestId:stop.request_id});}catch(error){if(!(error instanceof HttpError&&error.status===404))throw error;}
+   this.ctx.storage.sql.exec('DELETE FROM inbox_stops WHERE route_id=? AND request_id=?',routeId,stop.request_id);
+  }
   return {ok:true};
  }
  async alarm(){

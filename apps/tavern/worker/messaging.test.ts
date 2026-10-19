@@ -112,6 +112,13 @@ it('unbinds a deleted Tavern session with pending work and permits a fresh bindi
  await api('/api/messaging/telegram/'+b.id,'DELETE');expect(db.prepare('SELECT count(*) AS n FROM channel_routes').get()?.n).toBe(0);
  const fresh=await bind();expect(fresh.sessionId).not.toBe(b.sessionId);
 });
+it('retries a failed revocation stop with the durable UUID after object restart',async()=>{
+ const b=await bind();await inbox(b.key).receive(b.id,update());const local=databases.get(b.key)!;local.prepare("UPDATE inbox_jobs SET phase='generating'").run();const id=local.prepare('SELECT request_id FROM inbox_jobs').get()!.request_id;
+ const stop=vi.fn<(owner:string,id:string,method:string,data:Record<string,unknown>)=>Promise<string>>().mockRejectedValueOnce(new Error('temporary storage failure')).mockResolvedValue(JSON.stringify({ok:true,value:{ok:true}}));
+ Object.assign(env.SESSIONS,{getByName:()=>({invoke:stop})});
+ await expect(api('/api/messaging/telegram/'+b.id,'DELETE')).rejects.toThrow('temporary');expect(db.prepare('SELECT active FROM channel_routes').get()?.active).toBe(0);
+ inbox(b.key,true);await api('/api/messaging/telegram/'+b.id,'DELETE');expect(stop).toHaveBeenCalledTimes(2);expect(stop.mock.calls.every(call=>call[3].requestId===id)).toBe(true);expect(db.prepare('SELECT count(*) AS n FROM channel_routes').get()?.n).toBe(0);
+});
 it('rejects bad webhook secrets, malformed oversized input and ignores commands for other bots',async()=>{
  const req=(data:unknown,secret='test-secret')=>new Request('https://test/api/messaging/telegram/webhook',{method:'POST',headers:{'x-telegram-bot-api-secret-token':secret},body:JSON.stringify(data)});
  expect((await telegramWebhook(req(update(),'bad'),env)).status).toBe(403);expect((await telegramWebhook(req({}),env)).status).toBe(200);
