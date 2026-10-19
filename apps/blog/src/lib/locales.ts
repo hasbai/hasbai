@@ -2,6 +2,8 @@ export const defaultLocale = "zh-CN";
 export const defaultLocales = ["zh-CN", "zh-TW", "en-US"];
 export function normalizeLocale(value?: string) {
   if (!value) return defaultLocale;
+  // Internal links repeatedly pass these canonical values during SSR.
+  if (defaultLocales.includes(value)) return value;
   const aliases: Record<string, string> = {
     zh: "zh-CN",
     en: "en-US",

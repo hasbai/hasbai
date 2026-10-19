@@ -34,15 +34,23 @@ export function links() {
 }
 import { localizedPath } from "./locales";
 
+const dateFormatters = new Map<string, Intl.DateTimeFormat>();
+function dateFormatter(locale: string) {
+  let formatter = dateFormatters.get(locale);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat(locale, {
+      timeZone: "Asia/Shanghai", year: "numeric", month: "long", day: "numeric",
+    });
+    // Locale settings may change. Keep only a bounded set of pure formatters.
+    if (dateFormatters.size >= 16) dateFormatters.clear();
+    dateFormatters.set(locale, formatter);
+  }
+  return formatter;
+}
 export function dates() {
   const locale = getContext<() => string>("blog-locale") ?? (() => "zh-CN");
   return (value: string | null) =>
     value
-      ? new Intl.DateTimeFormat(locale(), {
-          timeZone: "Asia/Shanghai",
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-        }).format(new Date(value))
+      ? dateFormatter(locale()).format(new Date(value))
       : translateUI(locale(), "草稿");
 }
