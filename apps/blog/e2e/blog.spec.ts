@@ -262,8 +262,12 @@ test('Markdown extensions render safely and survive editor preview and save', as
   await request.patch('http://127.0.0.1:4180/rest/v1/article?id=eq.20000000-0000-4000-8000-000000000001', { data: { markdown: source } });
   const ssr = await request.get('/articles/hello-world');
   const markup = await ssr.text();
-  expect(markup).toContain('class="katex"');
-  expect(markup).not.toContain('title: 不覆盖文章标题');
+  // SvelteKit also serializes the public API's source Markdown for hydration.
+  // Frontmatter must be absent from the rendered content, while the editor preserves it.
+  const rendered = markup.match(/<main\b[^>]*>[\s\S]*?<\/main>/)?.[0];
+  expect(rendered).toBeDefined();
+  expect(rendered).toContain('class="katex"');
+  expect(rendered).not.toContain('title: 不覆盖文章标题');
   const graphRequests: string[] = [];
   const manifest: Record<string, { file: string }> = JSON.parse(readFileSync(new URL('../.svelte-kit/output/client/.vite/manifest.json', import.meta.url), 'utf8'));
   const graphAssets = new Set(Object.entries(manifest).filter(([key]) => /\/(?:mermaid|markmap-lib|markmap-view|@terrastruct\/d2)\//.test(key) || key.endsWith('/markdown/src/diagrams.ts')).map(([, entry]) => '/' + entry.file));
