@@ -3,7 +3,7 @@ import worker from './index';import {TavernSession} from './session-object';impo
 vi.mock('cloudflare:workers',()=>({DurableObject:class {constructor(public ctx:DurableObjectState,public env:Env){}}}));import {identity,AuthError} from './auth';import {DEFAULT_SETTINGS,type Message} from '../shared/types';
 import { DIRECTOR_RESPONSE_FORMAT, DIRECTOR_RULE } from './director';
 import { AGENT_RULE,AGENT_TOOLS,emptyState } from './agent';
-import {CAPABILITY_RULES} from '../shared/agent-protocol';
+import {BODY_BOUNDARY,TOOL_RULE,DIRECTOR_BOUNDARY} from '../shared/instructions';
 import {DEFAULT_PROMPTS} from '../shared/prompts';
 import { LoreIndex } from './lore';
 import { characterCard, emptyCharacterDraft, CHARACTER_RESPONSE_FORMAT } from '../shared/character-draft';
@@ -41,15 +41,15 @@ it('limits natural Telegram projection to the server-bound session and rebuilds 
  expect(messages.filter(m=>m.content==='@alice: 你好')).toHaveLength(2);expect(messages.some(m=>m.content===raw)).toBe(false);
  expect(sessionDb.prepare("SELECT content FROM messages WHERE role='user'").all().every(m=>m.content===raw)).toBe(true);
 });
-it('uses capability rules with custom KV and reads recalled original prose before committing goal evidence',async()=>{
+it('uses custom tool guidance and reads recalled original prose before committing goal evidence',async()=>{
  const {s}=await seed();sessionDb.prepare("UPDATE messages SET content='更正：两箱木箱，钥匙在南柜。'").run();
- Object.assign(env.PROMPTS,{get:vi.fn(async()=>JSON.stringify({revision:'custom',texts:{...DEFAULT_PROMPTS,agent:'自定义正文规则',director:'自定义候选规则'}}))});
+ Object.assign(env.PROMPTS,{get:vi.fn(async()=>JSON.stringify({revision:'custom',texts:{...DEFAULT_PROMPTS,tools:'自定义工具指导',director:'自定义候选规则'}}))});
  const goal={task:'核对货单',actor:'character',status:'completed',progress:'两箱一致',pauseReason:null,completionEvidence:'账目已经核对完成。'};
  aiRun.mockImplementation(async request=>{
   const q=request.query as {response_format?:unknown;tools:unknown;messages:{role:string;content:string}[]};const results=q.messages.filter(m=>m.role==='tool');
-  expect(q.messages[0].content).toContain('自定义正文规则');expect(q.messages[0].content).toContain(CAPABILITY_RULES.body);
+  expect(q.messages[0].content).toContain('自定义工具指导');expect(q.messages[0].content).not.toContain(TOOL_RULE);
   expect(q.tools).toEqual(AGENT_TOOLS);expect(q.messages[0].content).not.toMatch(/read_memory|completionEvidence|nextOffset/);
-  if(q.response_format){expect(q.messages.at(-1)?.content).toContain(CAPABILITY_RULES.director);return completion(JSON.stringify({choices:['我看看货单。','我暂不签收。','我问问钥匙。']}));}
+  if(q.response_format){expect(q.messages.at(-1)?.content).toMatch(/^自定义候选规则(?:\n|$)/);expect(q.messages.at(-1)?.content).not.toContain(DIRECTOR_BOUNDARY);return completion(JSON.stringify({choices:['我看看货单。','我暂不签收。','我问问钥匙。']}));}
   if(results.length<3){const name=['search_memory','read_memory','update_state'][results.length],args=results.length===0?{query:'钥匙'}:results.length===1?{id:JSON.parse(results[0].content)[0].id}:{patch:{goals:{warehouse:goal}}};
    return completion(results.length===2?'账目已经核对完成。':'','tool_calls',[{index:0,id:'call-'+results.length,type:'function',function:{name,arguments:JSON.stringify(args)}}]);}
   expect(JSON.parse(results[1].content)).toMatchObject({text:'更正：两箱木箱，钥匙在南柜。',nextOffset:null});return completion('两张纸上的数量一致。');
@@ -656,25 +656,25 @@ it('allows signed in prompt reads and checks tavern.all:all before any write',as
  expect(await(await call('/api/prompts')).json()).toMatchObject({admin:false,texts:DEFAULT_PROMPTS});
  expect((await call('/api/prompts','PUT',{texts:DEFAULT_PROMPTS})).status).toBe(403);expect(env.PROMPTS.put).not.toHaveBeenCalled();
  vi.mocked(identity).mockResolvedValue({sub:'owner',username:'管理者',email:'admin',admin:true});
- const texts={...DEFAULT_PROMPTS,agent:'管理者保存的正文规则'};const saved=await(await call('/api/prompts','PUT',{texts})).json() as {revision:string};
- expect(saved).toMatchObject({admin:true,texts});expect(env.PROMPTS.put).toHaveBeenCalledWith('dialogue-v2',JSON.stringify({revision:saved.revision,texts}));
- expect((await call('/api/prompts','PUT',{texts:{agent:'partial'}})).status).toBe(400);
+ const texts={...DEFAULT_PROMPTS,tools:'管理者保存的工具指导'};const saved=await(await call('/api/prompts','PUT',{texts})).json() as {revision:string};
+ expect(saved).toMatchObject({admin:true,texts});expect(env.PROMPTS.put).toHaveBeenCalledWith('dialogue-v3',JSON.stringify({revision:saved.revision,texts}));
+ expect((await call('/api/prompts','PUT',{texts:{tools:'partial'}})).status).toBe(400);
  vi.mocked(identity).mockRejectedValue(new AuthError(401,'请先登录'));expect((await call('/api/prompts')).status).toBe(401);
 });
 it('keeps a single prompt snapshot through a turn then invalidates the old projection after editing',async()=>{
  const {DEFAULT_PROMPTS}=await import('../shared/prompts');
- let document={revision:'one',texts:{...DEFAULT_PROMPTS,agent:'第一版正文协议',director:'第一版候选协议'}};
+ let document={revision:'one',texts:{...DEFAULT_PROMPTS,tools:'第一版工具指导',director:'第一版候选协议'}};
  Object.assign(env.PROMPTS,{get:vi.fn(async()=>JSON.stringify(document))});
  const original=aiRun.getMockImplementation()!;
- aiRun.mockImplementation(async(data,options)=>{const result=await original(data,options);document={revision:'two',texts:{...DEFAULT_PROMPTS,agent:'第二版正文协议',director:'第二版候选协议'}};return result;});
+ aiRun.mockImplementation(async(data,options)=>{const result=await original(data,options);document={revision:'two',texts:{...DEFAULT_PROMPTS,tools:'第二版工具指导',director:'第二版候选协议'}};return result;});
  const {s}=await seed();vi.mocked(env.PROMPTS.get).mockClear();const path='/api/sessions/'+s.id+'/generate';
  await(await call(path,'POST',{requestId:crypto.randomUUID(),content:'第一轮'})).text();await Promise.all(work);
  expect(env.PROMPTS.get).toHaveBeenCalledTimes(1);
  const first=aiRun.mock.calls.map(([data])=>(data.query as {messages:{content:string}[]}).messages);
- expect(first[0][0].content).toContain('第一版正文协议');expect(first[1].at(-1)!.content).toContain('第一版候选协议');expect(JSON.stringify(first)).not.toContain('第二版');
+ expect(first[0][0].content).toContain('第一版工具指导');expect(first[1].at(-1)!.content).toContain('第一版候选协议');expect(JSON.stringify(first)).not.toContain('第二版');
  await(await call(path,'POST',{requestId:crypto.randomUUID(),content:'第二轮'})).text();await Promise.all(work);
  const next=(aiRun.mock.calls[2][0].query as {messages:{content:string}[]}).messages;
- expect(next[0].content).toContain('第二版正文协议');expect(JSON.stringify(next)).not.toContain('第一版');expect(env.PROMPTS.get).toHaveBeenCalledTimes(2);
+ expect(next[0].content).toContain('第二版工具指导');expect(JSON.stringify(next)).not.toContain('第一版');expect(env.PROMPTS.get).toHaveBeenCalledTimes(2);
 });
 
 
@@ -813,4 +813,25 @@ it('rejects invalid images and missing references before updating cards',async()
 it('delegates both image generation purposes to the image service with the signed user token',async()=>{
  for(const kind of ['avatar','portrait']){const response=await worker.fetch(new Request('https://tavern.test/api/characters/'+kind+'/generate',{method:'POST',headers:{Authorization:'Bearer user','Content-Type':'application/json'},body:JSON.stringify({prompt:'银发旅人',model:'override'})}),env,ctx);expect(response.status).toBe(200);const request=vi.mocked(env.IMAGE_SERVICE.fetch).mock.calls.at(-1)![0] as Request;expect(request.headers.get('Authorization')).toBe('Bearer user');expect(await request.json()).toEqual({prompt:'银发旅人',kind,model:kind==='avatar'?'gpt-image-2.5-flare':'gpt-image-2.5-sunburst'});}expect(files.size).toBe(0);
  expect((await call('/api/characters/avatar/generate','POST',{prompt:''})).status).toBe(400);
+});
+
+it('uses editable tool descriptions and exact stage tasks while preserving personal and session prompts',async()=>{
+ const {TOOL_PROMPT_KEYS}=await import('../shared/prompts');
+ const texts={...DEFAULT_PROMPTS,systemTemplate:'只供恢复默认的新模板',tools:'仅使用这些工具指导',director:'完全自定义候选任务',summaryTask:'完全自定义压缩任务',...Object.fromEntries(TOOL_PROMPT_KEYS.map(key=>[key,'编辑后的'+key]))};
+ Object.assign(env.PROMPTS,{get:vi.fn(async()=>JSON.stringify({revision:'editable',texts}))});
+ await call('/api/settings','PUT',{...DEFAULT_SETTINGS,systemPrompt:'保留的个人系统提示'});
+ const {s}=await seed();await call('/api/sessions/'+s.id,'PATCH',{settings:{...DEFAULT_SETTINGS,systemPrompt:'保留的会话系统提示'}});
+ const original=aiRun.getMockImplementation()!;
+ aiRun.mockImplementation(async(data,options)=>{const q=data.query as {messages:{content:string}[]};if(q.messages.at(-1)?.content===texts.summaryTask)return completion('旧事。');return original(data,options);});
+ await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'带着行囊在港城的雨夜走进旅店。'})).text();await Promise.all(work);
+ const body=aiRun.mock.calls[0][0].query as {messages:{content:string}[];tools:typeof AGENT_TOOLS},director=aiRun.mock.calls[1][0].query as typeof body;
+ expect(body.messages[0].content).toContain('保留的会话系统提示');expect(body.messages[0].content).toContain(texts.tools);
+ for(const hidden of [AGENT_RULE,BODY_BOUNDARY,TOOL_RULE,texts.systemTemplate])expect(body.messages[0].content).not.toContain(hidden);
+ expect(body.tools[0].function.description).toBe(texts.searchDescription);expect(body.tools[1].function.description).toBe(texts.readDescription);
+ expect(JSON.stringify(body.tools)).toContain(texts.goalEvidenceDescription);expect(JSON.stringify(body.tools)).not.toContain(DEFAULT_PROMPTS.goalEvidenceDescription);
+ expect(director.tools).toEqual(body.tools);expect(director.messages.at(-1)?.content).toBe(texts.director);
+ expect((await(await call('/api/settings')).json() as {systemPrompt:string}).systemPrompt).toBe('保留的个人系统提示');
+ await call('/api/sessions/'+s.id+'/command','POST',{requestId:crypto.randomUUID(),content:'/compress'});await Promise.all(work);
+ const summary=aiRun.mock.calls.at(-1)![0].query as {messages:{role:string;content:string}[]};expect(summary.messages.at(-1)?.content).toBe(texts.summaryTask);expect(summary.messages.some(m=>m.role==='system')).toBe(false);
+ expect((await(await call('/api/sessions/'+s.id)).json() as import('../shared/types').SessionDetail).session.settings.systemPrompt).toBe('保留的会话系统提示');
 });

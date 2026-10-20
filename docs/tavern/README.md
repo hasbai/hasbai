@@ -30,5 +30,5 @@
 ## 同步维护
 
 - 修改对话架构、上下文顺序、工具、状态或记忆机制时，同步相关文档与 `src/pages/About.svelte`。两者必须与代码在同一变更中交付。
-- 应用提示词存于 Cloudflare KV，运行请求与关于页面读取同一配置。默认值在 `shared/instructions.ts` 与 `shared/prompts.ts`；增加字段时同步 KV 文档和页面用例。在线编辑规则见 [ARCHITECTURE](ARCHITECTURE.md#应用提示词)。
+- 应用提示词存于 Cloudflare KV，运行请求与关于页面读取同一配置。默认值在 `shared/instructions.ts` 与 `shared/prompts.ts`；全部提示文本可编辑；增加字段时同步配置文档和页面用例。在线编辑规则见 [ARCHITECTURE](ARCHITECTURE.md#应用提示词)。
 - 页面只保留功能标题、实际流程和必要说明，不添加装饰性英文副标题、口号或自我解释横幅。

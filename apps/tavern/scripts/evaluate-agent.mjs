@@ -77,7 +77,7 @@ try{
  const kv=await runtime.getKVNamespace('PROMPTS');
  const promptBundle=await build({entryPoints:[join(appRoot,'shared/prompts.ts')],bundle:true,write:false,format:'esm',platform:'node'});
  const {DEFAULT_PROMPTS:prompts}=await import('data:text/javascript;base64,'+Buffer.from(promptBundle.outputFiles[0].text).toString('base64'));
- await kv.put('dialogue-v2',JSON.stringify({revision:'evaluation-custom-kv',texts:{...prompts,agent:prompts.agent+'保留这份自定义协议。'}}));
+ await kv.put('dialogue-v3',JSON.stringify({revision:'evaluation-custom-kv',texts:{...prompts,tools:prompts.tools+'保留这份自定义协议。'}}));
  let editMessageId;
  for(const test of scenario.turns){
   const round=await generate('main',test);
