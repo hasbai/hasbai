@@ -6,7 +6,14 @@
 
 ## 统一登录与身份字段
 
-- 浏览器共用 `packages/auth` 官方 SPA SDK 工厂，Authorization Code + PKCE，token 只在内存，请求使用 `getTokenSilently`。生产代码不处理密码，退出清除相关查询缓存。
+- 浏览器共用 `packages/auth` 官方 SPA SDK 工厂，Authorization Code + PKCE，使用 SDK `localstorage` 持久缓存。
+  五个应用统一启用轮换刷新令牌；请求使用 `getTokenSilently`。
+  有效缓存跨刷新和重开复用，过期后静默续期。
+
+- 缺少刷新令牌时回退到 Auth0 会话恢复。
+  退出由 SDK 清除当前站点缓存；各站点缓存独立。
+  生产代码不处理密码，退出清除相关查询缓存。
+  SPA 已启用刷新令牌轮换，两个业务 audience 均允许 Offline Access。
 - 公开配置的登录域名为 `auth.hasbai.xyz`，管理租户为 `hasbai.eu.auth0.com`，北极小站组织、client ID 和默认 audience 从共享配置引用，应用不重复维护。
 - 统一提供邮箱、Google、Microsoft Account、GitHub，不强制 `connection=eastmoney-email`。四个连接均允许登录时加入北极组织，邮箱支持组织内注册并保留邮箱验证。新用户不授予业务管理角色，不关联原身份、不复制角色；Eastmoney 组织配置保留。
 - 提供商 callback 为 `https://auth.hasbai.xyz/login/callback`；各应用 callback 仍是自身 `/auth/callback`，localhost origin 以应用开发端口登记。Worker issuer/JWKS 使用自定义域名；Neon 既有同租户 provider/JWKS 取钥地址保留。修改前核查消费者。

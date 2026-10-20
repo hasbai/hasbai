@@ -20,7 +20,7 @@
 - 围绕确认需求选择直接、可维护的实现，不增加不必要的抽象、校验门槛或服务依赖，不预设计未授权能力。
 - 通用能力统一放在 `packages`。优先复用 `packages/ui`；现有可复用组件先共享再引用，避免各应用重复通知、表单、弹层和认证能力。共享视觉与交互见[DESIGN](docs/DESIGN.md)。
 - 登录统一使用 `packages/auth`、`auth.hasbai.xyz` 的 Auth0 Universal Login，提供邮箱、Google、Microsoft Account、GitHub；不得按应用强制单一连接。各 API audience、用户与管理权限的唯一规则入口是[AUTHORIZATION](docs/AUTHORIZATION.md)。
-- 凭据文件只通过程序化读取用于已授权请求；禁止用 `cat`、`rg`、`sed` 回显配置值，禁止输出完整环境、认证头、令牌或管理 API 响应。诊断与子代理交付仅输出选定的状态、资源 ID、构建 SHA 等非敏感元数据。浏览器只含公开配置和内存 Access Token。
+- 凭据文件只通过程序化读取用于已授权请求；禁止用 `cat`、`rg`、`sed` 回显配置值，禁止输出完整环境、认证头、令牌或管理 API 响应。诊断与子代理交付仅输出选定的状态、资源 ID、构建 SHA 等非敏感元数据。浏览器只含公开配置和用户会话凭据，存储方式按[AUTHORIZATION](docs/AUTHORIZATION.md)。
 
 ## 校验与交付
 
