@@ -18,6 +18,10 @@ export default defineConfig(({ mode }) => ({
       ...(mode === "e2e"
         ? [
             {
+              find: /^\.\/public-snapshot$/,
+              replacement: fileURLToPath(new URL("./e2e/public-snapshot.ts", import.meta.url)),
+            },
+            {
               find: /^@hasbai\/auth$/,
               replacement: fileURLToPath(
                 new URL("./e2e/auth.ts", import.meta.url),

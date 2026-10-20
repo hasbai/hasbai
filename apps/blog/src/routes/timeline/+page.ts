@@ -4,10 +4,10 @@ import { error } from "@sveltejs/kit";
 import { publicRepository } from "$lib/public-api";
 import type { Article, Note } from "$lib/content";
 
-export const load: PageLoad = async ({ url, parent }) => {
+export const load: PageLoad = async ({ url, parent, fetch }) => {
   const { locale } = await parent();
   try {
-    const repo = publicRepository(locale);
+    const repo = publicRepository(locale, fetch);
     async function collect<T>(getPage: (page: number) => Promise<T[]>) {
       const all: T[] = [];
       for (let page = 1; page <= 1000; page++) {

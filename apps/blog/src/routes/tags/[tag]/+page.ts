@@ -4,9 +4,9 @@ import { pageNumber } from "$lib/content";
 import { error } from "@sveltejs/kit";
 import { publicRepository } from "$lib/public-api";
 
-export const load: PageLoad = async ({ params, url, parent }) => {
+export const load: PageLoad = async ({ params, url, parent, fetch }) => {
   const { locale } = await parent();
-  const repo = publicRepository(locale);
+  const repo = publicRepository(locale, fetch);
   const tags = await repo.tags();
   const tag = tags.find((item) => item.slug === params.tag);
   if (!tag) error(404, "标签不存在");

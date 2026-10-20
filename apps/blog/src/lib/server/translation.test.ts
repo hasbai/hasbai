@@ -10,6 +10,7 @@ const source: Translation = {
   markdown: "# 原文\n\n[链接](/about)",
   updated_at: "2026-10-13T00:00:00Z",
 };
+vi.mock("./public-snapshot", async importOriginal => ({...await importOriginal<typeof import("./public-snapshot")>(), refreshPublicSnapshot: vi.fn()}));
 const env = { AIG_TRANSLATE_RUN_TOKEN: "test" } as App.Platform["env"];
 const text = {
   title: "Title",
@@ -124,4 +125,22 @@ it('completes an existing empty translation instead of treating it as finished',
   if(url.includes('gateway.ai'))return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(text)}}]});
   target=JSON.parse(String(init?.body)).p_locale;return Response.json(null);
  }));expect(await translateContent(repository(async()=>'test'),env,source.content_id,'zh-CN',['en-US'],true)).toEqual([]);expect(target).toBe('en-US');
+});
+
+it("refreshes each committed translation even when a later target fails", async () => {
+  const { refreshPublicSnapshot } = await import("./public-snapshot");
+  vi.mocked(refreshPublicSnapshot).mockClear();
+  let generated = 0;
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes("/translation")) return Response.json([source]);
+    if (url.includes("gateway.ai")) {
+      generated++;
+      if (generated === 2) return Response.json({}, { status: 503 });
+      return Response.json({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify(text) } }] });
+    }
+    return Response.json(null);
+  }));
+  expect(await translateContent(repository(async () => "test"), env, source.content_id, "zh-CN", ["en-US", "zh-TW"], true)).toEqual(["zh-TW"]);
+  expect(refreshPublicSnapshot).toHaveBeenCalledTimes(1);
 });

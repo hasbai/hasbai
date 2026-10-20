@@ -29,6 +29,7 @@ export function repository(
   token?: () => Promise<string>,
   url = env.PUBLIC_DATA_API_URL || dataApiUrl,
   locale = defaultLocale,
+  onCommit?: (publishedAt?: string | null) => Promise<void>,
 ) {
   const db = createDataClient(url, "public", token);
   async function read<T>(
@@ -146,7 +147,14 @@ export function repository(
         })
         .single(),
     );
+    await onCommit?.(fields.published_at);
     return (await one<T>(kind, "id", saved.id))!;
+  }
+  async function mutatePublic(path: string, method: string, value: unknown) {
+    const response = await fetch(path, { method, headers: { "Content-Type": "application/json", Authorization: "Bearer " + await token!() }, body: JSON.stringify(value) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message || "保存失败");
+    return result;
   }
   return {
     db,
@@ -207,6 +215,7 @@ export function repository(
     savePage: (value: unknown, id?: string, updatedAt?: string) =>
       save<Page>("page", value, id, updatedAt),
     async remove(kind: string, id: string, updatedAt: string) {
+      if (typeof window !== "undefined") { await mutatePublic("/api/content", "DELETE", {kind,id,updated_at:updatedAt}); return; }
       const rows = await read<{ id: string }[]>(
         db
           .from("content")
@@ -218,8 +227,8 @@ export function repository(
       );
       if (!rows.length) throw new Error("内容已被更新，请重新打开");
     },
-    createTag: (name: string, slug: string) =>
-      read<Tag>(
+    createTag: (name: string, slug: string): Promise<Tag> =>
+      typeof window !== "undefined" ? mutatePublic("/api/tags", "POST", {name,slug}).then(result => result.item as Tag) : read<Tag>(
         db
           .from("tag")
           .insert({ translations: { [defaultLocale]: name.trim() }, slug })

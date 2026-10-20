@@ -4,11 +4,11 @@ import { error, redirect } from "@sveltejs/kit";
 import { articlePath, notePath, pagePath } from "$lib/content";
 import { publicRepository } from "$lib/public-api";
 
-export const load: PageLoad = async ({ params, url, parent }) => {
+export const load: PageLoad = async ({ params, url, parent, fetch }) => {
   const { locale } = await parent();
   if (!/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(params.id))
     error(404, "内容不存在");
-  const repo = publicRepository(locale);
+  const repo = publicRepository(locale, fetch);
   const content = await repo.content(params.id);
   if (!content) error(404, "内容不存在");
   if (content.kind === "article") {

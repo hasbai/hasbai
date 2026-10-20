@@ -3,10 +3,10 @@ import { localeFromPath, localizedPath } from "$lib/locales";
 import { error } from "@sveltejs/kit";
 import { publicRepository } from "$lib/public-api";
 
-export const load: PageLoad = async ({ url, parent }) => {
+export const load: PageLoad = async ({ url, parent, fetch }) => {
   const { locale } = await parent();
   try {
-    const repo = publicRepository(locale);
+    const repo = publicRepository(locale, fetch);
     const [articles, notes] = await Promise.all([
       repo.articles({ limit: 6 }),
       repo.notes({ limit: 6 }),

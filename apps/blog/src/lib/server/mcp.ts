@@ -12,7 +12,9 @@ import {
   slugSchema,
 } from "$lib/content-schema";
 import { saveContent } from "./translation";
-import { publicRepository } from "$lib/public-api";
+import { neonPublicRepository } from "./neon-public";
+import { cachedPublicRepository } from "./public-reader";
+import { PublicCacheError, refreshPublicSnapshot } from "./public-snapshot";
 import {
   articlePath,
   notePath,
@@ -65,13 +67,13 @@ function result(value: Record<string, unknown>) {
 async function toolResult(work: () => Promise<Record<string, unknown>>) {
   try {
     return result(await work());
-  } catch {
+  } catch (error) {
     return {
       isError: true,
       content: [
         {
           type: "text" as const,
-          text: "内容操作失败，请重新读取当前版本后重试",
+          text: error instanceof PublicCacheError ? error.message : "内容操作失败，请重新读取当前版本后重试",
         },
       ],
     };
@@ -80,7 +82,7 @@ async function toolResult(work: () => Promise<Record<string, unknown>>) {
 
 export function createBlogMcp(token?: string, env?: App.Platform["env"]) {
   const repo = () =>
-    token ? repository(async () => token) : publicRepository();
+    token ? repository(async () => token) : neonPublicRepository();
   const server = new McpServer(
     { name: site.name, version: "1.0.0" },
     {
@@ -112,6 +114,11 @@ export function createBlogMcp(token?: string, env?: App.Platform["env"]) {
     },
     ({ kind, query, page, limit, locale }) =>
       toolResult(async () => {
+        if (!token) {
+          const publicRepo = await cachedPublicRepository(env, locale);
+          const rows = await publicRepo.search(kind, query, page, limit);
+          return {kind,page,limit,has_more:rows.length>limit,items:rows.slice(0,limit).map(withUrl)};
+        }
         let q = repo()
           .db.from("content")
           .select(
@@ -165,6 +172,12 @@ export function createBlogMcp(token?: string, env?: App.Platform["env"]) {
     },
     ({ kind, id, locale }) =>
       toolResult(async () => {
+        if (!token) {
+          const current = await cachedPublicRepository(env, locale);
+          const item = await current.content(id);
+          if(!item || item.kind !== kind)return {item:null};
+          return {item:withUrl({...item,...(kind === "article" ? {tag_ids:(await current.tagsForArticle(id)).map(tag=>tag.id)} : {})})};
+        }
         const current = repo();
         let q = current.db
           .from("content")
@@ -204,7 +217,7 @@ export function createBlogMcp(token?: string, env?: App.Platform["env"]) {
       inputSchema: {},
       annotations,
     },
-    () => toolResult(async () => ({ items: await repo().tags() })),
+    () => toolResult(async () => ({ items: await (token ? repo() : await cachedPublicRepository(env)).tags() })),
   );
   // Portal caches tool schemas across users; authorize each management call.
   registerManagement(server, token, env);
@@ -249,8 +262,9 @@ function registerManagement(
     id?: string,
     updatedAt?: string,
   ) {
+    const writer=repository(async()=>token!,undefined,content.value.locale,publishedAt=>refreshPublicSnapshot(env,writer,publishedAt));
     const item = await saveContent(
-      repository(async () => token!, undefined, content.value.locale),
+      writer,
       env,
       content.kind,
       content.value,
@@ -294,6 +308,7 @@ function registerManagement(
     ({ kind, id, updated_at }) =>
       manage(async (repo) => {
         await repo.remove(kind, id, updated_at);
+        await refreshPublicSnapshot(env, repo);
         return { deleted: true, kind, id };
       }),
   );
@@ -310,7 +325,7 @@ function registerManagement(
       annotations: writeAnnotations,
     },
     ({ name, slug }) =>
-      manage(async (repo) => ({ item: await repo.createTag(name, slug) })),
+      manage(async (repo) => { const item=await repo.createTag(name,slug);await refreshPublicSnapshot(env,repo);return {item}; }),
   );
   server.registerTool(
     "update_tag",
@@ -338,6 +353,7 @@ function registerManagement(
           .select("id,translations,slug")
           .single();
         if (error) throw error;
+        await refreshPublicSnapshot(env, repo);
         return { item: { ...data, name, translations: data.translations } };
       }),
   );
@@ -359,6 +375,7 @@ function registerManagement(
           .select("id")
           .single();
         if (error || !data) throw error ?? new Error("Tag missing");
+        await refreshPublicSnapshot(env, repo);
         return { deleted: true, id };
       }),
   );

@@ -1,8 +1,8 @@
 import { error } from "@sveltejs/kit";
 import { publicRepository } from "./public-api";
 import { renderPublicMarkdown } from "./public-markdown";
-export async function loadArticle(slug: string, locale = "zh-CN") {
-  const repo = publicRepository(locale);
+export async function loadArticle(slug: string, locale = "zh-CN", fetcher: typeof fetch = fetch) {
+  const repo = publicRepository(locale, fetcher);
   const article = await repo.articleBySlug(slug);
   if (
     !article ||

@@ -4,9 +4,9 @@ import { error, redirect } from "@sveltejs/kit";
 import { articlePath } from "$lib/content";
 import { publicRepository } from "$lib/public-api";
 
-export const load: PageLoad = async ({ params, url, parent }) => {
+export const load: PageLoad = async ({ params, url, parent, fetch }) => {
   const { locale } = await parent();
-  const article = await publicRepository(locale).articleByLegacyPath(
+  const article = await publicRepository(locale, fetch).articleByLegacyPath(
     `/${params.category}/${params.title}`,
   );
   if (!article) error(404, "文章不存在");

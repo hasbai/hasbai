@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
+import { PublicCacheError } from "./public-snapshot";
+import { publicRoutes } from "./public-routes";
 import { contentRoutes } from "./content-routes";
 import { imageRoutes } from "./images";
 
@@ -9,6 +11,7 @@ export type BlogBindings = { platform?: App.Platform };
 
 export const blogHttp = new Hono<{ Bindings: BlogBindings }>();
 blogHttp.onError((error, c) => {
+  if (error instanceof PublicCacheError) return c.json({message:error.message,committed:true},503);
   if (error instanceof HTTPException)
     return c.json({ message: error.message }, error.status);
   return c.json({ message: "服务暂时不可用" }, 503);
@@ -48,6 +51,7 @@ blogHttp.all("/api/mcp", (c) =>
 );
 blogHttp.route("/", imageRoutes);
 blogHttp.route("/", contentRoutes);
+blogHttp.route("/", publicRoutes);
 blogHttp.all("/api/version", (c) =>
   c.json({ message: "Method not allowed" }, 405, { Allow: "GET, HEAD" }),
 );

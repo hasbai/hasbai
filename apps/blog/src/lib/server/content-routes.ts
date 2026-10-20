@@ -6,7 +6,8 @@ import { verifyUserToken } from "@hasbai/auth/server";
 import { z } from "zod";
 import { repository } from "$lib/api";
 import { defaultLocale, defaultLocales } from "$lib/locales";
-import { articleSchema, noteSchema, pageSchema } from "$lib/content-schema";
+import { articleSchema, noteSchema, pageSchema, slugSchema } from "$lib/content-schema";
+import { PublicCacheError, refreshPublicSnapshot } from "./public-snapshot";
 import { localesResponse } from "./settings";
 import type { BlogBindings } from "./http";
 import {
@@ -24,7 +25,7 @@ contentRoutes.get("/api/locales", c => localesResponse(c.env.platform?.env, c.re
 contentRoutes.use("/api/content", bodyLimit({ maxSize: 2 * 1024 * 1024 }));
 contentRoutes.use("/api/translate", bodyLimit({ maxSize: 4096 }));
 contentRoutes.use("/api/settings/locales", bodyLimit({ maxSize: 4096 }));
-for (const path of ["/api/content", "/api/translate", "/api/settings/locales"])
+for (const path of ["/api/content", "/api/translate", "/api/settings/locales", "/api/tags"])
   contentRoutes.use(path, async (c, next) => {
     const token = c.req.header("Authorization")?.match(/^Bearer (\S+)$/)?.[1];
     if (!token) throw new HTTPException(401, { message: "请登录" });
@@ -70,9 +71,10 @@ contentRoutes.post("/api/content", async (c) => {
   )
     throw new HTTPException(400, { message: "语言未启用" });
   try {
+    const repo=repository(async () => c.get("token"), undefined, fields.data.locale, publishedAt=>refreshPublicSnapshot(c.env.platform?.env,repo,publishedAt));
     return c.json({
       item: await saveContent(
-        repository(async () => c.get("token"), undefined, fields.data.locale),
+        repo,
         c.env.platform?.env,
         kind,
         fields.data,
@@ -81,6 +83,7 @@ contentRoutes.post("/api/content", async (c) => {
       ),
     });
   } catch (error) {
+    if(error instanceof PublicCacheError)throw error;
     throw new HTTPException(409, {
       message: error instanceof Error ? error.message : "保存失败",
     });
@@ -110,6 +113,7 @@ contentRoutes.post("/api/translate", async (c) => {
     await translateContent(repo, env, id, source, [target], false);
     return c.json({item:await repo.snapshot(id)});
   } catch (error) {
+    if(error instanceof PublicCacheError)throw error;
     throw new HTTPException(409, {
       message: error instanceof Error ? error.message : "翻译失败",
     });
@@ -144,4 +148,21 @@ contentRoutes.put("/api/settings/locales", async (c) => {
   if (!kv) throw new HTTPException(503, { message: "语言设置未配置" });
   await kv.put(localeKey, JSON.stringify(locales));
   return c.json({ locales });
+});
+
+contentRoutes.delete("/api/content", bodyLimit({maxSize:4096}), async c => {
+  const parsed=z.object({...version,kind:z.enum(["article","note","page"])}).safeParse(await c.req.json());
+  if(!parsed.success)throw new HTTPException(400,{message:"删除参数无效"});
+  const repo=repository(async()=>c.get("token"));
+  await repo.remove(parsed.data.kind,parsed.data.id,parsed.data.updated_at);
+  await refreshPublicSnapshot(c.env.platform?.env,repo);
+  return c.json({deleted:true});
+});
+contentRoutes.post("/api/tags", bodyLimit({maxSize:4096}), async c => {
+  const parsed=z.object({name:z.string().trim().min(1).max(80),slug:slugSchema.refine(value=>value.length<=80)}).safeParse(await c.req.json());
+  if(!parsed.success)throw new HTTPException(400,{message:"标签参数无效"});
+  const repo=repository(async()=>c.get("token"));
+  const item=await repo.createTag(parsed.data.name,parsed.data.slug);
+  await refreshPublicSnapshot(c.env.platform?.env,repo);
+  return c.json({item});
 });

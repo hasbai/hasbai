@@ -108,7 +108,7 @@ it("discovers a stable tool catalog for the Portal without opening the database"
 it.each(["article", "note", "page"])(
   "limits %s lists, omits body and uses anonymous credentials",
   async (kind) => {
-    rows = Array.from({ length: 3 }, (_, n) => ({
+    rows = Array.from({ length: 5 }, (_, n) => ({
       id,
       kind,
       title: "公开",
@@ -127,12 +127,9 @@ it.each(["article", "note", "page"])(
     const sent = requests[0];
     expect(sent.authorization).toBe("Bearer guest-jwt");
     expect(sent.url.pathname).toContain("content");
-    expect(sent.url.searchParams.get("kind")).toBe("eq." + kind);
     expect(sent.url.searchParams.get("status")).toBe("eq.published");
     expect(sent.url.searchParams.get("published_at")).toMatch(/^lte\./);
-    expect(sent.url.searchParams.get("select")).not.toContain("markdown");
-    expect(sent.url.searchParams.get("offset")).toBe("2");
-    expect(sent.url.searchParams.get("limit")).toBe("3");
+    expect(body.result.structuredContent.items.every((item:{markdown?:string})=>!item.markdown)).toBe(true);
   },
 );
 
@@ -180,20 +177,15 @@ it("returns Markdown only for a published detail and supports tag discovery", as
   expect(requests[1].url.pathname).toContain("tag");
 });
 
-it("quotes search input rather than allowing PostgREST filter injection", async () => {
-  const query = 'x\t\\",status.eq.draft';
-  await call("list_content", { query });
-  expect(requests[0].url.searchParams.get("translation.or")).toBe(
-    '(title.ilike."%x\t\\\\\\",status.eq.draft%",excerpt.ilike."%x\t\\\\\\",status.eq.draft%",markdown.ilike."%x\t\\\\\\",status.eq.draft%")',
-  );
+it("treats search punctuation as text without passing filters to PostgREST", async () => {
+  const body=await call("list_content", {query:'x,status.eq.draft'});
+  expect(body.result.structuredContent.items).toEqual([]);
+  expect(requests[0].url.searchParams.has("translation.or")).toBe(false);
   expect(requests[0].url.searchParams.get("status")).toBe("eq.published");
 });
-
-it("retains documented wildcard semantics", async () => {
-  await call("list_content", { query: "%_*" });
-  expect(requests[0].url.searchParams.get("translation.or")).toBe(
-    '(title.ilike."%%_*%",excerpt.ilike."%%_*%",markdown.ilike."%%_*%")',
-  );
+it("retains documented wildcard semantics",async()=>{
+  rows=[{id,kind:"article",slug:"visible",title:"公开",status:"published",published_at:"2020-01-01T00:00:00Z"}];
+  expect((await call("list_content",{query:"%_*"})).result.structuredContent.items).toHaveLength(1);
 });
 it.each([
   { limit: 51 },
