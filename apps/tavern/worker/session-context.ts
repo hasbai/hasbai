@@ -1,6 +1,5 @@
 import { parseBook } from '../shared/cards';
 import type { ContextUsage } from '../shared/types';
-import { capabilityProtocol } from '../shared/agent-protocol';
 import { ConversationContext } from './context';
 import { stateContext, storyMessages } from './agent';
 import { ownedBooks, settings } from './store';
@@ -14,6 +13,6 @@ export async function telegramSession(env:Env,owner:string,id:string){return !!a
 export async function sessionContext(env:Env,ctx:Pick<ExecutionContext,'waitUntil'>,owner:string,store:SessionStore,infer:ConstructorParameters<typeof ConversationContext>[6],observe?:ConstructorParameters<typeof ConversationContext>[7]) {
  const row=store.get(),history=storyMessages(store.messages()),state=store.state(history);
  const [books,prompts,capability,telegram]=await Promise.all([ownedBooks(env,owner,JSON.parse(row.book_ids_json)),readPrompts(env),capabilities(env,ctx),telegramSession(env,owner,row.id)]);
- const context=new ConversationContext(history,JSON.parse(row.character_json),books.filter(b=>b.enabled).map(b=>parseBook(JSON.parse(b.book_json),b.name)),settings(JSON.parse(row.settings_json)),capability.contextTokens,{protocol:capabilityProtocol('body',prompts.texts.agent),summaryTask:capabilityProtocol('summary',prompts.texts.summaryTask),inputRatio:capability.inputRatio,state:stateContext(state),telegram},infer,observe);
+ const context=new ConversationContext(history,JSON.parse(row.character_json),books.filter(b=>b.enabled).map(b=>parseBook(JSON.parse(b.book_json),b.name)),settings(JSON.parse(row.settings_json)),capability.contextTokens,{protocol:prompts.texts.tools,summaryTask:prompts.texts.summaryTask,inputRatio:capability.inputRatio,state:stateContext(state),telegram},infer,observe);
  await context.restore(row.summary_json);return context;
 }

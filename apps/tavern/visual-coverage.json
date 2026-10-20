@@ -376,6 +376,8 @@
           "snapshots": [
             "about.png",
             "about-context.png",
+            "about-tools.png",
+            "about-summary.png",
             "about-dark.png"
           ]
         }

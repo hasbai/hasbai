@@ -1,7 +1,7 @@
+import { agentTools } from '../shared/instructions';
 import { contextUsage, telegramSession } from './session-context';
 import type { AgentActivity } from '../shared/types';
 import { readPrompts } from './prompts';
-import { capabilityProtocol } from '../shared/agent-protocol';
 import { capabilities, modelInput, recordFeedback, type Capability } from './models';
 import { candidateDelimiter, CandidateStream } from '../shared/candidates';
 import { inferRoleplay, InferenceError } from './inference';
@@ -17,7 +17,7 @@ import { HttpError, json } from './http';
 import { settings, currentMessages, message, ownedBooks } from './store';
 import type { SessionStore } from './session-store';
 import { recallRequested, draftProblems } from './narrative';
-import { AGENT_TOOLS, AgentTurn, contentHash, stableJson, stateContext, storyMessages, type ToolCall, type ModelProjection } from './agent';
+import { AgentTurn, contentHash, stableJson, stateContext, storyMessages, type ToolCall, type ModelProjection } from './agent';
 export { explicitContextLimit } from './context';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext,'waitUntil'>,owner:string,id:string,data:Record<string,unknown>,username:string,store:SessionStore,onSettled:(id:string)=>Promise<void> = async()=>{},onClaim:(id:string,abort:AbortController)=>void = ()=>{},beforeClaim:()=>void=()=>{}) {
@@ -26,9 +26,9 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
  const initial=store.get();
  const existing=store.findRequest(requestId);
  if(existing)return json({message:message(existing),replayed:true});
- const promptDocument=await readPrompts(env),texts=promptDocument.texts;
- const contextOptions={protocol:capabilityProtocol('body',texts.agent),summaryTask:capabilityProtocol('summary',texts.summaryTask),telegram:await telegramSession(env,owner,id)};
- const directorRule=capabilityProtocol('director',texts.director);
+ const promptDocument=await readPrompts(env),texts=promptDocument.texts,tools=agentTools(texts);
+ const contextOptions={protocol:texts.tools,summaryTask:texts.summaryTask,telegram:await telegramSession(env,owner,id)};
+ const directorRule=texts.director;
  const capability=await capabilities(env,ctx);beforeClaim();if(request.signal.aborted||store.cancelled(requestId))throw new HttpError(409,'生成已停止');const now=Date.now();
  if(data.continue===true)throw new HttpError(400,'续写已移除');
  const regenerate=data.regenerate===true;const text=typeof data.content==='string'?data.content.trim():'';
@@ -58,7 +58,7 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
   const embedded=parseCard(JSON.parse(row.character_json)).data.character_book;
   lore=new LoreIndex(store.storage.sql,[...(embedded?[{id:'character',book:parseBook(embedded)}]:[]),...books.filter(b=>b.enabled).map(b=>({id:b.id,book:parseBook(JSON.parse(b.book_json),b.name)}))],(texts,signal)=>embeddings(env,texts,username,requestId,signal),abort.signal,base);
   agent=new AgentTurn(before,base,regenerate?[...base].reverse().find(m=>m.role==='user'):userMessage,(hit,offset)=>lore.read(hit,offset));
-  projectionContext={character:JSON.parse(row.character_json),books:books.map(b=>[b.id,b.enabled,b.book_json]),settings:JSON.parse(row.settings_json),tools:AGENT_TOOLS,prompts:promptDocument,contextOptions,directorRule,promptVersion:10};
+  projectionContext={character:JSON.parse(row.character_json),books:books.map(b=>[b.id,b.enabled,b.book_json]),settings:JSON.parse(row.settings_json),tools,prompts:promptDocument,contextOptions,directorRule,promptVersion:11};
   const currentInput=regenerate?(base.at(-1)?.role==='user'?base.at(-1):undefined):userMessage;
   const contextHistory=currentInput&&base.at(-1)?.id===currentInput.id?base.slice(0,-1):base;
   conversation=new ConversationContext(contextHistory,JSON.parse(row.character_json),books.filter(b=>b.enabled).map(b=>parseBook(JSON.parse(b.book_json),b.name)),settings(JSON.parse(row.settings_json)),capability.contextTokens,{...contextOptions,inputRatio:capability.inputRatio,state:stateContext(before),currentInput},messages=>summarizeWithModel(env,username,requestId,settings(JSON.parse(row.settings_json)),messages,abort.signal),observeCompression);
@@ -114,7 +114,7 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
    finishReason='interrupted';
    let upstreamReason:string|undefined;let streamLimit:number|undefined;
    try{
-    for await(const event of inferRoleplay(env,username,requestId,{messages:prompt.messages,tools:AGENT_TOOLS,tool_choice:'auto',...modelInput(opts)},abort.signal)){
+    for await(const event of inferRoleplay(env,username,requestId,{messages:prompt.messages,tools,tool_choice:'auto',...modelInput(opts)},abort.signal)){
      if(event.type==='observation'){metrics.observe(event.value);if(typeof event.value.model==='string')model=event.value.model;gatewayLogId=event.logId;}
      else if(event.type==='text'){requestOutput+=event.text;output+=parser.push(event.text);if(Date.now()-draftSavedAt>=1000){await checkpointDraft();draftSavedAt=Date.now();}await streamOutput();}
      else {upstreamReason=event.reason;calls=event.calls;}
@@ -189,7 +189,7 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
     }
     directorStartedAt=Date.now();candidates=await director.run(messages=>{
      modelRequests++;
-     return inferRoleplay(env,username,requestId,{messages,tools:AGENT_TOOLS,tool_choice:'none',response_format:DIRECTOR_RESPONSE_FORMAT,...modelInput(opts),...(opts.thinkingEnabled?{thinking_budget_tokens:0}:{})},abort.signal);
+     return inferRoleplay(env,username,requestId,{messages,tools,tool_choice:'none',response_format:DIRECTOR_RESPONSE_FORMAT,...modelInput(opts),...(opts.thinkingEnabled?{thinking_budget_tokens:0}:{})},abort.signal);
     },abort.signal,owns,rebuild);
     candidateOutcome=director.outcome;candidateFirstAt=director.firstAt;model=director.model||model;gatewayLogId=director.gatewayLogId;metrics=director.metrics;
    }catch(error){candidateOutcome='error';candidateError=(error as Error).message;if(abort.signal.aborted)throw error;candidates=[];}
