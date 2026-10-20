@@ -125,7 +125,7 @@
       "evidence": [
         {
           "spec": "e2e/blog.spec.ts",
-          "test": "SSR, direct Data API navigation, skeleton, canonical URLs and reading states",
+          "test": "SSR, cached public navigation, skeleton, canonical URLs and reading states",
           "projects": [
             "iphone",
             "desktop"

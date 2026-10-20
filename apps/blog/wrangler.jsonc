@@ -40,5 +40,11 @@
       "binding": "IMAGE_SERVICE",
       "service": "images"
     }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BLOG_PUBLIC",
+      "bucket_name": "hasbai-blog-public-cache"
+    }
   ]
 }

@@ -24,7 +24,7 @@ SvelteKit 负责 SSR 页面，Hono 负责 `/api/**` 与 `/images/**` 接口。`h
 
 Worker 的 BLOG_SETTINGS 绑定保存 KV 键 `blog:supported-locales`。默认列表是 zh-CN、zh-TW、en-US。编辑室可以启用或禁用已注册语言，zh-CN 必须保留。新增语言先扩展数据库 locale enum，再在编辑室启用。禁用语言保留已有译文。
 
-`save_content` RPC 在同一事务内写元数据、当前语言正文及文章标签。保存使用 content.updated_at 检查冲突。编辑室通过 `/api/content` 保存；MCP 使用同一服务端保存服务。公开读取仍直连 Data API。
+`save_content` RPC 在同一事务内写元数据、当前语言正文及文章标签。保存使用 content.updated_at 检查冲突。编辑室通过 `/api/content` 保存；MCP 使用同一服务端保存服务。公开读取统一经过私有 R2 快照，策略和成本边界见 [CACHE](CACHE.md)。
 
 发布后服务端自动补齐启用列表中的缺失译文，已有完整译文保持原样。空正文视为缺失，公开读取回退到完整译文。翻译失败保留已保存原文，并返回待补语言。修改时可在编辑器选择目标语言和已保存的来源语言，手动翻译并直接覆盖目标正文。未保存的修改需先保存。
 
@@ -32,9 +32,9 @@ Worker 的 BLOG_SETTINGS 绑定保存 KV 键 `blog:supported-locales`。默认�
 
 AI 调用使用 custom Gateway 的 `dynamic/translate` 动态路由（`custom/translate`），其 provider 为 custom-codex。请求使用 compat/chat/completions，模型由网关配置决定。推理 Secret `AIG_TRANSLATE_RUN_TOKEN` 只在 Worker 中使用。服务端要求 JSON 输出，拒绝截断、无效和空正文响应；提示词要求保留 Markdown、代码、公式和链接。[Cloudflare 动态路由](https://developers.cloudflare.com/ai-gateway/features/dynamic-routing/usage/)
 
-Neon 网关要求 JWT，包括匿名访问。访客直接调用 Neon Auth `/token/anonymous` 获取短期 `role=anonymous` JWT，再直接读取 Data API；不登录、不经博客 API 代理、不使用数据库密钥。SSR 同样调用这两个公开端点。公开页使用 SvelteKit 通用 `+page.ts` load，水合后的页间跳转直接从浏览器请求匿名令牌与 Data API，不再获取 `__data.json`；导航期间立即显示骨架，关闭 hover 预取。
+Neon 网关要求 JWT，包括匿名访问。Worker 仅在重建公开快照时获取短期匿名 JWT，并经匿名 RLS 读取已发布内容。SSR 和浏览器导航通过同源 `/api/public` 读取快照，不再由浏览器直连 Neon。公开页继续使用通用 `+page.ts` load，SSR 传入 SvelteKit 的请求级 fetch；导航期间显示原有骨架，关闭 hover 预取。列表只返回摘要，不序列化整篇 Markdown。
 
-首页和列表只读摘要列，不序列化整篇 Markdown；浏览器短时复用匿名令牌。Auth0 管理员登录继续用共享 SPA PKCE，缓存与续期见[共享授权规则](../AUTHORIZATION.md)。Neon managed auth 仅提供匿名令牌；不增加另一套用户登录入口。新增 managed `neon_auth` 属平台系统 schema，博客业务表仍全部在 public。
+原文保存、每次译文提交、删除和标签修改均更新快照。公开与管理员读取分开；Auth0 管理员登录、JWT 和数据库权限契约保持不变。计划发布、更新失败和并发处理见 [CACHE](CACHE.md)。
 
 ## 图片
 
@@ -50,7 +50,7 @@ Neon 网关要求 JWT，包括匿名访问。访客直接调用 Neon Auth `/toke
 - `get_content`：按类型和 UUID 读取 Markdown 正文与规范网址。
 - `list_tags`：读取公开标签。
 
-匿名请求使用 `publicRepository()` 的匿名 JWT，列表和详情限定发布状态与发布时间。管理员 Token 使用共享 `packages/auth/server` 验证签名、issuer、audience、有效期和用户身份，再检查 `blog.all:all`。无效 Token 返回 401；普通用户仍只读公开内容。
+匿名请求使用与公开页面相同的快照读取，列表和详情限定发布状态与发布时间。管理员 Token 使用共享 `packages/auth/server` 验证签名、issuer、audience、有效期和用户身份，再检查 `blog.all:all`。无效 Token 返回 401；普通用户仍只读公开内容。
 
 管理员可调用 `create_content`、`update_content`、`delete_content`，管理文章、手记和独立页面。写入复用统一 content/translation schema、repository 和原子 RPC。修改和删除要求最近读取的 `updated_at`；文章详情返回 `tag_ids`。
 
@@ -82,4 +82,4 @@ YAML 的 SSR 解析固定使用依赖提供的浏览器 ESM 入口，避免 Node
 
 `0005` 增加独立页面约束/权限；`0006`–`0009` 是特定内容版本的名称/政策迁移，不能当通用初始化脚本重放。正文冲突整体回滚，保留 UUID 与用户内容，详细历史见[DELIVERY](history/DELIVERY.md)。
 
-Worker 使用 `wrangler.jsonc` 的 IMAGE_SERVICE、KV BLOG_SETTINGS 绑定和两个自定义域名。Workers Builds 从 `apps/blog` 执行 `pnpm build`，本地构建亦包含实际 workerd `/api/version` 启动验证；自动 Build 与线上 SSR 仍须单独核验。统一检查、隔离 Neon 迁移、Linux 基线与 PR 交付见[TESTING](../TESTING.md)。
+Worker 使用 `wrangler.jsonc` 的 IMAGE_SERVICE、KV BLOG_SETTINGS、私有 R2 BLOG_PUBLIC 绑定和两个自定义域名。Workers Builds 从 `apps/blog` 执行 `pnpm build`，本地构建亦包含实际 workerd `/api/version` 启动验证；自动 Build 与线上 SSR 仍须单独核验。统一检查、隔离 Neon 迁移、Linux 基线与 PR 交付见[TESTING](../TESTING.md)。

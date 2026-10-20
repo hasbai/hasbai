@@ -4,11 +4,11 @@ import { error } from "@sveltejs/kit";
 import { publicRepository } from "$lib/public-api";
 import { renderPublicMarkdown } from "$lib/public-markdown";
 
-export const load: PageLoad = async ({ params, url, parent }) => {
+export const load: PageLoad = async ({ params, url, parent, fetch }) => {
   const { locale } = await parent();
   const sequence = Number(params.sequence);
   if (!Number.isSafeInteger(sequence) || sequence < 1) error(404, "手记不存在");
-  const note = await publicRepository(locale).noteBySequence(sequence);
+  const note = await publicRepository(locale, fetch).noteBySequence(sequence);
   if (!note) error(404, "手记不存在");
   return { note, html: await renderPublicMarkdown(note.markdown) };
 };

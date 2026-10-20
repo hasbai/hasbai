@@ -16,6 +16,7 @@
 
 | 任务 | 入口 |
 | --- | --- |
+| 请求分析、公开缓存、免费额度与失效 | [CACHE](CACHE.md) |
 | SSR、多语言、路由、CRUD、AI 翻译、图片、Worker | [ARCHITECTURE](ARCHITECTURE.md) |
 | 安全渲染、数学、引用、图表与源码保真 | [共享 MARKDOWN](../MARKDOWN.md)；`packages/markdown` |
 | 当前能力与未验收项 | [PROGRESS](PROGRESS.md) |

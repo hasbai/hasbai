@@ -3,11 +3,11 @@ import { error } from "@sveltejs/kit";
 import { publicRepository } from "$lib/public-api";
 import { renderPublicMarkdown } from "$lib/public-markdown";
 import type { PageLoad } from "./$types";
-export const load: PageLoad = async ({ params, url, parent }) => {
+export const load: PageLoad = async ({ params, url, parent, fetch }) => {
   const { locale } = await parent();
   let page;
   try {
-    page = await publicRepository(locale).pageBySlug(params.slug);
+    page = await publicRepository(locale, fetch).pageBySlug(params.slug);
   } catch {
     error(503, "页面暂时无法加载");
   }

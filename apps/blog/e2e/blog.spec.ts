@@ -31,7 +31,7 @@ test('desktop background paints and respects reduced motion', async ({ page }, t
   await expect.poll(() => page.evaluate(() => getComputedStyle(document.body, '::after').content)).toBe('none');
 });
 
-test('SSR, direct Data API navigation, skeleton, canonical URLs and reading states', async ({ page, request }) => {
+test('SSR, cached public navigation, skeleton, canonical URLs and reading states', async ({ page, request }) => {
   const response = await request.get('/articles/hello-world');
   expect(await response.text()).toContain('从一页空白开始');
   const dataRequests: string[] = [];
@@ -63,7 +63,7 @@ test('SSR, direct Data API navigation, skeleton, canonical URLs and reading stat
 
   let releaseArticles!: () => void;
   const articlesPending = new Promise<void>((resolve) => { releaseArticles = resolve; });
-  await page.route(/\/rest\/v1\/content\?/, async (route) => {
+  await page.route(/\/api\/public\?/, async (route) => {
     await articlesPending;
     await route.continue();
   });
@@ -78,7 +78,7 @@ test('SSR, direct Data API navigation, skeleton, canonical URLs and reading stat
   await expect(page.getByRole('heading', { name: '文章', exact: true })).toBeVisible();
   await expect(page).toHaveTitle('文章 · 北极小站');
   expect(dataRequests).toEqual([]);
-  await page.unroute(/\/rest\/v1\/content\?/);
+  await page.unroute(/\/api\/public\?/);
   await expect(page).toHaveScreenshot('articles.png', { fullPage: true });
 
   await page.getByRole('link', { name: /Hello World，开始记录/ }).click();

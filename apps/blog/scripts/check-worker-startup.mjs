@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
-import { spawn } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { spawn, spawnSync } from "node:child_process";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -10,6 +10,10 @@ import { setTimeout as delay } from "node:timers/promises";
 // module initialization failures in workerd, including Node-only dependencies.
 const directory = await mkdtemp(join(tmpdir(), "blog-worker-startup-"));
 const runtime = createRequire(import.meta.url)("workerd");
+const fixture=join(directory,"public-snapshot.json");
+await writeFile(fixture,JSON.stringify({content:[],tags:[],refreshedAt:Date.now(),schedule:[],revision:"startup-fixture"}));
+const seed=spawnSync("pnpm",["exec","wrangler","r2","object","put","hasbai-blog-public-cache/public/v1.json","--local","--persist-to",directory,"--file",fixture],{stdio:"pipe",env:{...process.env,WRANGLER_SEND_METRICS:"false",MINIFLARE_WORKERD_PATH:runtime.default}});
+if(seed.status!==0){await rm(directory,{recursive:true,force:true});throw new Error("Unable to seed isolated local R2 fixture");}
 const reservation = createServer();
 await new Promise((resolve, reject) => { reservation.once("error", reject); reservation.listen(0, "127.0.0.1", resolve); });
 const port = reservation.address().port;
@@ -39,6 +43,14 @@ try {
     const error = stderr.split("\n").filter(line => /Uncaught|createRequire|file URL|ERROR|failed to start/i.test(line)).slice(0,8).join("\n");
     throw new Error("Production Worker failed to initialize in workerd" + (error ? "\n" + error : ""));
   }
+  for(const [op,args,expected] of [["articles",[{}],[]],["pageBySlug",["scanner-missing"],null]]) {
+    const url=new URL(`http://127.0.0.1:${port}/api/public`);
+    url.search=new URLSearchParams({op,args:JSON.stringify(args)}).toString();
+    const response=await fetch(url,{signal:AbortSignal.timeout(5000)});
+    if(response.status!==200 || response.headers.get("X-Blog-Source")!=="r2" || JSON.stringify((await response.json()).data)!==JSON.stringify(expected))throw new Error("Production public reader failed isolated R2 validation");
+  }
+  const ssr=await fetch(`http://127.0.0.1:${port}/articles`,{signal:AbortSignal.timeout(5000)});
+  if(ssr.status!==200 || !(await ssr.text()).includes("北极小站"))throw new Error("Production SSR failed isolated R2 validation");
   const rpc = async (method, params, id = 1) => {
     const response = await fetch(`http://127.0.0.1:${port}/api/mcp`, {
       method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" },
@@ -62,7 +74,7 @@ try {
     const response = await fetch(`http://127.0.0.1:${port}/api/mcp`, { method, signal: AbortSignal.timeout(5000) });
     if (response.status !== 405) throw new Error("Production MCP unexpectedly enabled session transport");
   }
-  console.log("Production Worker initialized in workerd; version, MCP initialize/discovery/validation/notifications/methods passed.");
+  console.log("Production Worker initialized in workerd; version, public R2 reads/unknown slug/SSR, MCP initialize/discovery/validation/notifications/methods passed.");
 } finally {
   if (child.pid) {
     if (process.platform === "win32") child.kill("SIGTERM");

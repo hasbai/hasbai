@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { repository } from "$lib/api";
-import { publicRepository } from "$lib/public-api";
+import { neonPublicRepository } from "./neon-public";
+import { PublicCacheError, refreshPublicSnapshot } from "./public-snapshot";
 import { defaultLocale, defaultLocales } from "$lib/locales";
 import type { Content, Translation } from "$lib/content";
 import { supportedLocales } from "./settings";
@@ -92,7 +93,9 @@ export async function translateContent(
         p_missing_only: missingOnly,
       });
       if (result.error) throw new Error(result.error.message);
+      await refreshPublicSnapshot(env, repo);
     } catch (error) {
+      if (error instanceof PublicCacheError) throw error;
       if (!missingOnly) throw error;
       failed.push(target);
     }
@@ -110,6 +113,8 @@ export async function saveContent(
   const locale = (value as { locale?: string }).locale ?? defaultLocale;
   if (!(await supportedLocales(env)).includes(locale))
     throw new Error("语言未启用");
+  // The repository callback invalidates immediately after save_content commits,
+  // before its follow-up detail SELECT can fail.
   let item = await (kind === "article"
     ? repo.saveArticle(value, id, updatedAt)
     : kind === "note"
@@ -130,7 +135,8 @@ export async function saveContent(
             true,
           )
         : targets.filter((t) => t !== item.locale);
-    } catch {
+    } catch (error) {
+      if (error instanceof PublicCacheError) throw error;
       failed = targets.filter((t) => t !== item.locale);
     }
     warning = failed.length ? `原文已保存，以下语言待翻译：${failed.join(", ")}` : undefined;
@@ -138,5 +144,5 @@ export async function saveContent(
   return Object.assign(await repo.snapshot(item.id), {translation_warning:warning});
 }
 export async function registeredLocales() {
-  return publicRepository().locales();
+  return neonPublicRepository().locales();
 }
