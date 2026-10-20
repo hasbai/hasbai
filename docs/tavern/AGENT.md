@@ -9,17 +9,22 @@ Telegram 通过消息中台调用同一会话入口，不另建 Agent。
 
 每个 assistant 版本保存 before/after 状态和工具步骤。scene、facts、relationships、inventory 采用有界 JSON patch，省略保留，null 删除；白名单、深度、字节和单项长度有界，不预建游戏引擎。
 
-`goals` 按稳定名称保存委托、执行主体、状态和已确认进展。
+`goals` 按稳定名称保存需跟进事项、执行主体、状态和已确认进展。
+普通闲聊不建目标。
 状态为 active、paused 或 completed。
 暂停须有 pauseReason；完成须有 completionEvidence。
 同键执行主体不可改变，区分 character 与 player。
 
-完成证据须逐字引用完整原句；player 证据只来自用户原文。
+完成证据须逐字引用描述已完成动作或结果的完整原句。
+不得引用要求、计划或候选；player 证据只来自用户原文。
 字符匹配只核对来源，否定、计划和真正完成另做语义评测。
 
 目标最多16项，沿用状态总字节限制。
 旧快照读取时补空 goals，不重写原 JSON。
 目标与其他状态共用成功提交、失败回滚和历史截断规则。
+暂停仅由用户明确恢复，回顾不算恢复。
+已完成事项不重启，新事项另建目标。
+这些语义由模型遵守，并用长程场景评测。
 
 `update_state` 仅暂存已发生事实，可供本回合工具后请求读取；只有正文正常完成且整回合未停止时，与 message、快照和 revision 在 DO 同一事务提交。长度中断、主动停止、上游断流或工具失败不提前提交；候选故障保留成功正文/状态。
 
@@ -37,7 +42,7 @@ Telegram 通过消息中台调用同一会话入口，不另建 Agent。
 
 | 工具 | 输入与输出 | 约束 |
 | --- | --- | --- |
-| `search_memory` | query:string → 最多三条 `id,text,source` | 只查本人当前会话成功剧情/启用世界书，返回版本来源 |
+| `search_memory` | query:string → 最多三条原文片段 `id,text,source` | 只查本人当前会话成功剧情/启用世界书，返回版本来源 |
 | `read_memory` | id, offset → 原文页、source、total、nextOffset | 仅接受本轮检索返回的 ID，从0按 nextOffset读取 |
 | `update_state` | patch:object → 暂存结果或字段错误 | 不接受未来候选行动，不直接提交 |
 
@@ -66,7 +71,10 @@ DO 成功消息版本与状态事务是权威剧情；摘要、旧 Director 梗�
 
 长消息片段用最长已命中词优先、等长最早命中；规范化小写索引映回原文 Unicode 字符，再取前 100 / 总 600 字符窗口。中文二元词按 Unicode 字符生成，避免扩展区汉字、emoji 残代理或小写扩长造成空片段。来源过滤、成功版本和三条上限保留。
 
-`read_memory` 每页最多1200个 Unicode 字符，可连续读完整原文。
+检索片段足够时直接使用，不必读取全文。
+片段不足时用 `read_memory`，每页最多1200个 Unicode 字符。
+首读省略 offset 或填0；nextOffset 非 null 时可按需续读。
+
 历史读取当前有效版本；世界书读取当前来源快照中的完整 entry。
 不从旧分块拼造原文，不接受跨会话 ID 或过期 revision。
 重复页面和未返回的位置均拒绝。
@@ -90,8 +98,12 @@ SDK 解析结果须与原始工具 ID、顺序、名称及参数一致。
 原始 usage、timings 与每次 HTTP 日志 ID 保留；未知指标仍为 null。
 
 提示词读取与编辑见[应用提示词](ARCHITECTURE.md#应用提示词)。
-固定能力协议由 `shared/agent-protocol.ts` 统一组装。
-正文、Director 和摘要分别追加对应协议，关于页显示同一原文。
+固定行为规则由 `shared/agent-protocol.ts` 统一组装。
+正文、Director 和摘要分别追加对应规则，关于页显示同一原文。
+正文规则负责承接、节奏和输出；固定规则保留事实与行动边界。
+system 规则说明何时使用 update_state。
+
+工具选择、分页和目标字段说明放在工具定义中。
 非空 KV 配置仍生效，不覆盖管理员或私人提示。
 投影指纹包含组装后的协议。
 

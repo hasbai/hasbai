@@ -19,7 +19,7 @@
  type Stage='body'|'tools'|'director'|'summary'|'character';
  let stage=$state<Stage>('body');
  const stages:[Stage,string][]=[['body','正文'],['tools','工具'],['director','候选'],['summary','压缩'],['character','角色卡']];
- const systemParts=['用户系统提示词 + 角色卡 system_prompt','用户 persona','世界书 before_char','角色描述','角色性格','初始场景','世界书 after_char','示例对白','角色卡 post_history_instructions','应用正文协议','记忆与目标协议','历史摘要'];
+ const systemParts=['用户系统提示词 + 角色卡 system_prompt','用户 persona','世界书 before_char','角色描述','角色性格','初始场景','世界书 after_char','示例对白','角色卡 post_history_instructions','应用正文协议','事实与行动边界','历史摘要'];
  const stagePrompts:Record<Stage,PromptKey[]>={character:['character'],body:['systemTemplate','agent'],tools:['agent'],director:['director'],summary:['summaryTask']};
  const promptRoles:Record<PromptKey,string>={systemTemplate:'system',character:'system',agent:'system',director:'user',summaryTask:'user'};
  const journey=[{icon:MessageSquare,title:'你的输入',subtitle:'浏览器 · 身份验证'},{icon:Database,title:'会话与记忆',subtitle:'每会话 SQLite DO'},{icon:Layers3,title:'上下文与模型',subtitle:'AI SDK → AI Gateway'},{icon:Sparkles,title:'正文与下一步',subtitle:'流式正文 → Director'}];
@@ -63,7 +63,7 @@
      {/if}
     {/if}
    </ol>
-   {#if stage==='tools'}<details class="tool-schema"><summary><Braces size={16} aria-hidden="true"/>tools<ChevronDown size={14} aria-hidden="true"/></summary><pre>{JSON.stringify(AGENT_TOOLS,null,2)}</pre></details>{/if}
+   {#if stage==='tools'}<p>search_memory 检索相关片段；片段不足时，用 read_memory 按需读取原文。update_state 记录已发生事实和需跟进事项；普通闲聊无需建立目标。</p><details class="tool-schema"><summary><Braces size={16} aria-hidden="true"/>tools<ChevronDown size={14} aria-hidden="true"/></summary><pre>{JSON.stringify(AGENT_TOOLS,null,2)}</pre></details>{/if}
   </div>
   <div class="prompt-editor" aria-labelledby="prompt-title">
    <div class="editor-head"><h3 id="prompt-title">{stages.find(s=>s[0]===stage)?.[1]}提示词</h3></div>
@@ -82,7 +82,7 @@
      </div>{/each}
      {#if configuration.admin}<div class="editor-actions"><Button type="submit" disabled={saving||!dirty}>{saving?'保存中…':'保存提示词'}</Button>{#if saved}<span role="status">已保存，缓存逐步更新</span>{/if}</div>{/if}
     </form>
-    {#if stage!=='character'}<div class="prompt-field"><div class="field-head"><span>固定能力协议</span><span class="role-badge">{stage==='body'||stage==='tools'?'system':'user'}</span></div><pre>{CAPABILITY_RULES[stage==='tools'?'body':stage]}</pre></div>{/if}
+    {#if stage!=='character'}<div class="prompt-field"><div class="field-head"><span>固定行为规则</span><span class="role-badge">{stage==='body'||stage==='tools'?'system':'user'}</span></div><pre>{CAPABILITY_RULES[stage==='tools'?'body':stage]}</pre></div>{/if}
     {#if stage==='body'}<details class="data-labels"><summary>数据标签<ChevronDown size={14} aria-hidden="true"/></summary><pre>{STATE_PREFIX+'[状态 JSON]\n\n'+SUMMARY_PREFIX+'[历史摘要]'}</pre></details>{/if}
    {/if}
   </div>
