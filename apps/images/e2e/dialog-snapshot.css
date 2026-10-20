@@ -1,0 +1,5 @@
+/* Isolate dialog corners from the page's current mobile scroll position. */
+[data-slot="dialog-overlay"] {
+  background: var(--background) !important;
+  backdrop-filter: none !important;
+}

@@ -9,14 +9,22 @@ Worker 为 `images`，域名为 `images.hasbai.xyz`。
 - 全部图片保存在 R2 `image`，对象 key 为 `public.image.id`。
 - 图片公开读取。酒馆只存头像和立绘的图片 ID，不再保存图片副本。
 - 旧博客 UUID、`/images/:id` 地址和封面外键保留。博客通过服务绑定转发图片请求。
-- 登录用户可上传、生成、查看和重命名本人图片。`images.all:all` 可管理全部图片。
+- 登录用户可上传、生成、查看、重命名和删除本人图片。`images.all:all` 可管理全部图片。
 - Worker 验证共享用户 JWT。数据库使用仅可访问图片表的 `images_service` 角色。
 - 浏览器不获得数据库服务凭据，也不能直接标记上传完成。
 - SHA-256 全局去重。相同字节复用原图片，不转移 owner；未完成对象可由相同字节补齐。
 - 生成结果立即存入图床。取消角色编辑、保存失败或删除角色均不删除图床资产。
-- 当前提供搜索、预览、上传、重命名和复制链接。永久删除不在本次范围内。
+- 首页图片网格只显示缩略图。点击进入 `/library/:id` 详情页。
+- 详情页提供名称、原图 URL、大图、重命名、删除和原图下载。
+- 登录用户可查看公开图片详情；仅本人或管理员显示管理操作。
+- 网页缩略图和大图使用 Cloudflare Images binding 输出 WebP；R2 保留原始字节。
+- 删除前提示链接失效及引用影响。博客封面外键置空，正文和酒馆引用不会自动清理。
+- 删除先提交 `deleted_at`，再清理 R2 和数据库行。失败可在原详情地址重试。
+- 列表和公开读取隐藏待删除图片。相同 SHA 上传遇到待删除记录返回 409。
 
-`database/images/0001_image_service.sql` 为兼容迁移。
+`database/images/0001_image_service.sql` 配置服务权限。
+`0002_image_deletion.sql` 增加删除标记与 DELETE 权限。
+迁移须在新 Worker 发布前完成。
 服务端凭据通过 Worker Secret 配置，禁止进入前端。
 旧酒馆头像的迁移与重新运行见 `apps/images/scripts/migrate-tavern-images.mjs`。
 原始角色卡文件仍属于酒馆的原文件导出。
@@ -38,11 +46,21 @@ Gateway 记录 `app=images`、用途 `task` 和已验证账户的 `username`。
 | 接口 | 契约 |
 | --- | --- |
 | `GET /images/:id` | 公开图片，支持 HEAD、ETag、immutable 缓存 |
+| `GET /images/:id?variant=thumb` | 640×480 内缩略图，WebP，质量 80 |
+| `GET /images/:id?variant=display` | 1920×1920 内大图，WebP，质量 85 |
+| `GET /images/:id?download=1` | 附件下载；原始字节和 MIME，使用当前名称 |
+| `GET /api/images/:id` | 登录读取详情，包含 `can_manage`、`deleting`；待删除图片仅本人或管理员可见 |
+| `DELETE /api/images/:id` | 本人或管理员永久删除，成功 204；失败保留标记供重试 |
 | `GET /api/me` | 当前用户的图床管理权限 |
 | `GET /api/images?q=&page=1&scope=mine` | 每页 48 张；管理员可用 `scope=all` |
 | `POST /api/images` | 图片字节；`X-Image-Name` 为 URI 编码名称；最大 10 MiB |
 | `POST /api/generate` | JSON `{prompt,model,kind}`；`prompt` 最长 1800 字 |
 | `PATCH /api/images/:id` | JSON `{name}`；本人或管理员重命名 |
+
+转换绑定为 `IMAGE_TRANSFORM`，R2 绑定仍为 `IMAGES`。
+变体固定尺寸且不放大原图，保留 GIF 动画。
+变体先检查数据库，再读取内部转换缓存；浏览器每次重新验证。
+旧原图 URL 的 immutable 缓存不能撤回已缓存内容。
 
 `kind` 为 `image`、`avatar` 或 `portrait`，默认 `image`。
 头像使用 1024×1024，立绘使用 1024×1536。
