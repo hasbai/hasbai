@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const repo = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const appName = process.argv[2];
-if (!['financial', 'blog', 'zboard', 'tavern'].includes(appName)) throw new Error('Expected financial, blog, zboard or tavern');
+if (!['financial', 'blog', 'zboard', 'tavern', 'images'].includes(appName)) throw new Error('Expected financial, blog, zboard or tavern');
 const app = resolve(repo, 'apps', appName);
 const manifest = JSON.parse(readFileSync(resolve(app, 'visual-coverage.json'), 'utf8'));
 const ids = new Set(process.argv.slice(3));

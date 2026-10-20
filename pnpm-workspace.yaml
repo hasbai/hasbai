@@ -24,6 +24,7 @@ catalog:
   "@tiptap/pm": 3.31.3
   "@tiptap/starter-kit": 3.31.3
   "@types/node": 26.5.1
+  '@types/pg': 8.16.0
   "@vitest/coverage-v8": 5.0.0
   ai: 7.0.141
   bits-ui: 2.19.2

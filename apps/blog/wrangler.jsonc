@@ -1,13 +1,44 @@
 {
- "$schema":"../../node_modules/wrangler/config-schema.json",
- "name":"blog",
- "main":".svelte-kit/cloudflare/_worker.js",
- "compatibility_date":"2026-09-23",
- "compatibility_flags":["nodejs_compat"],
- "assets":{"binding":"ASSETS","directory":".svelte-kit/cloudflare"},
- "kv_namespaces":[{"binding":"BLOG_SETTINGS","id":"3b291afd0e19415f8adb1a8ee61349c9"}],
- "r2_buckets":[{"binding":"IMAGES","bucket_name":"image"}],
- "routes":[{"pattern":"hasbai.xyz","custom_domain":true},{"pattern":"blog.hasbai.xyz","custom_domain":true}],
- "observability":{"enabled":true,"traces":{"enabled":true}},
- "version_metadata":{"binding":"VERSION"}
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "blog",
+  "main": ".svelte-kit/cloudflare/_worker.js",
+  "compatibility_date": "2026-09-23",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "assets": {
+    "binding": "ASSETS",
+    "directory": ".svelte-kit/cloudflare"
+  },
+  "kv_namespaces": [
+    {
+      "binding": "BLOG_SETTINGS",
+      "id": "3b291afd0e19415f8adb1a8ee61349c9"
+    }
+  ],
+  "routes": [
+    {
+      "pattern": "hasbai.xyz",
+      "custom_domain": true
+    },
+    {
+      "pattern": "blog.hasbai.xyz",
+      "custom_domain": true
+    }
+  ],
+  "observability": {
+    "enabled": true,
+    "traces": {
+      "enabled": true
+    }
+  },
+  "version_metadata": {
+    "binding": "VERSION"
+  },
+  "services": [
+    {
+      "binding": "IMAGE_SERVICE",
+      "service": "images"
+    }
+  ]
 }

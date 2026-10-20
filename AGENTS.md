@@ -9,6 +9,7 @@
 | 财务 / 北极账本 | `apps/financial` | [财务边界与路由](docs/financial/README.md) |
 | 博客 / 北极小站 | `apps/blog` | [博客边界与路由](docs/blog/README.md) |
 | Zboard | `apps/zboard` | [Zboard 边界与路由](docs/zboard/README.md) |
+| 图床 / Images | `apps/images` | [图床边界与路由](docs/images/README.md) |
 | 酒馆 / Tavern | `apps/tavern` | [Tavern 边界与路由](docs/tavern/README.md) |
 
 目标目录缺失时，先核对 `git status --short --branch`、`git worktree list` 与最新 `origin/main` 目录树，复用包含目标应用的干净工作区。不为定位强行切换、重置或覆盖其他任务，不要求用户重发已存在的项目地址。机器专属路径不作为永久代码入口。

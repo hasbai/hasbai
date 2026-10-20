@@ -1,0 +1,9 @@
+{
+  "name": "@hasbai/images",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./png": "./src/png.mjs"
+  }
+}

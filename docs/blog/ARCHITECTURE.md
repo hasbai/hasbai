@@ -38,9 +38,9 @@ Neon 网关要求 JWT，包括匿名访问。访客直接调用 Neon Auth `/toke
 
 ## 图片
 
-R2 bucket `image`，key 精确等于 image.id UUID。metadata 包括 name、sha256 唯一约束、content_type、size、width/height 可选、ready、created_at。上传限制 10 MiB，按字节识别 PNG/JPEG/GIF/WebP，拒绝 SVG/HTML。
-
-先由 PostgREST 对 Auth0 token 执行元数据写入授权，再使用 Worker R2 binding 上传；sha256 唯一键处理并发去重，未完成的上传可重试同一 key，不产生重复图片。只有 ready 元数据对匿名可见。`/images/:id` 流式返回 R2 内容，nosniff、固定媒体类型与 immutable 缓存。图片为公开博客素材，不提供私有附件语义。
+图片存储、上传和 AI 生成由[图床](../images/README.md)统一负责。
+博客的 `/api/images`、`/images/:id` 通过服务绑定转发。
+原 UUID、正文图片地址和封面外键保留，用户内容不改写。
 
 ## MCP
 
@@ -82,4 +82,4 @@ YAML 的 SSR 解析固定使用依赖提供的浏览器 ESM 入口，避免 Node
 
 `0005` 增加独立页面约束/权限；`0006`–`0009` 是特定内容版本的名称/政策迁移，不能当通用初始化脚本重放。正文冲突整体回滚，保留 UUID 与用户内容，详细历史见[DELIVERY](history/DELIVERY.md)。
 
-Worker 使用 `wrangler.jsonc` 的 R2 image、KV BLOG_SETTINGS 绑定和两个自定义域名。Workers Builds 从 `apps/blog` 执行 `pnpm build`，本地构建亦包含实际 workerd `/api/version` 启动验证；自动 Build 与线上 SSR 仍须单独核验。统一检查、隔离 Neon 迁移、Linux 基线与 PR 交付见[TESTING](../TESTING.md)。
+Worker 使用 `wrangler.jsonc` 的 IMAGE_SERVICE、KV BLOG_SETTINGS 绑定和两个自定义域名。Workers Builds 从 `apps/blog` 执行 `pnpm build`，本地构建亦包含实际 workerd `/api/version` 启动验证；自动 Build 与线上 SSR 仍须单独核验。统一检查、隔离 Neon 迁移、Linux 基线与 PR 交付见[TESTING](../TESTING.md)。

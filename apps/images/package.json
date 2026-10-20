@@ -1,0 +1,39 @@
+{
+  "name": "images",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5177",
+    "build": "vite build && wrangler deploy --dry-run --outdir .wrangler/dry-run",
+    "preview": "vite preview --host 127.0.0.1 --port 4177",
+    "typecheck": "wrangler types worker-env.d.ts && svelte-check --tsconfig tsconfig.json",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "visual:local": "node ../../scripts/visual-linux.mjs images",
+    "check:visual-coverage": "node ../financial/scripts/check-visual-coverage.mjs",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@hasbai/auth": "workspace:*",
+    "@hasbai/images": "workspace:*",
+    "@hasbai/ui": "workspace:*",
+    "@lucide/svelte": "catalog:",
+    "@tailwindcss/vite": "catalog:",
+    "pg": "catalog:",
+    "svelte": "catalog:",
+    "tailwindcss": "catalog:",
+    "tw-animate-css": "catalog:"
+  },
+  "devDependencies": {
+    "@playwright/test": "catalog:",
+    "@sveltejs/vite-plugin-svelte": "catalog:",
+    "@types/node": "catalog:",
+    "@types/pg": "catalog:",
+    "svelte-check": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:",
+    "wrangler": "catalog:"
+  },
+  "version": "0.1.0"
+}

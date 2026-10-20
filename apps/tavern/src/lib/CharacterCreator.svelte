@@ -9,42 +9,33 @@
  import type { Character, JsonObject } from '../../shared/types';
  import { avatarImage, MAX_AVATAR_BYTES } from '../../shared/avatar';
  import Avatar from './Avatar.svelte';
- import type { Api } from './api';
- let { api, character, onsave, oncancel, actions }: { api: Api; character?: Character; onsave: (card: JsonObject, avatar?: File, greeting?: number) => Promise<void>; oncancel: () => void; actions?: Snippet } = $props();
+ import type { Api, CharacterImageDrafts } from './api';
+ import { imageUrl } from '@hasbai/images';
+ let { api, character, onsave, oncancel, actions }: { api: Api; character?: Character; onsave: (card: JsonObject, images?: CharacterImageDrafts, greeting?: number) => Promise<void>; oncancel: () => void; actions?: Snippet } = $props();
  const original = untrack(() => $state.snapshot(character?.card));
  let draft = $state<CharacterDraft>(untrack(() => original ? characterDraft(original) : emptyCharacterDraft())), brief = $state(''), tagText = $state(untrack(() => draft.tags.join('，')));
- let avatar = $state<File>(), avatarUrl = $state(''), avatarPrompt = $state(''), generatingAvatar = $state(false), uploadingAvatar = $state(false);
- let avatarInput = $state<HTMLInputElement>(null!);
+ let images = $state<CharacterImageDrafts>({}), previews = $state<Record<string,string>>({}), imagePrompt = $state(''), generatingImage = $state<'avatar'|'portrait'>(), uploadingImage = $state(false);
+ const imageKinds = [{kind:'avatar' as const,label:'头像'},{kind:'portrait' as const,label:'立绘'}];
  let generating = $state(false), saving = $state(false), error = $state(''), status = $state('');
  let greeting = $state(0);
  const greetings = $derived([draft.first_mes, ...draft.alternate_greetings]);
  $effect(() => { if (greeting >= greetings.length) greeting = 0; });
  let previous = $state<CharacterDraft>(), previousTags = $state('');
  let controller: AbortController | undefined;
- const locked = $derived(generating || generatingAvatar || uploadingAvatar || saving);
+ const locked = $derived(generating || !!generatingImage || uploadingImage || saving);
  const canGenerate = $derived([brief, draft.name, draft.description, draft.personality, draft.scenario, draft.first_mes, draft.mes_example].some(text => text.trim()));
  onDestroy(() => controller?.abort());
- $effect(() => { const url = avatar ? URL.createObjectURL(avatar) : ''; avatarUrl = url; return () => { if (url) URL.revokeObjectURL(url); }; });
- async function uploadAvatar(event: Event) {
-  const input = event.currentTarget as HTMLInputElement, file = input.files?.[0];
-  if (!file || locked) return;
-  error = ''; uploadingAvatar = true; const active = new AbortController(); controller = active;
-  try {
-   if (file.size > MAX_AVATAR_BYTES) throw Error('头像不能超过 5 MB');
-   const image = avatarImage(new Uint8Array(await file.arrayBuffer()));
-   if (!active.signal.aborted) avatar = new File([file], file.name, { type: image.type });
-  } catch (e) { if (!active.signal.aborted) error = (e as Error).message; } finally { input.value = ''; uploadingAvatar = false; }
+ $effect(() => {const current=$state.snapshot(images),urls:Record<string,string>={};for(const {kind} of imageKinds){const image=current[kind];if(image)urls[kind]=image instanceof File?URL.createObjectURL(image):image.url;}previews=urls;return()=>{for(const url of Object.values(urls))if(url.startsWith('blob:'))URL.revokeObjectURL(url);};});
+ async function uploadImage(event:Event,kind:'avatar'|'portrait') {
+  const input=event.currentTarget as HTMLInputElement,file=input.files?.[0];if(!file||locked)return;
+  error='';uploadingImage=true;const active=new AbortController();controller=active;
+  try{if(file.size>MAX_AVATAR_BYTES)throw Error('图片不能超过 5 MB');const image=avatarImage(new Uint8Array(await file.arrayBuffer()));if(!active.signal.aborted)images={...images,[kind]:new File([file],file.name,{type:image.type})};}
+  catch(e){if(!active.signal.aborted)error=(e as Error).message;}finally{input.value='';uploadingImage=false;}
  }
- async function generateAvatar() {
-  if (locked) return; error = '';
-  const active = new AbortController(); controller = active; generatingAvatar = true;
-  try {
-   const prompt = avatarPrompt.trim() || [draft.name, draft.description, draft.personality, draft.scenario].filter(Boolean).join('，').slice(0, 1800);
-   const image = await api.avatarDraft(prompt, active.signal);
-   if (active.signal.aborted || controller !== active) return;
-   avatar = new File([image], 'avatar.jpg', { type: image.type });
-  } catch (e) { if (!active.signal.aborted) error = (e as Error).message; }
-  finally { generatingAvatar = false; }
+ async function generateImage(kind:'avatar'|'portrait') {
+  if(locked)return;error='';const active=new AbortController();controller=active;generatingImage=kind;
+  try{const prompt=imagePrompt.trim()||[draft.name,draft.description,draft.personality,draft.scenario].filter(Boolean).join('，').slice(0,1800);const image=await api.imageDraft(kind,prompt,active.signal);if(!active.signal.aborted&&controller===active)images={...images,[kind]:image};}
+  catch(e){if(!active.signal.aborted)error=(e as Error).message;}finally{generatingImage=undefined;}
  }
  function snapshot() {
   return validateCharacterDraft({ ...$state.snapshot(draft), tags: tagText === draft.tags.join('，') ? [...draft.tags] : tagText.split(/[,，、\n]/).map(tag => tag.trim()).filter(Boolean) });
@@ -71,7 +62,7 @@
   try {
    const input = snapshot();
    if (!input.name.trim()) { error = '请填写角色名称'; return; }
-   saving = true; await onsave(characterCard(input, original), avatar, startChat ? greeting : undefined);
+   saving = true; await onsave(characterCard(input, original), images, startChat ? greeting : undefined);
   } catch (e) { error = e instanceof Error ? e.message : '保存失败，请重试'; }
   finally { saving = false; }
  }
@@ -96,12 +87,18 @@
   <section class="creator-section">
    <div class="creator-section-heading"><UserRound size={18} aria-hidden="true"/><h2>基本信息</h2></div>
    <div class="creator-identity">
-    <div class="creator-avatar">{#if avatarUrl}<img src={avatarUrl} alt="角色头像" width="80" height="80"/>{:else if character}<Avatar {api} id={character.id} name={character.name} available={character.hasAvatar}/>{:else}<UserRound size={28} aria-hidden="true"/>{/if}</div>
+    <div class="creator-avatar">{#if previews.avatar}<img src={previews.avatar} alt="角色头像" width="80" height="80"/>{:else if character}<Avatar {api} id={character.id} name={character.name} available={character.hasAvatar}/>{:else}<UserRound size={28} aria-hidden="true"/>{/if}</div>
     <div class="field"><label for="character-name">角色名称</label><Input id="character-name" bind:value={draft.name}/></div>
    </div>
-   <input class="sr-only" tabindex="-1" bind:this={avatarInput} type="file" accept="image/png,image/jpeg,image/webp" aria-label="上传头像" onchange={uploadAvatar}/>
-    <div class="creator-avatar-actions"><Button type="button" variant="outline" onclick={() => avatarInput.click()}><Upload size={16} aria-hidden="true"/>上传头像</Button><Button type="button" variant="outline" disabled={locked || ![avatarPrompt, draft.name, draft.description].some(text => text.trim())} onclick={generateAvatar}><Sparkles size={16} aria-hidden="true"/>{generatingAvatar ? '生成头像中…' : 'AI 生成头像'}</Button>{#if avatar}<Button type="button" variant="ghost" onclick={() => avatar = undefined}>撤销头像</Button>{/if}</div>
-    <div class="field"><label class="sr-only" for="avatar-prompt">头像描述</label><Input id="avatar-prompt" bind:value={avatarPrompt} maxlength={1800} placeholder="头像描述"/></div>
+   <div class="creator-images">
+    {#each imageKinds as {kind,label}}
+     <section class="creator-image"><h3>{label}</h3>
+      {#if kind==='portrait'}<div class="creator-portrait">{#if previews.portrait||character?.portraitImageId}<img src={previews.portrait||imageUrl(character!.portraitImageId!)} alt="角色立绘"/>{:else}<span>尚无立绘</span>{/if}</div>{/if}
+      <div class="creator-avatar-actions"><label class="image-upload"><Upload size={16} aria-hidden="true"/>上传{label}<input type="file" accept="image/png,image/jpeg,image/webp" aria-label={`上传${label}`} onchange={event=>uploadImage(event,kind)}/></label><Button type="button" variant="outline" disabled={locked||![imagePrompt,draft.name,draft.description].some(text=>text.trim())} onclick={()=>generateImage(kind)}><Sparkles size={16} aria-hidden="true"/>{generatingImage===kind?`生成${label}中…`:`AI 生成${label}`}</Button>{#if images[kind]}<Button type="button" variant="ghost" onclick={()=>images={...images,[kind]:undefined}}>撤销{label}</Button>{/if}</div>
+     </section>
+    {/each}
+   </div>
+   <div class="field"><label for="image-prompt">图片描述</label><Input id="image-prompt" bind:value={imagePrompt} maxlength={1800} placeholder="留空时使用人物设定"/></div>
    <div class="field"><label for="character-tags">标签</label><Input id="character-tags" bind:value={tagText}/></div>
   </section>
   {#each sections as section}
@@ -121,4 +118,4 @@
  {#if character?.sourceUrl}<a href={character.sourceUrl} target="_blank" rel="noopener noreferrer">角色来源</a>{/if}
  {#if character?.unsupported.length}<div class="tags"><span>扩展仅保留</span>{#each character.unsupported as item}<span>{item}</span>{/each}</div>{/if}
 </form>
-<Dialog.Footer class="creator-footer"><div class="actions"><Button type="button" variant="outline" disabled={saving} onclick={oncancel}>{generating || generatingAvatar ? '取消生成并关闭' : '取消'}</Button>{#if character}<Button type="button" variant="outline" disabled={locked} onclick={() => save(undefined, true)}>开始对话</Button>{/if}<Button type="submit" form="character-form" disabled={locked}>{saving ? '保存中…' : '保存角色'}</Button></div></Dialog.Footer>
+<Dialog.Footer class="creator-footer"><div class="actions"><Button type="button" variant="outline" disabled={saving} onclick={oncancel}>{generating || generatingImage ? '取消生成并关闭' : '取消'}</Button>{#if character}<Button type="button" variant="outline" disabled={locked} onclick={() => save(undefined, true)}>开始对话</Button>{/if}<Button type="submit" form="character-form" disabled={locked}>{saving ? '保存中…' : '保存角色'}</Button></div></Dialog.Footer>

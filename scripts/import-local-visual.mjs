@@ -11,7 +11,7 @@ if (process.argv[3] !== '--reviewed' || !directory.startsWith(join(repo, 'apps')
   throw new Error('Usage: node scripts/import-local-visual.mjs <app-local-run-directory> --reviewed');
 }
 const metadata = JSON.parse(readFileSync(join(directory, 'candidate.json'), 'utf8'));
-if (!['financial', 'blog', 'zboard', 'tavern'].includes(metadata.app)
+if (!['financial', 'blog', 'zboard', 'tavern', 'images'].includes(metadata.app)
   || !directory.startsWith(join(repo, 'apps', metadata.app, '.local-visual') + sep)) throw new Error('Invalid app candidate');
 const files = [...new Set(execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: repo })
   .toString().split('\0').filter(path => path && existsSync(join(repo, path))))].sort();

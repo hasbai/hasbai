@@ -2,7 +2,7 @@
 
 财务及历史命令在 `apps/financial` 运行。根 `pnpm` 脚本代理财务命令。根 `scripts/wait-ci.mjs` 位置不变。
 
-四个应用各有独立 workflow，由 changes job 判断影响范围；无关应用的 job 合法跳过，失败不得跳过。受影响范围以 `scripts/affected.mjs` 为准，当前 `packages/`、根 workspace 配置及 lockfile 变更验证四个应用。各应用的 `visual-coverage.json` 复用同一 manifest/execution gate。
+五个应用各有独立 workflow，由 changes job 判断影响范围；无关应用的 job 合法跳过，失败不得跳过。受影响范围以 `scripts/affected.mjs` 为准，当前 `packages/`、根 workspace 配置及 lockfile 变更验证五个应用。各应用的 `visual-coverage.json` 复用同一 manifest/execution gate。
 
 ## 运行
 
@@ -15,6 +15,7 @@
 | `apps/financial` | `pnpm test:ci-tools`、`pnpm check:visual-coverage`、`pnpm typecheck`、`pnpm test:coverage`、`pnpm build` |
 | `apps/blog` | `node ../financial/scripts/check-visual-coverage.mjs`、`pnpm typecheck`、`pnpm test`、`pnpm build`（包含真实 workerd Worker 启动检查） |
 | `apps/zboard` | `pnpm check:visual-coverage`、`pnpm typecheck`、隔离本地 D1 迁移、带 `MIHOMO_BIN` 的 `pnpm test`、`pnpm build` |
+| `apps/images` | `pnpm check:visual-coverage`、`pnpm typecheck`、`pnpm test`、`pnpm build` |
 | `apps/tavern` | `pnpm check:visual-coverage`、`pnpm typecheck`、隔离本地 D1 迁移、`pnpm test`、`pnpm test:session-runtime`、`pnpm build` |
 
 Zboard 的 `MIHOMO_BIN` 必须指向 Mihomo 二进制。版本须与 workflow 一致，SHA-256 须通过校验。
@@ -34,7 +35,7 @@ git diff --check
 
 页面改动还须在本地固定 Linux 镜像生成并审阅受影响截图；`pnpm visual:local` 构建生产包和 e2e 包，仅运行所选 Financial 场景。完整 Playwright 套件与全部基线严格比较仍在 CI 执行。
 
-视觉 CI 与本地截图统一使用 `docker/visual-ci/Dockerfile` 构建的 Linux ARM64 镜像，并按镜像 digest 固定 Playwright 1.63.0、Node 24、pnpm 10.33.2 和 CJK 字体。镜像发布工作流是 `.github/workflows/visual-image.yml`；四个应用的视觉 job 使用同一个 digest，单元任务仍运行在 Ubuntu。日常 `pnpm visual:local` 从相对 `origin/main` 的 Financial 页面改动选择清单场景；Blog、Zboard、Tavern 分别用 `pnpm visual:blog`、`pnpm visual:zboard`、`pnpm visual:tavern`。
+视觉 CI 与本地截图统一使用 `docker/visual-ci/Dockerfile` 构建的 Linux ARM64 镜像，并按镜像 digest 固定 Playwright 1.63.0、Node 24、pnpm 10.33.2 和 CJK 字体。镜像发布工作流是 `.github/workflows/visual-image.yml`；五个应用的视觉 job 使用同一个 digest，单元任务仍运行在 Ubuntu。日常 `pnpm visual:local` 从相对 `origin/main` 的 Financial 页面改动选择清单场景；Blog、Zboard、Tavern 分别用 `pnpm visual:blog`、`pnpm visual:zboard`、`pnpm visual:tavern`，图床用 `pnpm visual:images`。
 
 云环境的 x86_64 本地开发使用 [amd64 开发镜像](../README.md#codex-本地环境)，避免 ARM 模拟开销。
 该镜像复用 CI 的安装步骤与版本，适用于本地检查和服务启动。
@@ -47,7 +48,7 @@ git diff --check
 
 额外稳定性复跑只用于已复现抖动或明确排障，并记录原因。报告保留 expected/actual/diff 和失败 trace。有意设计变更须核对差异，不为消除差异提高容差或盲目更新。
 
-四个应用均沿用 Cloudflare Workers Builds 的 main 自动构建和路径过滤；GitHub Actions 只负责 PR 验收，不部署。应用构建入口见[ARCHITECTURE](ARCHITECTURE.md#自动构建与运行入口)，交付时回读 Build SHA、部署结果和线上版本。
+五个应用均沿用 Cloudflare Workers Builds 的 main 自动构建和路径过滤；GitHub Actions 只负责 PR 验收，不部署。应用构建入口见[ARCHITECTURE](ARCHITECTURE.md#自动构建与运行入口)，交付时回读 Build SHA、部署结果和线上版本。
 
 ## 轻量任务与本地迭代
 
@@ -59,7 +60,7 @@ git diff --check
 
 主代理编辑后，先完成上述本地检查及受影响页审阅，再提交；需要新基线时，先在本地固定 Linux 镜像中生成、审阅并导入。准备合并时才创建 PR，完整 CI 在 PR 上运行一次。失败由主代理修复后再派新子代理推送复核；后续 PR 提交或 main 前进仍会重新运行检查。
 
-`check`、`visual`、`blog-check`、`blog-visual` 是既有保护要求的必需状态；Zboard/Tavern 改动还须分别通过 `zboard-check`/`zboard-visual`、`tavern-check`/`tavern-visual`。本地截图不能替代严格比较。合并后核验 main 合并 SHA、Cloudflare 自动部署和线上资源，不重复启动 main 全量 CI。
+`check`、`visual`、`blog-check`、`blog-visual` 是既有保护要求的必需状态；Zboard/Tavern 改动还须分别通过 `zboard-check`/`zboard-visual`、`tavern-check`/`tavern-visual`；图床改动通过 `images-check`/`images-visual`。本地截图不能替代严格比较。合并后核验 main 合并 SHA、Cloudflare 自动部署和线上资源，不重复启动 main 全量 CI。
 
 既有交付登记采用个人账号仓库的 PR 保护与 squash，未启用 merge queue。保护要求最新 main 与必要状态，故 PR 打开前先把功能分支与最新 main 对齐。仓库设置只允许 squash，合并使用 `gh pr merge --squash`。手动 dispatch 只用于明确排障。PR CI 成功不代表真实 JWT、数据库或生产路由已验收。[GitHub 合并队列说明](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue)
 

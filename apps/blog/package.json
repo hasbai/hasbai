@@ -31,7 +31,8 @@
     "i18next": "catalog:",
     "svelte": "catalog:",
     "tw-animate-css": "catalog:",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "@hasbai/images": "workspace:*"
   },
   "devDependencies": {
     "@playwright/test": "catalog:",

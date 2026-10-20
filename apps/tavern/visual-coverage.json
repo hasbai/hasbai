@@ -18,7 +18,8 @@
         "states",
         "page-states",
         "character-generation",
-        "character-avatar"
+        "character-avatar",
+        "character-portrait"
       ]
     },
     {
@@ -90,7 +91,7 @@
           ]
         }
       ],
-      "description": "点开角色直接编辑，初始焦点在弹窗容器；隐藏滚动条与分隔线，保留滚动、保存和取消。"
+      "description": "\u70b9\u5f00\u89d2\u8272\u76f4\u63a5\u7f16\u8f91\uff0c\u521d\u59cb\u7126\u70b9\u5728\u5f39\u7a97\u5bb9\u5668\uff1b\u9690\u85cf\u6eda\u52a8\u6761\u4e0e\u5206\u9694\u7ebf\uff0c\u4fdd\u7559\u6eda\u52a8\u3001\u4fdd\u5b58\u548c\u53d6\u6d88\u3002"
     },
     {
       "id": "discover",
@@ -363,7 +364,7 @@
     {
       "id": "about",
       "kind": "screenshot",
-      "description": "AI SDK 对话流程、上下文顺序、记忆目标协议与共享提示词；浅色和深色。",
+      "description": "AI SDK \u5bf9\u8bdd\u6d41\u7a0b\u3001\u4e0a\u4e0b\u6587\u987a\u5e8f\u3001\u8bb0\u5fc6\u76ee\u6807\u534f\u8bae\u4e0e\u5171\u4eab\u63d0\u793a\u8bcd\uff1b\u6d45\u8272\u548c\u6df1\u8272\u3002",
       "evidence": [
         {
           "spec": "e2e/tavern.spec.ts",
@@ -383,7 +384,7 @@
     {
       "id": "agent-controls",
       "kind": "screenshot",
-      "description": "命令浮层、上下文占用、可展开工具、简洁压缩状态与命令时序，线性编辑删除和历史重生成。",
+      "description": "\u547d\u4ee4\u6d6e\u5c42\u3001\u4e0a\u4e0b\u6587\u5360\u7528\u3001\u53ef\u5c55\u5f00\u5de5\u5177\u3001\u7b80\u6d01\u538b\u7f29\u72b6\u6001\u4e0e\u547d\u4ee4\u65f6\u5e8f\uff0c\u7ebf\u6027\u7f16\u8f91\u5220\u9664\u548c\u5386\u53f2\u91cd\u751f\u6210\u3002",
       "evidence": [
         {
           "spec": "e2e/tavern.spec.ts",
@@ -404,7 +405,7 @@
     {
       "id": "telegram",
       "kind": "screenshot",
-      "description": "Telegram 角色与对话 ID 绑定、单次绑定码与不明发送处理。",
+      "description": "Telegram \u89d2\u8272\u4e0e\u5bf9\u8bdd ID \u7ed1\u5b9a\u3001\u5355\u6b21\u7ed1\u5b9a\u7801\u4e0e\u4e0d\u660e\u53d1\u9001\u5904\u7406\u3002",
       "evidence": [
         {
           "spec": "e2e/tavern.spec.ts",
@@ -422,15 +423,21 @@
         {
           "spec": "e2e/tavern.spec.ts",
           "test": "telegram binds a chat ID with an optional topic and retains values after a rejected request",
-          "projects": ["iphone", "desktop"],
-          "snapshots": ["telegram-id-error.png", "telegram-id-bound.png"]
+          "projects": [
+            "iphone",
+            "desktop"
+          ],
+          "snapshots": [
+            "telegram-id-error.png",
+            "telegram-id-bound.png"
+          ]
         }
       ]
     },
     {
       "id": "character-avatar",
       "kind": "screenshot",
-      "description": "共享角色表单中的头像上传、生成失败恢复与保存。",
+      "description": "\u5171\u4eab\u89d2\u8272\u8868\u5355\u4e2d\u7684\u5934\u50cf\u4e0a\u4f20\u3001\u751f\u6210\u5931\u8d25\u6062\u590d\u4e0e\u4fdd\u5b58\u3002",
       "evidence": [
         {
           "spec": "e2e/tavern.spec.ts",
@@ -442,6 +449,23 @@
           "snapshots": [
             "character-avatar.png",
             "character-avatar-error.png"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "character-portrait",
+      "kind": "screenshot",
+      "evidence": [
+        {
+          "spec": "e2e/tavern.spec.ts",
+          "test": "character portrait has independent upload generation and shared image reference",
+          "projects": [
+            "iphone",
+            "desktop"
+          ],
+          "snapshots": [
+            "character-portrait.png"
           ]
         }
       ]
