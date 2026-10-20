@@ -1,6 +1,8 @@
 <script lang="ts">
+ import LoadingPlaceholder from "../lib/LoadingPlaceholder.svelte";
+ import { trackLoading, Spinner } from "@hasbai/ui/progress";
  import { Button } from '@hasbai/ui/button';
- import { ArrowRight, Layers3, MessageSquare, Database, Sparkles, Braces, Moon, Sun, ArrowLeft } from '@lucide/svelte';
+ import { ArrowRight, Layers3, MessageSquare, Database, Sparkles, Braces, Moon, Sun, ArrowLeft, Check } from '@lucide/svelte';
  import { onMount } from 'svelte';
  import { Notice } from '@hasbai/ui/notice';
  import { PROMPT_LABELS, TOOL_PROMPT_KEYS, type PromptKey, type PromptTexts, type PromptConfiguration } from '../../shared/prompts';
@@ -21,6 +23,7 @@
  const stagePrompts:Record<Stage,PromptKey[]>={character:['character'],body:['systemTemplate'],tools:['tools',...TOOL_PROMPT_KEYS],director:['director'],summary:['summaryTask']};
  const promptRole=(key:PromptKey)=>TOOL_PROMPT_KEYS.includes(key as typeof TOOL_PROMPT_KEYS[number])?'tools':key==='director'||key==='summaryTask'?'user':'system';
  const journey=[{icon:MessageSquare,title:'你的输入',subtitle:'浏览器 / Telegram → Worker'},{icon:Database,title:'会话与记忆',subtitle:'每会话 SQLite DO'},{icon:Layers3,title:'上下文与模型',subtitle:'AI SDK → AI Gateway'},{icon:Sparkles,title:'正文与下一步',subtitle:'流式正文 → Director'}];
+ trackLoading(()=>loading||saving||personalSaving);
 </script>
 
 <div class="about">
@@ -66,11 +69,11 @@
   <div class="prompt-editor" aria-labelledby="prompt-title">
    <div class="editor-head"><h3 id="prompt-title">{stages.find(s=>s[0]===stage)?.[1]}提示词</h3></div>
    {#if error}<Notice variant="error">{error}{#if !configuration}<Button variant="outline" onclick={load}>重试</Button>{/if}</Notice>{/if}
-   {#if loading}<p role="status">正在加载提示词…</p>{:else if draft&&configuration}
+   {#if loading}<LoadingPlaceholder/>{:else if draft&&configuration}
     {#if stage==='body'&&personal}
      <form class="personal-prompt" onsubmit={e=>{e.preventDefault();void savePersonal();}} oninput={()=>personalSaved=false}>
       <label for="personal-system">我的系统提示词 · 新会话</label><textarea id="personal-system" bind:value={personalPrompt} rows="6" required disabled={personalSaving}></textarea>
-      <div class="editor-actions"><Button type="submit" disabled={personalSaving||personalPrompt===personal.systemPrompt}>{personalSaving?'保存中…':'保存系统提示词'}</Button><Button type="button" variant="ghost" disabled={personalSaving} onclick={()=>{personalPrompt=configuration!.texts.systemTemplate;personalSaved=false;}}>使用默认模板</Button>{#if personalSaved}<span role="status">已保存</span>{/if}</div>
+      <div class="editor-actions"><Button type="submit" disabled={personalSaving||personalPrompt===personal.systemPrompt}>{#if personalSaving}<Spinner/>{:else if personalSaved}<Check size={16} aria-hidden="true"/>{/if}保存系统提示词</Button><Button type="button" variant="ghost" disabled={personalSaving} onclick={()=>{personalPrompt=configuration!.texts.systemTemplate;personalSaved=false;}}>使用默认模板</Button>{#if personalSaved}<span class="sr-only" role="status">已保存</span>{/if}</div>
      </form>
     {/if}
     <form onsubmit={e=>{e.preventDefault();void save();}} oninput={()=>saved=false}>
@@ -78,7 +81,7 @@
      {#each stagePrompts[stage] as key}<div class="prompt-field"><div class="field-head"><label for={`prompt-${key}`}>{PROMPT_LABELS[key]}</label><span class="role-badge">{promptRole(key)}</span></div>
       {#if configuration.admin}<textarea id={`prompt-${key}`} bind:value={draft[key]} rows={key==='tools'||key==='director'?8:TOOL_PROMPT_KEYS.includes(key as typeof TOOL_PROMPT_KEYS[number])?3:5} required disabled={saving}></textarea>{:else}<pre>{draft[key]}</pre>{/if}
      </div>{/each}
-     {#if configuration.admin}<div class="editor-actions"><Button type="submit" disabled={saving||!dirty}>{saving?'保存中…':'保存提示词'}</Button>{#if saved}<span role="status">已保存</span>{/if}</div>{/if}
+     {#if configuration.admin}<div class="editor-actions"><Button type="submit" disabled={saving||!dirty}>{#if saving}<Spinner/>{:else if saved}<Check size={16} aria-hidden="true"/>{/if}保存提示词</Button>{#if saved}<span class="sr-only" role="status">已保存</span>{/if}</div>{/if}
     </form>
 
    {/if}

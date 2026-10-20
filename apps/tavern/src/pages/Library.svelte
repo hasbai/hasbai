@@ -1,4 +1,6 @@
 <script lang="ts">
+ import LoadingPlaceholder from "../lib/LoadingPlaceholder.svelte";
+ import { trackLoading } from "@hasbai/ui/progress";
  import { Notice } from '@hasbai/ui/notice';
  import { onMount } from 'svelte';
  import { Button } from '@hasbai/ui/button'; import { Input } from '@hasbai/ui/input'; import * as Dialog from '@hasbai/ui/dialog';
@@ -16,12 +18,13 @@
  function create(){detail=undefined;editor=true;}
  async function saveCreated(raw:JsonObject,images?:CharacterImageDrafts,greeting?:number){busy=true;try{parseCard(raw);const saved=await api.saveCharacter<Character>(raw,detail?.id,images);if(greeting!==undefined&&!await onchat(saved.id,greeting))throw Error('对话创建失败，请重试');editor=false;detail=undefined;await load();}finally{busy=false;}}
  async function remove(){if(!deleting)return;busy=true;try{await api.request('characters/'+deleting.id,'DELETE');deleting=undefined;deleteOpen=false;detail=undefined;await load();}catch(e){error=(e as Error).message;}finally{busy=false;}}
+ trackLoading(()=>loading||busy);
 </script>
 <header class="page-head"><div><h1>角色库 <span class="count">{cards.length}</span></h1></div><div class="actions"><Button variant="outline" disabled={busy} onclick={()=>input.click()}><Upload size={16}/>导入</Button><Button onclick={create}><Plus size={16}/>创建角色</Button></div></header>
 <input class="sr-only" tabindex="-1" bind:this={input} type="file" accept=".json,.png,.charx" aria-label="导入角色卡" onchange={upload}/>
 <label class="search-label" for="library-search">搜索角色</label><Input id="library-search" bind:value={query} placeholder="角色、作者或标签"/>
 {#if error}<Notice variant="error">{error}<Button variant="outline" onclick={load}>重试</Button></Notice>{/if}
-{#if loading}<div class="empty" role="status">正在加载角色…</div>{:else if !error&&!filtered.length}<div class="empty"><MessageCircle size={32}/><h2>{query?'没有匹配的角色':'角色库为空'}</h2><Button variant="outline" onclick={()=>input.click()}>导入角色卡</Button></div>{:else if !error}<div class="card-grid">{#each filtered as c(c)}<article class="character-card"><button class="card-main" disabled={busy} onclick={()=>show(c)}><Avatar {api} id={c.id} name={c.name} available={c.hasAvatar}/><div class="card-title"><h2>{c.name}</h2><span class="muted">{c.creator||'未署名'}</span></div><p class="description">{c.description}</p><div class="tags"><span>{c.format}</span>{#each c.tags.slice(0,3) as tag}<span>{tag}</span>{/each}</div></button><Button variant="outline" disabled={busy} onclick={()=>onchat(c.id,0)}><MessageCircle size={16}/>开始对话</Button></article>{/each}</div>{/if}
+{#if loading}<LoadingPlaceholder layout="cards"/>{:else if !error&&!filtered.length}<div class="empty"><MessageCircle size={32}/><h2>{query?'没有匹配的角色':'角色库为空'}</h2><Button variant="outline" onclick={()=>input.click()}>导入角色卡</Button></div>{:else if !error}<div class="card-grid">{#each filtered as c(c)}<article class="character-card"><button class="card-main" disabled={busy} onclick={()=>show(c)}><Avatar {api} id={c.id} name={c.name} available={c.hasAvatar}/><div class="card-title"><h2>{c.name}</h2><span class="muted">{c.creator||'未署名'}</span></div><p class="description">{c.description}</p><div class="tags"><span>{c.format}</span>{#each c.tags.slice(0,3) as tag}<span>{tag}</span>{/each}</div></button><Button variant="outline" disabled={busy} onclick={()=>onchat(c.id,0)}><MessageCircle size={16}/>开始对话</Button></article>{/each}</div>{/if}
 <Dialog.Root open={!!detail||editor} onOpenChange={(open)=>{if(busy)return;if(!open){detail=undefined;editor=false;}}}><Dialog.Content class="creator-dialog" bind:ref={characterDialog} showCloseButton={!busy} onOpenAutoFocus={(event)=>{event.preventDefault();characterDialog?.focus({preventScroll:true});}}>
  {#key detail?.id}
  <CharacterCreator {api} character={detail} onsave={saveCreated} oncancel={()=>{editor=false;detail=undefined;}}>

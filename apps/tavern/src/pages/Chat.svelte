@@ -1,4 +1,8 @@
 <script lang="ts">
+ import LoadingPlaceholder from "../lib/LoadingPlaceholder.svelte";
+ import { MediaQuery } from "svelte/reactivity";
+ const desktop=new MediaQuery("(min-width: 641px)");
+ import { trackLoading } from "@hasbai/ui/progress";
  import { Notice } from '@hasbai/ui/notice';
  import { onMount, onDestroy, tick } from 'svelte';import { Button } from '@hasbai/ui/button';import * as Dialog from '@hasbai/ui/dialog';
  import { MessageCircle, ArrowUp, Copy, Check, Square, RefreshCw, Pencil, Download, Trash2, SlidersHorizontal, ChevronLeft, ArrowUpRight } from '@lucide/svelte';
@@ -9,7 +13,7 @@
  import { estimateTokens } from '../../shared/prompt';
  import type { AgentActivity, ContextUsage, SessionDetail } from '../../shared/types';
  import { DEFAULT_SETTINGS } from '../../shared/types';
- let {api,initialId='',onlibrary}:{api:Api;initialId?:string;onlibrary:()=>void}=$props();
+ let {api,initialId='',collapsed=false,onlibrary}:{api:Api;initialId?:string;collapsed?:boolean;onlibrary:()=>void}=$props();
  let text=$state('');
  let activities=$state<AgentActivity[]>([]),context=$state<ContextUsage>(),commandOpen=$state(false),commandIndex=$state(-1),contextOpen=$state(false),deleteMessage=$state<Message>(),messageDeleteOpen=$state(false);
  const commands=[{id:'compress',label:'/compress',description:'压缩全部对话上下文'},{id:'ooc',label:'/ooc',description:'本行写系统指令，换行写对白'},{id:'status',label:'/status',description:'查看状态与上下文'}] as const;
@@ -21,10 +25,11 @@
  let input=$state<HTMLTextAreaElement>();
  $effect(()=>{text;if(input){input.style.height='0px';input.style.height=Math.min(input.scrollHeight,200)+'px';}});
  async function copyMessage(m:Message){try{await navigator.clipboard.writeText(m.content);copied=m.id;}catch{error='复制失败，请重试';}}
+ let backgroundRefresh=$state(false);
  let sessions=$state<Session[]>([]),active=$state<Session>(),messages=$state<Message[]>([]),loading=$state(true),error=$state(''),busy=$state(false),generating=$state(false),mobileList=$state(true),config=$state(false),configDraft=$state<Session>(),books=$state<Worldbook[]>([]),edit=$state(false),editMessage=$state<Message>(),editText=$state(''),deleteOpen=$state(false);let abort:AbortController|undefined;let log=$state<HTMLDivElement>();let alive=true;let selectionVersion=0;let generationId='';let composing=false;let poll:ReturnType<typeof setTimeout>|undefined;
  onMount(()=>{void load();});onDestroy(()=>{alive=false;selectionVersion++;abort?.abort();if(poll)clearTimeout(poll);});
  async function load(){loading=true;error='';try{sessions=(await api.request<{sessions:Session[]}>('sessions')).sessions;if(initialId)await select(initialId);}catch(e){error=(e as Error).message;}finally{loading=false;}}
- async function select(id:string){if(generating)return;const changed=active?.id!==id;const version=++selectionVersion;busy=true;candidatePending='';error='';try{const d=await api.request<SessionDetail>('sessions/'+id);if(!alive||version!==selectionVersion)return;const readingTop=log?.scrollTop??0;active={...d.session,settings:{...DEFAULT_SETTINGS,...d.session.settings}};messages=d.messages;activities=d.activities??[];context=d.context;generationId=d.session.generationId??'';if(poll)clearTimeout(poll);if(generationId&&!generating)poll=setTimeout(()=>{if(alive&&active?.id===id&&version===selectionVersion)void select(id);},1200);mobileList=false;await tick();if(alive&&version===selectionVersion&&log)log.scrollTop=changed?log.scrollHeight:readingTop;}catch(e){if(alive&&version===selectionVersion)error=(e as Error).message;}finally{if(alive&&version===selectionVersion)busy=false;}}
+ async function select(id:string,silent=false){if(generating)return;const changed=active?.id!==id;const version=++selectionVersion;busy=true;backgroundRefresh=silent;candidatePending='';error='';try{const d=await api.request<SessionDetail>('sessions/'+id);if(!alive||version!==selectionVersion)return;const readingTop=log?.scrollTop??0;active={...d.session,settings:{...DEFAULT_SETTINGS,...d.session.settings}};messages=d.messages;activities=d.activities??[];context=d.context;generationId=d.session.generationId??'';if(poll)clearTimeout(poll);if(generationId&&!generating)poll=setTimeout(()=>{if(alive&&active?.id===id&&version===selectionVersion)void select(id,true);},1200);mobileList=false;await tick();if(alive&&version===selectionVersion&&log)log.scrollTop=changed?log.scrollHeight:readingTop;}catch(e){if(alive&&version===selectionVersion)error=(e as Error).message;}finally{if(alive&&version===selectionVersion){busy=false;backgroundRefresh=false;}}}
  function keydown(e:KeyboardEvent){
   if(e.isComposing||composing||e.keyCode===229)return;
   if(e.key==='Escape'){commandOpen=false;commandIndex=-1;return;}
@@ -62,9 +67,10 @@
  async function removeMessage(){if(!active||!deleteMessage)return;busy=true;error='';try{await api.request('sessions/'+active.id+'/messages','DELETE',{messageId:deleteMessage.id});deleteMessage=undefined;messageDeleteOpen=false;await select(active.id);}catch(e){error=(e as Error).message;}finally{busy=false;}}
  async function remove(){if(!active)return;busy=true;error='';try{await api.request('sessions/'+active.id,'DELETE');sessions=sessions.filter(s=>s.id!==active!.id);active=undefined;messages=[];deleteOpen=false;mobileList=true;}catch(e){error=(e as Error).message;}finally{busy=false;}}
  function toggleBook(id:string,checked:boolean){if(configDraft)configDraft.bookIds=checked?[...configDraft.bookIds,id]:configDraft.bookIds.filter(i=>i!==id);}
+ trackLoading(()=>loading||busy&&!backgroundRefresh||generating);
 </script>
-<div class="chat-workspace" class:show-list={mobileList}>
- <aside class="conversation-list"><div class="list-heading"><h1>对话 <span class="count">{sessions.length}</span></h1><Button variant="ghost" aria-label="新建对话" onclick={onlibrary}><MessageCircle size={18}/></Button></div>{#if error&&!active}<Notice variant="error">{error}<Button variant="outline" onclick={load}>重试</Button></Notice>{/if}{#if loading}<p role="status" class="muted">正在加载对话…</p>{/if}{#each sessions as s(s.id)}<button class="conversation" aria-current={active?.id===s.id?'page':undefined} disabled={generating||busy} onclick={()=>select(s.id)}><strong>{s.title}</strong><span>{s.characterName}</span></button>{/each}{#if !loading&&!sessions.length}<Button variant="outline" onclick={onlibrary}>选择角色</Button>{/if}</aside>
+<div class="chat-workspace" class:show-list={mobileList} class:nav-collapsed={collapsed}>
+ <aside id="conversation-navigation" class="conversation-list" inert={collapsed&&desktop.current}><div class="list-heading"><h1>对话 <span class="count">{sessions.length}</span></h1><Button variant="ghost" aria-label="新建对话" onclick={onlibrary}><MessageCircle size={18}/></Button></div>{#if error&&!active}<Notice variant="error">{error}<Button variant="outline" onclick={load}>重试</Button></Notice>{/if}{#if loading}<LoadingPlaceholder layout="list"/>{/if}{#each sessions as s(s.id)}<button class="conversation" aria-current={active?.id===s.id?'page':undefined} disabled={generating||busy} onclick={()=>select(s.id)}><strong>{s.title}</strong><span>{s.characterName}</span></button>{/each}{#if !loading&&!sessions.length}<Button variant="outline" onclick={onlibrary}>选择角色</Button>{/if}</aside>
  <section class="chat-main" aria-label="角色对话">
   {#if active}<header class="chat-header"><div class="actions"><Button class="mobile-back" variant="ghost" aria-label="返回会话列表" disabled={generating} onclick={()=>mobileList=true}><ChevronLeft size={18}/></Button><span class="chat-character-avatar" aria-hidden="true">{active.characterName.slice(0,1)}</span><div><h2>{active.title}</h2>{#if active.title!==active.characterName}<span class="muted">{active.characterName}</span>{/if}</div></div><div class="actions"><Button variant="ghost" aria-label="会话设置" disabled={generating||busy||!!active.generationId} onclick={openConfig}><SlidersHorizontal size={18}/></Button><Button variant="ghost" aria-label="导出对话" onclick={()=>api.download('sessions/'+active!.id+'/export',active!.title+'.jsonl').catch(e=>error=e.message)}><Download size={18}/></Button><Button variant="ghost" aria-label="删除会话" disabled={generating||busy||!!active.generationId} onclick={()=>deleteOpen=true}><Trash2 size={18}/></Button></div></header>
    {#if error}<Notice variant="error">{error}</Notice>{/if}
@@ -92,7 +98,7 @@
          </div>
         {/if}
         {#if m.role==='assistant'&&m.id===messages.at(-1)?.id}
-         {#if candidatePending===m.id&&m.status==='pending'}<div class="candidate-wait" role="status"><span>Director · 正在生成下一步</span><div class="candidate-skeleton"></div></div>
+         {#if candidatePending===m.id&&m.status==='pending'}<div class="candidate-wait" role="status"><span class="sr-only">Director · 正在生成下一步</span><div class="candidate-skeleton"></div></div>
          {:else if m.status==='completed'&&m.candidates?.length&&!generating&&!active.generationId}
           <section class="next-directions" aria-label="接下来"><h3>接下来</h3><div class="candidate-list">{#each m.candidates.slice(0,3) as candidate}<button type="button" class="candidate-button" disabled={busy} onclick={()=>send(false,{messageId:m.id,content:candidate})}><span>{candidate}</span><ArrowUpRight size={16} aria-hidden="true"/></button>{/each}</div></section>
          {/if}

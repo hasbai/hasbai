@@ -78,7 +78,7 @@ test('chat stream editing export and keyboard',async({page})=>{
 });
 test('empty error and loading states',async({page})=>{
  await fixture(page,{empty:true});await expect(page.getByRole('heading',{name:'角色库为空'})).toBeVisible();await shot(page,'library-empty.png');await nav(page,'世界书');await shot(page,'worldbooks-empty.png');await nav(page,'对话');await shot(page,'chat-empty.png');
- await page.unroute('**/api/**');await fixture(page,{fail:true});await expect(page.getByRole('alert')).toContainText('服务暂时不可用');await shot(page,'library-error.png');await page.unroute('**/api/**');await fixture(page,{delay:true});await expect(page.getByRole('status')).toContainText('正在加载角色');await shot(page,'library-loading.png');
+ await page.unroute('**/api/**');await fixture(page,{fail:true});await expect(page.getByRole('alert')).toContainText('服务暂时不可用');await shot(page,'library-error.png');await page.unroute('**/api/**');await fixture(page,{delay:true});await expect(page.getByRole('progressbar',{name:'加载进度'})).toBeVisible();await shot(page,'library-loading.png');
 });
 test('interrupted stream can be stopped and recovered',async({page})=>{
  await fixture(page,{streamDelay:true,stopDelay:true});await page.getByRole('button',{name:'开始对话',exact:true}).click();await page.getByLabel('发送消息',{exact:true}).fill('继续');await page.getByRole('button',{name:'发送',exact:true}).click();await expect(page.getByRole('alert')).toHaveText('连接中断，已保存的内容可刷新恢复');await expect(page.getByRole('alert')).toHaveCount(0);await expect(page.getByText('岚把热茶放在桌上。',{exact:false})).toBeVisible();await expect(page.getByRole('button',{name:'停止',exact:true})).toBeVisible();await shot(page,'chat-interrupted.png');await page.getByRole('button',{name:'停止',exact:true}).click();await expect(page.getByText('已停止生成',{exact:true})).toBeVisible();await expect(page.getByLabel('发送消息',{exact:true})).toBeEnabled();await expect(page.getByRole('button',{name:'停止',exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'会话设置'})).toBeEnabled();await shot(page,'chat-stopped.png');
@@ -97,7 +97,7 @@ test('every page dark error loading and keyboard states',async({page})=>{
  }
  await page.unroute('**/api/**');await fixture(page,{delay:true});
  for(const [name,slug] of [['世界书','worldbooks'],['设置','settings'],['发现','discover'],['对话','chat']]){
-  await nav(page,name);await expect(page.getByRole('status')).toContainText(/正在/);await shot(page,slug+'-loading.png');
+  await nav(page,name);await expect(page.getByRole('progressbar',{name:'加载进度'})).toBeVisible();await shot(page,slug+'-loading.png');
  }
  await page.unroute('**/api/**');await fixture(page);await page.getByLabel('搜索角色',{exact:true}).focus();await page.keyboard.type('不存在');await expect(page.getByRole('heading',{name:'没有匹配的角色'})).toBeVisible();
  await nav(page,'发现');await expect(page.getByRole('button',{name:'搜索',exact:true})).toBeEnabled();const keyboardSearch=page.waitForRequest(r=>r.url().includes('/api/discover')&&new URL(r.url()).searchParams.get('q')==='学者');await page.getByLabel('关键词').focus();await page.keyboard.type('学者');await page.keyboard.press('Enter');await keyboardSearch;await expect(page.getByRole('heading',{name:'伊莲'})).toBeVisible();
@@ -164,7 +164,7 @@ test('character creation generates from input then edits and saves with recovera
  await fixture(page);let attempts=0,release:(()=>void)|undefined;
  const generated=characterCard({...emptyCharacterDraft(),name:'岚',description:'港城旅店的主人，守着长明的灯。',personality:'沉稳而温柔，善于倾听旅人的故事。',scenario:'雨夜的北方港城，你来到她的旅店。',first_mes:'岚放下书，推开旅店的门。\n「雨很大，进来坐吧。」',mes_example:'<START>\n{{user}}: 还有空房吗？\n{{char}}: 有，先喝杯热茶吧。',tags:['奇幻','旅店'],alternate_greetings:['清晨，岚为你打开临海的窗。']});
  await page.route('**/api/characters/generate',async route=>{const input=route.request().postDataJSON();expect(input.draft.name).toBe('岚');expect(input.draft.description).toBe('港城旅店的主人');expect(input.brief).toBe('温暖的奇幻故事');attempts++;if(attempts===1){await new Promise<void>(resolve=>release=resolve);await route.fulfill({status:502,json:{message:'生成未完成，请重试'}});}else await route.fulfill({json:{card:generated}});});
- await page.getByRole('button',{name:'创建角色'}).click();await page.getByLabel('角色名称').fill('岚');await page.getByLabel('角色描述',{exact:true}).fill('港城旅店的主人');await page.getByLabel('角色构想').fill('温暖的奇幻故事');await page.getByRole('button',{name:'AI 生成',exact:true}).click();await expect(page.getByRole('button',{name:'正在生成…'})).toBeDisabled();await expect(page.getByLabel('角色名称')).toBeDisabled();await expect.poll(()=>!!release).toBe(true);await page.getByRole('dialog').focus();await shot(page,'character-generating.png');release!();
+ await page.getByRole('button',{name:'创建角色'}).click();await page.getByLabel('角色名称').fill('岚');await page.getByLabel('角色描述',{exact:true}).fill('港城旅店的主人');await page.getByLabel('角色构想').fill('温暖的奇幻故事');await page.getByRole('button',{name:'AI 生成',exact:true}).click();await expect(page.getByRole('button',{name:'AI 生成',exact:true})).toBeDisabled();await expect(page.getByLabel('角色名称')).toBeDisabled();await expect.poll(()=>!!release).toBe(true);await page.getByRole('dialog').focus();await shot(page,'character-generating.png');release!();
  await expect(page.getByRole('alert')).toContainText('生成未完成');await expect(page.getByLabel('角色描述',{exact:true})).toHaveValue('港城旅店的主人');await page.getByRole('dialog').focus();await shot(page,'character-generation-error.png');await page.getByRole('button',{name:'AI 生成',exact:true}).click();await expect(page.getByLabel('性格与习惯')).toHaveValue((generated.data as {personality:string}).personality);await expect(page.getByLabel('备选开场白 1',{exact:true})).toHaveValue('清晨，岚为你打开临海的窗。');await page.getByRole('dialog').focus();await shot(page,'character-generated.png');
  await page.getByRole('button',{name:'撤销生成'}).click();await expect(page.getByLabel('角色描述',{exact:true})).toHaveValue('港城旅店的主人');await page.getByRole('button',{name:'AI 生成',exact:true}).click();await expect(page.getByLabel('性格与习惯')).not.toHaveValue('');await page.getByLabel('角色名称').fill('岚 · 灯火守望者');await page.getByLabel('开场白',{exact:true}).fill('欢迎回来，旅人。');
  await page.evaluate(()=>document.documentElement.classList.add('dark'));await page.locator('.creator-scroll').evaluate(el=>el.scrollTop=0);await page.getByRole('dialog').focus();await shot(page,'character-create-dark.png');
@@ -248,7 +248,7 @@ test('avatar generation can be closed without saving or leaking its result',asyn
  await fixture(page);let release:(()=>void)|undefined;let writes=0;
  page.on('request',r=>{if(r.method()==='POST'&&r.url().endsWith('/characters'))writes++;});
  await page.route('**/api/characters/avatar/generate',async route=>{await new Promise<void>(resolve=>release=resolve);await route.fulfill({status:502,json:{message:'迟到的错误'}}).catch(()=>{});});
- await page.getByRole('button',{name:'创建角色'}).click();await page.getByLabel('角色名称').fill('未保存');await page.getByRole('button',{name:'AI 生成头像',exact:true}).click();await expect(page.getByRole('button',{name:'生成头像中…'})).toBeDisabled();await expect.poll(()=>!!release).toBe(true);await page.getByRole('button',{name:'取消生成并关闭'}).click();await page.getByRole('button',{name:'创建角色'}).click();release!();await expect(page.getByLabel('角色名称')).toHaveValue('');await expect(page.getByRole('alert')).toHaveCount(0);expect(writes).toBe(0);
+ await page.getByRole('button',{name:'创建角色'}).click();await page.getByLabel('角色名称').fill('未保存');await page.getByRole('button',{name:'AI 生成头像',exact:true}).click();await expect(page.getByRole('button',{name:'AI 生成头像',exact:true})).toBeDisabled();await expect.poll(()=>!!release).toBe(true);await page.getByRole('button',{name:'取消生成并关闭'}).click();await page.getByRole('button',{name:'创建角色'}).click();release!();await expect(page.getByLabel('角色名称')).toHaveValue('');await expect(page.getByRole('alert')).toHaveCount(0);expect(writes).toBe(0);
 });
 
 test('opening a character edits saves and starts with the selected greeting in one form',async({page})=>{
@@ -267,4 +267,46 @@ test('character portrait has independent upload generation and shared image refe
  await page.route('https://images.hasbai.xyz/images/**',route=>route.fulfill({contentType:'image/png',body:png}));await page.route('**/api/characters/portrait/generate',route=>route.fulfill({json:{id:'c51f7180-6795-4a3a-8ec6-060ebc3fe98b',name:'立绘',url:'https://images.hasbai.xyz/images/portrait',content_type:'image/png',size:png.length}}));
  await page.getByRole('button',{name:'创建角色',exact:true}).click();await page.getByLabel('角色名称',{exact:true}).fill('测试角色');await page.getByLabel('上传头像',{exact:true}).setInputFiles({name:'avatar.png',mimeType:'image/png',buffer:png});await page.getByRole('button',{name:'AI 生成立绘',exact:true}).click();await expect(page.getByAltText('角色立绘',{exact:true})).toBeVisible();await expect(page.getByAltText('角色头像',{exact:true})).toBeVisible();await page.getByRole('dialog').focus();await shot(page,'character-portrait.png');
  const saved=page.waitForRequest(r=>r.url().endsWith('/api/characters')&&r.method()==='POST');await page.getByRole('button',{name:'保存角色',exact:true}).click();const wire=(await saved).postData()!;expect(wire).toContain('name="avatar"');expect(wire).toContain('name="portraitImageId"');await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+
+
+test('desktop navigation collapses both rails without losing the conversation',async({page})=>{
+ test.skip(page.viewportSize()!.width<641,'Desktop navigation');
+ await page.setViewportSize({width:2048,height:1100});
+ await fixture(page);await page.getByRole('button',{name:'开始对话',exact:true}).click();
+ await expect(page.getByRole('log',{name:'消息历史'})).toBeVisible();
+ const draft=page.getByLabel('发送消息',{exact:true});await draft.fill('保留的草稿');
+ const bounds=await page.locator('.shell').boundingBox();expect(bounds!.x).toBe(0);expect(bounds!.width).toBe(2048);
+ await page.emulateMedia({reducedMotion:'no-preference'});
+ await page.locator('.shell').evaluate(el=>el.addEventListener('transitionrun',e=>{if(e.target===el&&(e as TransitionEvent).propertyName==='grid-template-columns')el.setAttribute('data-animated','true');}));
+ await page.getByRole('button',{name:'收起侧栏'}).click();
+ await expect(page.getByRole('button',{name:'展开侧栏'})).toHaveAttribute('aria-expanded','false');
+ await expect(page.locator('.shell')).toHaveAttribute('data-animated','true');
+ await expect(page.locator('#primary-navigation')).toHaveAttribute('inert','');
+ await expect(page.locator('#conversation-navigation')).toHaveAttribute('inert','');
+ await expect(draft).toHaveValue('保留的草稿');
+ await expect.poll(async()=>Math.round((await page.locator('.chat-main').boundingBox())!.x)).toBe(0);
+ await shot(page,'chat-collapsed-wide.png');
+ await page.getByRole('button',{name:'展开侧栏'}).click();
+ await expect(page.getByRole('navigation',{name:'主要导航'})).toBeVisible();
+ await expect(page.getByRole('button',{name:'港城的雨夜 岚'})).toBeVisible();
+ await expect(draft).toHaveValue('保留的草稿');
+ await page.getByRole('button',{name:'切换深色模式'}).click();await shot(page,'chat-wide-dark.png');
+ await page.getByRole('button',{name:'收起侧栏'}).click();
+ await page.setViewportSize({width:390,height:844});
+ await expect(page.getByRole('link',{name:'角色库',exact:true})).toBeVisible();
+ await expect(page.locator('#primary-navigation')).not.toHaveAttribute('inert','');
+});
+
+test('one progress bar survives concurrent loading and releases on navigation',async({page})=>{
+ await fixture(page);await expect(page.getByRole('heading',{name:'岚',exact:true})).toBeVisible();
+ const release: (()=>void)[]=[];
+ await page.route('**/api/models',async route=>{await new Promise<void>(resolve=>release.push(resolve));await route.fallback();});
+ await page.route('**/api/settings',async route=>{await new Promise<void>(resolve=>release.push(resolve));await route.fallback();});
+ await nav(page,'设置');await expect.poll(()=>release.length).toBe(2);
+ await expect(page.getByRole('progressbar')).toHaveCount(1);
+ await expect(page.getByText(/正在加载|加载中/)).toHaveCount(0);
+ release[0]();await expect(page.getByRole('progressbar')).toHaveCount(1);
+ await nav(page,'角色库');await expect(page.getByRole('heading',{name:'岚',exact:true})).toBeVisible();
+ await expect(page.getByRole('progressbar')).toHaveCount(0);release[1]();
 });
