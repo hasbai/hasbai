@@ -29,6 +29,7 @@
       "bucket_name": "image"
     }
   ],
+  "images": { "binding": "IMAGE_TRANSFORM" },
   "version_metadata": {
     "binding": "VERSION"
   },

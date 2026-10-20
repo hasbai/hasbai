@@ -18,6 +18,13 @@
         "states",
         "generating"
       ]
+    },
+    {
+      "source": "src/pages/Detail.svelte",
+      "scenarios": [
+        "library",
+        "details"
+      ]
     }
   ],
   "scenarios": [
@@ -36,7 +43,8 @@
             "images-library.png",
             "images-rename.png",
             "images-dark.png",
-            "images-search-empty.png"
+            "images-search-empty.png",
+            "images-detail.png"
           ]
         }
       ]
@@ -72,6 +80,23 @@
           ],
           "snapshots": [
             "images-generating.png"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "details",
+      "kind": "screenshot",
+      "evidence": [
+        {
+          "spec": "e2e/images.spec.ts",
+          "test": "image details support direct reload download rename failures and deletion retry",
+          "projects": [
+            "iphone",
+            "desktop"
+          ],
+          "snapshots": [
+            "images-delete.png"
           ]
         }
       ]
