@@ -32,7 +32,8 @@
     "./theme.css": "./src/theme.css",
     "./notice": "./src/components/notice/index.ts",
     "./notice/index.js": "./src/components/notice/index.ts",
-    "./motion": "./src/motion.ts"
+    "./motion": "./src/motion.ts",
+    "./neutral.css": "./src/neutral.css"
   },
   "dependencies": {
     "bits-ui": "catalog:",

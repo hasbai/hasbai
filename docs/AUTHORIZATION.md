@@ -18,6 +18,7 @@
 | 应用 | 匿名 | 普通登录用户 | Super Admin | 权限与执行点 |
 | --- | --- | --- | --- | --- |
 | 博客 | 读取已发布且发布时间已到的文章、手记、独立页面、图片 | 同公开读取范围，无编辑权限 | 编辑、发布、删除及上传图片 | `blog.all:all`：编辑室、编辑请求与 MCP 管理工具；MCP 使用共享 JWT 验证，Data API 的 GRANT/RLS 继续执行 |
+| 图床 | 读取公开图片 | 上传、生成和管理本人图片 | 管理全部图片 | `images.all:all`；Worker 验证 JWT，存储操作使用图片表专用数据库角色 |
 | 北极账本 | 无财务数据访问 | 无财务访问 | 全部财务功能 | `financial.all:all`：应用入口及数据请求；Data API 继续使用标量 `role=superadmin` 和原 schema/对象 GRANT |
 | 酒馆 | 无私有数据访问或对话 | 搜卡、安装/导入、编辑/删除本人卡片和世界书、本人会话及对话、本人设置、服务端白名单模型选择 | 同本人功能；全站敏感操作仅管理员 | 现有 `/api/characters`、`discover`、`install`、`worldbooks`、`sessions`、`settings`、`models` 验证用户 JWT，以 `sub` 隔离本人数据；`tavern.all:all` 为全站管理边界 |
 | Zboard | 无账户访问；随机订阅凭据与 Node token 为独立协议 | `/api/me`、`/api/me/rotate`；首次登录仍默认禁用，启用、节点、配额、有效期控制服务资格 | `/api/admin/**` 用户、节点、模板、配额及报告管理 | `zboard.all:all`：Worker 验证 JWT 后判断管理员；订阅资格及 Node API 机制保留 |
@@ -38,7 +39,7 @@ Webhook 仅验 Telegram secret，不接受用户自报 owner。
 同步全站 Bot 命令菜单需要 `tavern.all:all`，不接受自定义命令清单。
 绑定与投递规则见 [MESSAGING](tavern/MESSAGING.md)。
 
-Hasbai 应用权限统一使用 `scope.resource:action`。四个应用的全量管理权限为 `financial.all:all`、`blog.all:all`、`tavern.all:all`、`zboard.all:all`。同一 audience 的 Vaultwarden 使用 `vaultwarden.all:all`，实现位于独立仓库。代码不接受旧权限名；Auth0 已删除五个旧定义及角色授权。已签发旧令牌须重新登录取得新权限，改名不撤销现有 JWT。
+Hasbai 应用权限统一使用 `scope.resource:action`。五个应用的全量管理权限为 `financial.all:all`、`blog.all:all`、`images.all:all`、`tavern.all:all`、`zboard.all:all`。同一 audience 的 Vaultwarden 使用 `vaultwarden.all:all`，实现位于独立仓库。代码不接受旧权限名；Auth0 已删除五个旧定义及角色授权。已签发旧令牌须重新登录取得新权限，改名不撤销现有 JWT。
 
 | API | audience | 使用情况 | RBAC | Access Token 权限 |
 | --- | --- | --- | --- | --- |

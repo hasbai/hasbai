@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 const image = 'ghcr.io/hasbai/financial-visual-ci@sha256:7c8b030fa654dfd7acb74db9fbca0fe413ca81024536f6d361712d0920fd6444';
 const repo = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const app = process.argv[2];
-if (!['financial', 'blog', 'zboard', 'tavern'].includes(app)) throw new Error('Usage: node scripts/visual-linux.mjs <financial|blog|zboard|tavern> [--all|--page <source-or-scenario>]');
+if (!['financial', 'blog', 'zboard', 'tavern', 'images'].includes(app)) throw new Error('Usage: node scripts/visual-linux.mjs <financial|blog|zboard|tavern> [--all|--page <source-or-scenario>]');
 const manifest = JSON.parse(readFileSync(join(repo, 'apps', app, 'visual-coverage.json'), 'utf8'));
 const git = (...args) => execFileSync('git', args, { cwd: repo });
 const paths = bytes => bytes.toString().split('\0').filter(Boolean);

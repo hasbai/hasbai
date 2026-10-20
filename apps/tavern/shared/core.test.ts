@@ -1,3 +1,4 @@
+import {publicPng} from '@hasbai/images/png';
 import { describe,it,expect } from 'vitest';import {zipSync,strToU8} from 'fflate';
 import { importCard,parseCard,parseBook,crc32 } from './cards';import { activateBook,buildPrompt } from './prompt';import { sseData } from './sse';import {DEFAULT_SETTINGS,type Message} from './types';
 export const card={spec:'chara_card_v2',spec_version:'2.0',data:{name:'岚',description:'旅店主人 {{char}}',personality:'沉稳',scenario:'港城',first_mes:'你好，{{user}}。',mes_example:'',system_prompt:'{{original}}',post_history_instructions:'',alternate_greetings:['欢迎'],tags:[],creator:'测试作者',extensions:{unknown:{keep:true}}}};
@@ -13,3 +14,5 @@ describe('portable roleplay content',()=>{
  it('signals an oversized latest input and filters incomplete assistant replies',()=>{const message:Message={id:'1',role:'user',content:'中'.repeat(4000),status:'completed',ordinal:0,requestId:null,createdAt:0};expect(buildPrompt(card,[],[message],DEFAULT_SETTINGS,1000).needsCompression).toBe(true);expect(buildPrompt(card,[],[{...message,role:'assistant',status:'error'}],DEFAULT_SETTINGS,1000).messages).toHaveLength(1);});
  it('parses fragmented Unicode SSE, CRLF and multiline frames',async()=>{const bytes=strToU8('data: 你好\r\n\r\ndata: one\ndata: two\n\n');const stream=new ReadableStream<Uint8Array>({start(c){for(const b of bytes)c.enqueue(new Uint8Array([b]));c.close();}});const out=[];for await(const s of sseData(stream))out.push(s);expect(out).toEqual(['你好','one\ntwo']);});
 });
+
+it('publishes PNG pixels without embedded character cards and preserves the original export',()=>{const original=png();const image=publicPng(original);expect(()=>importCard(image,'image.png')).toThrow('没有角色卡');expect(importCard(original,'original.png').card.data.name).toBe('V3岚');expect(image.length).toBeLessThan(original.length);});

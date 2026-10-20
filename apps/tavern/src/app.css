@@ -2,43 +2,8 @@
 @import "tw-animate-css";
 @import "@hasbai/ui/theme.css";
 @source '../../../packages/ui/src';
-:root {
-  color-scheme: light;
-  font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
-  --radius: 0.75rem;
-  --background: oklch(0.98 0 0);
-  --foreground: oklch(0.2 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: var(--foreground);
-  --popover: var(--card);
-  --popover-foreground: var(--foreground);
-  --primary: oklch(0.22 0 0);
-  --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.94 0 0);
-  --secondary-foreground: var(--foreground);
-  --muted: oklch(0.95 0 0);
-  --muted-foreground: oklch(0.48 0 0);
-  --accent: oklch(0.93 0 0);
-  --accent-foreground: var(--foreground);
-  --destructive: oklch(0.55 0.2 27);
-  --border: oklch(0.89 0 0);
-  --input: var(--border);
-  --ring: oklch(0.55 0 0);
-}
-.dark {
-  color-scheme: dark;
-  --background: oklch(0.16 0 0);
-  --foreground: oklch(0.94 0 0);
-  --card: oklch(0.2 0 0);
-  --primary: oklch(0.92 0 0);
-  --primary-foreground: oklch(0.18 0 0);
-  --secondary: oklch(0.27 0 0);
-  --muted: oklch(0.25 0 0);
-  --muted-foreground: oklch(0.7 0 0);
-  --accent: oklch(0.3 0 0);
-  --border: oklch(0.34 0 0);
-  --destructive: oklch(0.7 0.17 27);
-}
+@import "@hasbai/ui/neutral.css";
+
 * {
   box-sizing: border-box;
   border-color: var(--border);
@@ -226,3 +191,5 @@ input:not([type=checkbox]),select,textarea{border:1px solid var(--border);border
 .composer-wrap{position:relative;max-width:740px;margin:auto}.composer-footer{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 8px 0;color:var(--muted-foreground);font-size:11px}.context-trigger{display:flex;align-items:center;gap:6px;border:0;background:none;color:inherit;cursor:pointer;min-height:32px;font:inherit}.context-ring{width:14px;height:14px;border-radius:50%;background:conic-gradient(var(--foreground) var(--usage),var(--border) 0);mask:radial-gradient(circle,transparent 4px,#000 4px)}.context-details{padding:16px;margin-top:8px;background:var(--background);border:1px solid var(--border);border-radius:12px;font-size:12px;line-height:1.8}.command-menu{position:absolute;bottom:calc(100% + 8px);left:0;right:0;padding:6px;background:var(--popover);border:1px solid var(--border);border-radius:16px;box-shadow:0 8px 24px color-mix(in srgb,var(--foreground) 10%,transparent);z-index:10}.command-menu button{display:flex;align-items:center;gap:16px;width:100%;min-height:48px;padding:10px 14px;border:0;border-radius:10px;background:transparent;color:var(--foreground);text-align:left;cursor:pointer}.command-menu button:hover,.command-menu button[aria-selected=true]{background:var(--accent)}.command-menu strong{min-width:88px;font:500 13px ui-monospace,monospace}.command-menu span{font-size:12px;color:var(--muted-foreground)}.agent-activities{display:grid;gap:4px;margin:12px 0;min-width:0}.agent-activity{font-size:12px;color:var(--muted-foreground);min-width:0}.agent-activity summary{display:flex;align-items:center;gap:7px;min-height:44px;cursor:pointer;list-style:none;border-radius:8px}.agent-activity summary::-webkit-details-marker{display:none}.agent-activity summary:hover{background:var(--muted)}.agent-activity summary>span:first-of-type{overflow-wrap:anywhere}.activity-status{display:flex;align-items:center;gap:5px;margin-left:auto;white-space:nowrap;font-size:11px}.agent-activity[data-status=error] .activity-status{color:var(--destructive)}.agent-activity[open] .activity-chevron{transform:rotate(90deg)}.activity-result{padding:12px 14px;background:var(--background);border:1px solid var(--border);border-radius:10px;color:var(--foreground);line-height:1.7}.activity-result h4{font-size:11px;color:var(--muted-foreground);margin:4px 0}.activity-result pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.8 ui-monospace,monospace;max-height:360px;overflow:auto;margin:6px 0 12px}.agent-activity summary:focus-visible,.context-trigger:focus-visible,.command-menu button:focus-visible{outline:2px solid var(--ring);outline-offset:2px}.message-tools button{min-height:44px;height:44px;width:44px}.context-trigger{min-height:44px}
 @media(prefers-reduced-motion:no-preference){.message{animation:ui-reveal 200ms ease-out}.command-menu{animation:ui-reveal 160ms ease-out;transform-origin:bottom}.context-details{animation:ui-reveal 160ms ease-out}.activity-chevron{transition:transform 150ms ease-out}.activity-spinner{animation:agent-spin 1.2s linear infinite}.user-tools{transition:opacity 150ms ease-out}}@keyframes agent-spin{to{transform:rotate(360deg)}}
 @media(max-width:640px){.composer-footer{padding-top:4px;gap:4px}.composer-footer>span{font-size:10px}.context-trigger{font-size:10px}.command-menu button{gap:8px;padding:10px}.command-menu strong{min-width:78px}.command-menu span{font-size:11px}}
+
+.creator-images{display:grid;grid-template-columns:1fr 1fr;gap:16px}.creator-image{display:flex;flex-direction:column;gap:12px;min-width:0}.creator-image h3{font-size:14px;font-weight:600}.creator-portrait{height:240px;display:grid;place-items:center;background:var(--muted);border-radius:12px;overflow:hidden;color:var(--muted-foreground)}.creator-portrait img{width:100%;height:100%;object-fit:contain}.image-upload{position:relative;display:inline-flex;align-items:center;gap:8px;min-height:44px;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:14px;cursor:pointer}.image-upload input{position:absolute;inset:0;opacity:0;width:100%;cursor:pointer}.image-upload:focus-within{outline:2px solid var(--ring);outline-offset:2px}@media(max-width:639px){.creator-images{grid-template-columns:1fr}.creator-portrait{height:260px}}

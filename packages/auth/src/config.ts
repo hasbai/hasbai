@@ -9,6 +9,7 @@ export const authClaims = { role: "role", roles: "_roles", username: "username",
 export const permissions = {
   financial: "financial.all:all",
   blog: "blog.all:all",
+  images: "images.all:all",
   tavern: "tavern.all:all",
   zboard: "zboard.all:all",
 } as const;

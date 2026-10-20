@@ -1,0 +1,100 @@
+name: Images
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: images-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      images: ${{ steps.filter.outputs.images }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: filter
+        run: node scripts/affected.mjs "${{ github.event.pull_request.base.sha }}"
+  check:
+    name: images-check
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/images
+    steps:
+      - name: Images unchanged
+        if: needs.changes.outputs.images != 'true'
+        working-directory: .
+        run: echo 'No images changes to check'
+      - uses: actions/checkout@v4
+        if: needs.changes.outputs.images == 'true'
+      - uses: pnpm/action-setup@v4
+        if: needs.changes.outputs.images == 'true'
+      - uses: actions/setup-node@v4
+        if: needs.changes.outputs.images == 'true'
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        if: needs.changes.outputs.images == 'true'
+      - run: node ../financial/scripts/check-visual-coverage.mjs
+        if: needs.changes.outputs.images == 'true'
+      - run: pnpm typecheck
+        if: needs.changes.outputs.images == 'true'
+      - run: pnpm test
+        if: needs.changes.outputs.images == 'true'
+      - run: pnpm build
+        if: needs.changes.outputs.images == 'true'
+      - uses: actions/upload-artifact@v4
+        if: needs.changes.outputs.images == 'true'
+        with:
+          name: images-production
+          path: apps/images/dist/
+  visual:
+    name: images-visual
+    needs: changes
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: ghcr.io/hasbai/financial-visual-ci@sha256:7c8b030fa654dfd7acb74db9fbca0fe413ca81024536f6d361712d0920fd6444
+      options: --ipc=host
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/images
+    steps:
+      - name: Images unchanged
+        if: needs.changes.outputs.images != 'true'
+        working-directory: .
+        run: echo 'No images visual changes to check'
+      - uses: actions/checkout@v4
+        if: needs.changes.outputs.images == 'true'
+      - run: pnpm install --frozen-lockfile
+        if: needs.changes.outputs.images == 'true'
+      - run: test "$(pnpm exec playwright --version)" = 'Version 1.63.0'
+        if: needs.changes.outputs.images == 'true'
+      - run: pnpm build
+        if: needs.changes.outputs.images == 'true'
+      - run: pnpm exec vite build --mode e2e
+        if: needs.changes.outputs.images == 'true'
+        env:
+          VISUAL_COVERAGE_GATE: "1"
+          DEBUG: pw:webserver
+      - run: node ../financial/scripts/prepare-browser-build.mjs
+        if: needs.changes.outputs.images == 'true'
+      - run: pnpm test:e2e
+        if: needs.changes.outputs.images == 'true'
+        env:
+          VISUAL_COVERAGE_GATE: "1"
+          DEBUG: pw:webserver
+      - uses: actions/upload-artifact@v4
+        if: always() && needs.changes.outputs.images == 'true'
+        with:
+          name: images-playwright-results
+          path: |
+            apps/images/test-results/
+            apps/images/playwright-report/

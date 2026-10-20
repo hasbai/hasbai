@@ -22,7 +22,13 @@
       "/health"
     ]
   },
-  "secrets": { "required": ["AIG_RP_RUN_TOKEN", "TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET"] },
+  "secrets": {
+    "required": [
+      "AIG_RP_RUN_TOKEN",
+      "TELEGRAM_BOT_TOKEN",
+      "TELEGRAM_WEBHOOK_SECRET"
+    ]
+  },
   "vars": {
     "AUTH0_DOMAIN": "auth.hasbai.xyz",
     "AUTH0_AUDIENCE": "https://financial.hasbai.xyz/api",
@@ -33,7 +39,12 @@
     "binding": "AI",
     "remote": true
   },
-  "kv_namespaces": [{"binding":"PROMPTS","id":"d0ed2b03c1be475fa8ae463723d33c05"}],
+  "kv_namespaces": [
+    {
+      "binding": "PROMPTS",
+      "id": "d0ed2b03c1be475fa8ae463723d33c05"
+    }
+  ],
   "version_metadata": {
     "binding": "VERSION"
   },
@@ -83,7 +94,15 @@
     },
     {
       "tag": "messaging-v1",
-      "new_sqlite_classes": ["MessageInbox"]
+      "new_sqlite_classes": [
+        "MessageInbox"
+      ]
+    }
+  ],
+  "services": [
+    {
+      "binding": "IMAGE_SERVICE",
+      "service": "images"
     }
   ]
 }

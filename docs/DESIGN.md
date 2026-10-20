@@ -1,6 +1,6 @@
 # 共享视觉与交互
 
-适用于四个应用共用的界面能力。以 `packages/ui` 的 Luma primitives、Bits UI 和 Lucide 为复用入口；业务主题及页面层次由对应应用定义。
+适用于五个应用共用的界面能力。以 `packages/ui` 的 Luma primitives、Bits UI 和 Lucide 为复用入口；业务主题及页面层次由对应应用定义。
 
 ## 组件与交互
 
@@ -14,7 +14,7 @@
 ## 动画
 
 共享控件使用短暂的颜色、透明度和按压反馈。
-四个应用的页面切换复用 `packages/ui` 的 `pageMotion`。
+五个应用的页面切换复用 `packages/ui` 的 `pageMotion`。
 酒馆消息、命令浮层和执行结果展开有入场动画。
 流式正文不逐字重播动画，也不强制滚动阅读位置。
 系统减少动态效果偏好会停用这些动画。
@@ -26,6 +26,7 @@
 | Financial | [DESIGN](financial/DESIGN.md)：三张用户参考图、财务语义色、统计总览、紧凑流水/编辑及禁止解释性文案 |
 | Blog | [架构中的编辑与阅读](blog/ARCHITECTURE.md#编辑和阅读)：neutral 底色、衬线正文、紧凑导航及桌面背景动效；[内容授权边界](blog/README.md#内容修改边界) |
 | Zboard | [产品与配置边界](zboard/ARCHITECTURE.md)：neutral、真实节点/订阅/报告状态 |
+| Images | [图床](images/README.md)：图片网格、模型选择、生成和资产管理 |
 | Tavern | [产品与对话](tavern/ARCHITECTURE.md)、[设置与候选 UI](tavern/MODELS.md)：阅读列、自由草稿、用户控制阅读位置 |
 
 固定 Linux 截图审阅、覆盖清单、严格 PR 比较和设备模拟的验收边界只在[TESTING](TESTING.md)维护。

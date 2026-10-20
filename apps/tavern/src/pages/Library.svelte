@@ -3,7 +3,7 @@
  import { onMount } from 'svelte';
  import { Button } from '@hasbai/ui/button'; import { Input } from '@hasbai/ui/input'; import * as Dialog from '@hasbai/ui/dialog';
  import { Plus, Upload, MessageCircle, Download, Trash2 } from '@lucide/svelte';
- import type { Api } from '../lib/api'; import type { Character, JsonObject } from '../../shared/types'; import { parseCard } from '../../shared/cards';
+ import type { Api, CharacterImageDrafts } from '../lib/api'; import type { Character, JsonObject } from '../../shared/types'; import { parseCard } from '../../shared/cards';
  import Avatar from '../lib/Avatar.svelte'; import Confirm from '../lib/Confirm.svelte';
  import CharacterCreator from '../lib/CharacterCreator.svelte';
  let {api,onchat}:{api:Api;onchat:(id:string,greeting:number)=>Promise<boolean>}=$props();
@@ -14,7 +14,7 @@
  async function upload(event:Event){const file=(event.target as HTMLInputElement).files?.[0];if(!file)return;busy=true;error='';try{await api.upload('characters',file);await load();}catch(e){error=(e as Error).message;}finally{busy=false;input.value='';}}
  async function show(c:Character){busy=true;error='';try{detail=await api.request<Character>('characters/'+c.id);}catch(e){error=(e as Error).message;}finally{busy=false;}}
  function create(){detail=undefined;editor=true;}
- async function saveCreated(raw:JsonObject,avatar?:File,greeting?:number){busy=true;try{parseCard(raw);const saved=await api.saveCharacter<Character>(raw,detail?.id,avatar);if(greeting!==undefined&&!await onchat(saved.id,greeting))throw Error('对话创建失败，请重试');editor=false;detail=undefined;await load();}finally{busy=false;}}
+ async function saveCreated(raw:JsonObject,images?:CharacterImageDrafts,greeting?:number){busy=true;try{parseCard(raw);const saved=await api.saveCharacter<Character>(raw,detail?.id,images);if(greeting!==undefined&&!await onchat(saved.id,greeting))throw Error('对话创建失败，请重试');editor=false;detail=undefined;await load();}finally{busy=false;}}
  async function remove(){if(!deleting)return;busy=true;try{await api.request('characters/'+deleting.id,'DELETE');deleting=undefined;deleteOpen=false;detail=undefined;await load();}catch(e){error=(e as Error).message;}finally{busy=false;}}
 </script>
 <header class="page-head"><div><h1>角色库 <span class="count">{cards.length}</span></h1></div><div class="actions"><Button variant="outline" disabled={busy} onclick={()=>input.click()}><Upload size={16}/>导入</Button><Button onclick={create}><Plus size={16}/>创建角色</Button></div></header>

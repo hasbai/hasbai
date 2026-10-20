@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "project": "images",
+  "inventory": {
+    "root": "src/pages",
+    "suffix": ".svelte"
+  },
+  "baselineDirectories": [
+    "e2e/__screenshots__/linux-ci/iphone",
+    "e2e/__screenshots__/linux-ci/desktop"
+  ],
+  "baselineTemplate": "e2e/__screenshots__/linux-ci/{project}/{snapshot}",
+  "pages": [
+    {
+      "source": "src/pages/Library.svelte",
+      "scenarios": [
+        "library",
+        "states",
+        "generating"
+      ]
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "library",
+      "kind": "screenshot",
+      "evidence": [
+        {
+          "spec": "e2e/images.spec.ts",
+          "test": "image library models generation rename search and theme",
+          "projects": [
+            "iphone",
+            "desktop"
+          ],
+          "snapshots": [
+            "images-library.png",
+            "images-rename.png",
+            "images-dark.png",
+            "images-search-empty.png"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "states",
+      "kind": "screenshot",
+      "evidence": [
+        {
+          "spec": "e2e/images.spec.ts",
+          "test": "image library empty and failure keep generation and upload available",
+          "projects": [
+            "iphone",
+            "desktop"
+          ],
+          "snapshots": [
+            "images-empty.png",
+            "images-error.png"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "generating",
+      "kind": "screenshot",
+      "evidence": [
+        {
+          "spec": "e2e/images.spec.ts",
+          "test": "image generation can be cancelled without clearing the prompt",
+          "projects": [
+            "iphone",
+            "desktop"
+          ],
+          "snapshots": [
+            "images-generating.png"
+          ]
+        }
+      ]
+    }
+  ]
+}

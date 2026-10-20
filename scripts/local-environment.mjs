@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-const apps = ['financial', 'blog', 'zboard', 'tavern'];
+const apps = ['financial', 'blog', 'zboard', 'tavern', 'images'];
 const pnpm = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
 const expectedPnpm = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).packageManager.split('@')[1];
 

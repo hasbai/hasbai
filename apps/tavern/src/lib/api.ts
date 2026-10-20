@@ -1,3 +1,5 @@
+import type { ImageAsset } from '@hasbai/images';
+export type CharacterImageDrafts={avatar?:File|ImageAsset;portrait?:File|ImageAsset};
 import { sseData } from '../../shared/sse';
 import type { StreamEvent, Message } from '../../shared/types';
 export function createApi(token:()=>Promise<string>) {
@@ -6,10 +8,11 @@ export function createApi(token:()=>Promise<string>) {
  async function upload<T>(path:string,file:File):Promise<T> {if(file.size>12*1024*1024)throw new Error('文件超过 12 MB');return (await response(path,{method:'POST',headers:{'X-Filename':encodeURIComponent(file.name)},body:file})).json() as Promise<T>;}
  async function download(path:string,filename:string) {const r=await response(path);const blob=await r.blob();const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
  async function avatar(id:string) {const r=await response(`characters/${id}/avatar`,{cache:'no-store'});return URL.createObjectURL(await r.blob());}
- async function avatarDraft(prompt:string,signal:AbortSignal) {return (await response('characters/avatar/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt}),signal})).blob();}
- async function saveCharacter<T>(card:unknown,id?:string,avatar?:File):Promise<T> {
-  if(!avatar)return request<T>(id?'characters/'+id:'characters',id?'PATCH':'POST',id?{card}:card);
-  const form=new FormData();form.set('card',JSON.stringify(card));form.set('avatar',avatar);
+ async function imageDraft(kind:'avatar'|'portrait',prompt:string,signal:AbortSignal):Promise<ImageAsset> {return (await response(`characters/${kind}/generate`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt}),signal})).json();}
+ async function saveCharacter<T>(card:unknown,id?:string,images:CharacterImageDrafts={}):Promise<T> {
+  if(!images.avatar&&!images.portrait)return request<T>(id?'characters/'+id:'characters',id?'PATCH':'POST',id?{card}:card);
+  const form=new FormData();form.set('card',JSON.stringify(card));
+  for(const kind of ['avatar','portrait'] as const){const image=images[kind];if(image instanceof File)form.set(kind,image);else if(image)form.set(kind+'ImageId',image.id);}
   return (await response(id?'characters/'+id:'characters',{method:id?'PATCH':'POST',body:form})).json() as Promise<T>;
  }
  async function generate(id:string,value:unknown,event:(e:StreamEvent)=>void,signal:AbortSignal) {
@@ -19,6 +22,6 @@ export function createApi(token:()=>Promise<string>) {
   for await(const data of sseData(r.body,signal)){const e=JSON.parse(data) as StreamEvent;event(e);if(e.type==='done')done=true;}
   if(!done)throw new Error('连接中断，已保存的内容可刷新恢复');
  }
- return {request,upload,download,avatar,avatarDraft,saveCharacter,generate};
+ return {request,upload,download,avatar,imageDraft,saveCharacter,generate};
 }
 export type Api=ReturnType<typeof createApi>;

@@ -11,7 +11,7 @@ import { character, installCard, jsonFile, ownedBooks, session, settings, userSe
 import { MAX_FILE_BYTES, object, parseBook, parseCard, string } from '../shared/cards';
 import { macros } from '../shared/prompt';
 import { generateCharacter } from './character-generation';
-import { characterForm, generateAvatar } from './character-avatar';
+import { characterForm, characterImages, generateCharacterImage } from './character-avatar';
 import { readPrompts, savePrompts } from './prompts';
 export default {
  async fetch(request:Request,env:Env,ctx:Pick<ExecutionContext,'waitUntil'>):Promise<Response> {
@@ -45,42 +45,41 @@ export default {
    }
    if(p==='/api/install' && method==='POST'){
     const d=await body(request),source=string(d.source),id=string(d.id),card=await download(env,source,id);
-    return json(await installCard(env,owner,card.bytes,card.filename,source,card.sourceUrl,id),201);
+    return json(await installCard(env,owner,card.bytes,card.filename,source,card.sourceUrl,id,{},request),201);
    }
    if(p==='/api/characters'){
     if(method==='GET'){const rows=await env.DB.prepare('SELECT * FROM characters WHERE owner=? ORDER BY created_at DESC').bind(owner).all<CharacterRow>();return json({characters:rows.results.map(r=>character(r))});}
     if(method==='POST'){
      if(request.headers.get('Content-Type')?.startsWith('multipart/form-data')){
-      const {card,avatar}=await characterForm(request);
-      return json(await installCard(env,owner,new TextEncoder().encode(JSON.stringify(card)),'character.json','','','',avatar),201);
+      const {card,images}=await characterForm(request,env);
+      return json(await installCard(env,owner,new TextEncoder().encode(JSON.stringify(card)),'character.json','','','',images,request),201);
      }
      const bytes=await boundedBody(request,MAX_FILE_BYTES),filename=decodeURIComponent(request.headers.get('X-Filename')??'character.json');
-     return json(await installCard(env,owner,bytes,filename),201);
+     return json(await installCard(env,owner,bytes,filename,'','','',{},request),201);
     }
    }
    if(p==='/api/characters/generate'&&method==='POST')return json({card:await generateCharacter(request,env,authenticatedUsername(user))});
-   if(p==='/api/characters/avatar/generate'&&method==='POST')return await generateAvatar(request,env,authenticatedUsername(user));
-   const char=p.match(/^\/api\/characters\/([^/]+)(?:\/(export|avatar))?$/);
+   const imageGeneration=p.match(/^\/api\/characters\/(avatar|portrait)\/generate$/);
+   if(imageGeneration&&method==='POST')return await generateCharacterImage(request,env,imageGeneration[1] as 'avatar'|'portrait');
+   const char=p.match(/^\/api\/characters\/([^/]+)(?:\/(export|avatar|portrait))?$/);
    if(char){
     const row=await env.DB.prepare('SELECT * FROM characters WHERE owner=? AND id=?').bind(owner,char[1]).first<CharacterRow>();if(!row)throw new HttpError(404,'角色不存在');
     if(method==='GET'&&char[2]==='export'){
      if(url.searchParams.get('original')==='true'){const file=await env.FILES.get(row.original_key);if(!file)throw new HttpError(404,'原卡不存在');return new Response(file.body,{headers:{'Content-Type':'application/octet-stream','Content-Disposition':`attachment; filename*=UTF-8''${encodeURIComponent(row.original_filename)}`,'Cache-Control':'no-store'}});}
      return jsonFile(JSON.parse(row.card_json),row.name+'.json');
     }
-    if(method==='GET'&&char[2]==='avatar'){
+    if(method==='GET'&&(char[2]==='avatar'||char[2]==='portrait')){
+     const imageId=char[2]==='avatar'?row.avatar_image_id:row.portrait_image_id;if(imageId){const imageUrl=new URL(request.url);imageUrl.pathname='/images/'+imageId;const response=await env.IMAGE_SERVICE.fetch(new Request(imageUrl,{method:'GET'}));const headers=new Headers(response.headers);headers.set('Cache-Control','no-store');return new Response(response.body,{status:response.status,headers});}
+     if(char[2]==='portrait')throw new HttpError(404,'立绘不存在');
      if(!row.avatar_key)throw new HttpError(404,'头像不存在');const file=await env.FILES.get(row.avatar_key);if(!file)throw new HttpError(404,'头像不存在');return new Response(file.body,{headers:{'Content-Type':row.avatar_type??'image/png','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
     }
     if(!char[2]&&method==='GET')return json(character(row,true));
     if(!char[2]&&method==='PATCH'){
-     const data=request.headers.get('Content-Type')?.startsWith('multipart/form-data')?await characterForm(request):{card:object((await body(request)).card),avatar:undefined};
-     const raw=data.card,c=parseCard(raw);const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(raw))))).map(n=>n.toString(16).padStart(2,'0')).join('');
-     const avatarKey=data.avatar?`${encodeURIComponent(owner)}/${row.id}/avatar-${crypto.randomUUID()}`:row.avatar_key,avatarType=data.avatar?.type??row.avatar_type;
-     if(data.avatar&&avatarKey)await env.FILES.put(avatarKey,data.avatar.bytes,{httpMetadata:{contentType:avatarType!}});
-     try{
-      await env.DB.prepare('UPDATE characters SET name=?,description=?,creator=?,tags_json=?,card_json=?,format=?,content_hash=?,avatar_key=?,avatar_type=? WHERE owner=? AND id=?').bind(c.data.name,c.data.description.slice(0,350),c.data.creator,JSON.stringify(c.data.tags),JSON.stringify(raw),c.format,hash,avatarKey,avatarType,owner,row.id).run();
-     }catch(error){if(data.avatar&&avatarKey)await env.FILES.delete(avatarKey);throw error;}
-     if(data.avatar&&row.avatar_key)ctx.waitUntil(env.FILES.delete(row.avatar_key));
-     return json(character({...row,name:c.data.name,description:c.data.description.slice(0,350),creator:c.data.creator,tags_json:JSON.stringify(c.data.tags),card_json:JSON.stringify(raw),format:c.format,avatar_key:avatarKey,avatar_type:avatarType},true));
+     const value=request.headers.get('Content-Type')?.startsWith('multipart/form-data')?await characterForm(request,env):await (async()=>{const data=await body(request);return {card:object(data.card),images:await characterImages(request,env,data)};})();
+     const raw=value.card,c=parseCard(raw);const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(raw))))).map(n=>n.toString(16).padStart(2,'0')).join('');
+     const avatarId=value.images.avatarImageId??row.avatar_image_id,portraitId=value.images.portraitImageId??row.portrait_image_id;
+     await env.DB.prepare('UPDATE characters SET name=?,description=?,creator=?,tags_json=?,card_json=?,format=?,content_hash=?,avatar_image_id=?,portrait_image_id=? WHERE owner=? AND id=?').bind(c.data.name,c.data.description.slice(0,350),c.data.creator,JSON.stringify(c.data.tags),JSON.stringify(raw),c.format,hash,avatarId,portraitId,owner,row.id).run();
+     return json(character({...row,name:c.data.name,description:c.data.description.slice(0,350),creator:c.data.creator,tags_json:JSON.stringify(c.data.tags),card_json:JSON.stringify(raw),format:c.format,avatar_image_id:avatarId,portrait_image_id:portraitId},true));
     }
     if(!char[2]&&method==='DELETE'){await env.DB.prepare('DELETE FROM characters WHERE owner=? AND id=?').bind(owner,row.id).run();await env.FILES.delete([row.original_key,...(row.avatar_key?[row.avatar_key]:[])]);return json({ok:true});}
    }

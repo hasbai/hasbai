@@ -29,6 +29,8 @@
     "build:zboard": "pnpm --filter zboard build",
     "check:zboard": "pnpm --filter zboard typecheck",
     "dev:tavern": "pnpm --filter tavern dev",
-    "visual:tavern": "node scripts/visual-linux.mjs tavern"
+    "visual:tavern": "node scripts/visual-linux.mjs tavern",
+    "dev:images": "pnpm --filter images dev",
+    "visual:images": "node scripts/visual-linux.mjs images"
   }
 }

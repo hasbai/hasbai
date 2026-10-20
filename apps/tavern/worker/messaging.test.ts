@@ -32,7 +32,7 @@ beforeEach(()=>{
  db=new DatabaseSync(':memory:');for(const n of readdirSync(new URL('../migrations',import.meta.url)).filter(n=>n.endsWith('.sql')).sort())db.exec(readFileSync(new URL('../migrations/'+n,import.meta.url),'utf8'));
  db.prepare('INSERT INTO characters(id,owner,name,description,creator,tags_json,card_json,format,source,source_url,source_id,original_key,original_filename,content_hash,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run('card',user.sub,'角色','','','[]','{"name":"角色"}','V1','','','','original','card.json','hash',1);
  db.prepare('INSERT INTO settings VALUES(?,?)').run(user.sub,JSON.stringify({...DEFAULT_SETTINGS,persona:'私人身份',systemPrompt:'私人提示'}));
- db.prepare('INSERT INTO characters SELECT ?,?,name,description,creator,tags_json,card_json,format,source,source_url,source_id,original_key,original_filename,avatar_key,avatar_type,content_hash,created_at FROM characters WHERE id=?').run('other-card',other.sub,'card');
+ db.prepare('INSERT INTO characters SELECT ?,?,name,description,creator,tags_json,card_json,format,source,source_url,source_id,original_key,original_filename,avatar_key,avatar_type,content_hash,created_at,avatar_image_id,portrait_image_id FROM characters WHERE id=?').run('other-card',other.sub,'card');
  databases=new Map();inboxes=new Map();views.clear();busy=false;accepted=true;
  modelCalls=vi.fn(async(name:string,request:Request)=>{
   const data=await request.json() as {requestId:string;content:string};
