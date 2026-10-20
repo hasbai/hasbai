@@ -32,7 +32,7 @@ for (const audience of additions.keys()) {
   if (!resources.some(resource => resource.identifier === audience)) throw new Error(`Missing existing API: ${audience}`);
 }
 const custom = resources.filter(resource => !resource.identifier.endsWith('/api/v2/'));
-const granted = api('get', `roles/${admin.id}/permissions`);
+const granted = api('get', `roles/${admin.id}/permissions?per_page=100`);
 const desired = [...additions].flatMap(([resource_server_identifier, scopes]) => scopes.map(scope => ({
   resource_server_identifier, permission_name: scope.value,
 })));
@@ -61,14 +61,14 @@ for (const resource of custom) {
     desired: { rbac: true, tokenDialect: dialect, permissions: scopes.map(scope => scope.value) } }));
 }
 if (apply && missing.length) api('post', `roles/${admin.id}/permissions`, { permissions: missing });
-const observedGrants = apply ? api('get', `roles/${admin.id}/permissions`) : granted;
+const observedGrants = apply ? api('get', `roles/${admin.id}/permissions?per_page=100`) : granted;
 const retiredGrants = observedGrants.filter(permission => retired.has(permission.permission_name)
   && additions.has(permission.resource_server_identifier)).map(({ resource_server_identifier, permission_name }) => ({
     resource_server_identifier, permission_name,
   }));
 if (apply && retiredGrants.length) api('delete', `roles/${admin.id}/permissions`, { permissions: retiredGrants });
 if (apply) {
-  const verified = api('get', `roles/${admin.id}/permissions`);
+  const verified = api('get', `roles/${admin.id}/permissions?per_page=100`);
   if (desired.some(permission => !verified.some(current =>
     current.resource_server_identifier === permission.resource_server_identifier && current.permission_name === permission.permission_name))) {
     throw new Error('Superadmin permission assignment verification failed.');
