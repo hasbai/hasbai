@@ -1,7 +1,7 @@
 import { Auth0Client } from "@auth0/auth0-spa-js";
 import { authConfig } from "./config";
 export { authConfig, authClaims } from "./config";
-/** Invoke only in the browser. Tokens stay in SDK memory. */
+/** Invoke only in the browser. The SDK persists sessions and rotates refresh tokens. */
 export function createBrowserClient(
   origin: string,
   options: { audience?: string } = {},
@@ -9,7 +9,9 @@ export function createBrowserClient(
   return new Auth0Client({
     domain: authConfig.domain,
     clientId: authConfig.clientId,
-    cacheLocation: "memory",
+    cacheLocation: "localstorage",
+    useRefreshTokens: true,
+    useRefreshTokensFallback: true,
     authorizeTimeoutInSeconds: 3,
     authorizationParams: {
       redirect_uri: `${origin}/auth/callback`,

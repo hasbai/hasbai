@@ -12,13 +12,16 @@ function api(method, path, data) {
 const audience = "https://zboard.hasbai.xyz/api",
   clientId = "mdmD7xvX5yay52SRVZeuIOhGHIa0Wdl2";
 const resources = api("get", "resource-servers");
-if (!resources.some((r) => r.identifier === audience))
+const resource = resources.find((r) => r.identifier === audience);
+if (resource && !resource.allow_offline_access)
+  api("patch", `resource-servers/${resource.id}`, { allow_offline_access: true });
+if (!resource)
   api("post", "resource-servers", {
     name: "Zboard API",
     identifier: audience,
     signing_alg: "RS256",
     token_lifetime: 3600,
-    allow_offline_access: false,
+    allow_offline_access: true,
   });
 const client = api("get", `clients/${clientId}`);
 const origins = [

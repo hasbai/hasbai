@@ -32,12 +32,14 @@ beforeEach(() => {
   sdk.getUser.mockResolvedValue({ sub: "auth0|test" });
   sdk.getTokenSilently.mockResolvedValue("e30." + btoa(JSON.stringify({ permissions: ["financial.all:all"] })) + ".signature");
 });
-it("offers organization login methods with the shared audience and memory-only cache", async () => {
+it("offers organization login methods with the shared audience and persistent cache and refresh token renewal", async () => {
   const auth = createAuth();
   await auth.init(vi.fn());
   expect(sdk.constructor).toHaveBeenCalledWith(
     expect.objectContaining({
-      cacheLocation: "memory",
+      cacheLocation: "localstorage",
+      useRefreshTokens: true,
+      useRefreshTokensFallback: true,
       domain: "auth.hasbai.xyz",
       clientId: config.clientId,
       authorizationParams: {

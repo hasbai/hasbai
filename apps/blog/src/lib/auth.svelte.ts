@@ -3,7 +3,7 @@ import { goto } from "$app/navigation";
 import { createBrowserClient, type Auth0Client, type User } from "@hasbai/auth";
 
 // A redirect callback and the editor are separate SvelteKit routes. Keep the
-// browser SDK instance so its memory-only PKCE token survives client navigation.
+// browser SDK instance shared while navigating between callback and editor.
 let sharedClient: Auth0Client | undefined;
 function browserClient() {
   return (sharedClient ??= createBrowserClient(location.origin));

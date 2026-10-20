@@ -5,7 +5,7 @@ Svelte 5 + TypeScript + Vite SPA，Bits UI / Luma、Tailwind CSS 4、Lucide、pn
 ```mermaid
 flowchart LR
   SPA[Svelte SPA / Worker financial] -->|登录| AUTH[Auth0 北极小站]
-  SPA -->|内存 Access Token| API[Neon Data API]
+  SPA -->|用户 Access Token| API[Neon Data API]
   API -->|验证 JWT / 数据库 role| DB[三表 / GRANT / 原报表 / 写函数]
 ```
 
@@ -56,7 +56,10 @@ Service Worker 只预缓存公开应用资源；不拦截跨域Auth0/Neon、非G
 
 新SW完整预缓存后skipWaiting并clients.claim，后续刷新取得线上版本；不调用页面reload或Client.navigate，不打断正在填写的交易。旧页面仍可能加载旧哈希chunk，因此有打开窗口时保留旧版本静态缓存并按精确资源路径查找；仅激活时确认没有打开窗口才清理旧financial-static缓存，不触碰其他应用缓存。应用启动、回到前台、恢复网络时检查SW更新，合并在途检查，离线失败等待下次事件重试。
 
-账本查询与token继续只放内存，无离线数据库、离线保存队列或后台写入。编辑期间断网保留当前内存输入，禁用保存；网络恢复允许提交，结果不明确仍沿用待核对状态禁止重复写入。冷启动离线只能取得应用壳，登录/读取需要网络。
+账本查询只放内存；登录缓存见[共享授权规则](../AUTHORIZATION.md)。
+不增加离线数据库、离线保存队列或后台写入。
+
+编辑期间断网保留当前内存输入，禁用保存；网络恢复允许提交，结果不明确仍沿用待核对状态禁止重复写入。冷启动离线只能取得应用壳；业务读取和过期登录续期需要网络。
 
 mobile-viewport.ts 使用 VisualViewport 高度和offsetTop适配键盘；放大时不覆盖系统缩放。仅正常尺寸更新CSS变量，弹层焦点与滚动锁使用Bits UI。手机交易路由只挂载编辑页面，EditorSurface 在手机渲染普通页面、桌面使用Dialog；手机页面及科目选择均适配VisualViewport，避免应用菜单或底栏覆盖编辑操作。PWA standalone中的真实登录、安装、系统返回和键盘行为需单独真机验收，程序化JWT/API不替代此项。
 
