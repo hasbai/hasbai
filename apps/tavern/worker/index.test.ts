@@ -2,7 +2,7 @@ import {it,expect,vi,beforeEach,afterEach} from 'vitest';import {DatabaseSync} f
 import worker from './index';import {TavernSession} from './session-object';import {SESSION_SCHEMA} from './session-store';
 vi.mock('cloudflare:workers',()=>({DurableObject:class {constructor(public ctx:DurableObjectState,public env:Env){}}}));import {identity,AuthError} from './auth';import {DEFAULT_SETTINGS,type Message} from '../shared/types';
 import { DIRECTOR_RESPONSE_FORMAT, DIRECTOR_RULE } from './director';
-import { AGENT_RULE,emptyState } from './agent';
+import { AGENT_RULE,AGENT_TOOLS,emptyState } from './agent';
 import {CAPABILITY_RULES} from '../shared/agent-protocol';
 import {DEFAULT_PROMPTS} from '../shared/prompts';
 import { LoreIndex } from './lore';
@@ -46,8 +46,9 @@ it('uses capability rules with custom KV and reads recalled original prose befor
  Object.assign(env.PROMPTS,{get:vi.fn(async()=>JSON.stringify({revision:'custom',texts:{...DEFAULT_PROMPTS,agent:'自定义正文规则',director:'自定义候选规则'}}))});
  const goal={task:'核对货单',actor:'character',status:'completed',progress:'两箱一致',pauseReason:null,completionEvidence:'账目已经核对完成。'};
  aiRun.mockImplementation(async request=>{
-  const q=request.query as {response_format?:unknown;messages:{role:string;content:string}[]};const results=q.messages.filter(m=>m.role==='tool');
+  const q=request.query as {response_format?:unknown;tools:unknown;messages:{role:string;content:string}[]};const results=q.messages.filter(m=>m.role==='tool');
   expect(q.messages[0].content).toContain('自定义正文规则');expect(q.messages[0].content).toContain(CAPABILITY_RULES.body);
+  expect(q.tools).toEqual(AGENT_TOOLS);expect(q.messages[0].content).not.toMatch(/read_memory|completionEvidence|nextOffset/);
   if(q.response_format){expect(q.messages.at(-1)?.content).toContain(CAPABILITY_RULES.director);return completion(JSON.stringify({choices:['我看看货单。','我暂不签收。','我问问钥匙。']}));}
   if(results.length<3){const name=['search_memory','read_memory','update_state'][results.length],args=results.length===0?{query:'钥匙'}:results.length===1?{id:JSON.parse(results[0].content)[0].id}:{patch:{goals:{warehouse:goal}}};
    return completion(results.length===2?'账目已经核对完成。':'','tool_calls',[{index:0,id:'call-'+results.length,type:'function',function:{name,arguments:JSON.stringify(args)}}]);}

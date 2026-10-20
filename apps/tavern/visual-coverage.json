@@ -364,7 +364,7 @@
     {
       "id": "about",
       "kind": "screenshot",
-      "description": "AI SDK \u5bf9\u8bdd\u6d41\u7a0b\u3001\u4e0a\u4e0b\u6587\u987a\u5e8f\u3001\u8bb0\u5fc6\u76ee\u6807\u534f\u8bae\u4e0e\u5171\u4eab\u63d0\u793a\u8bcd\uff1b\u6d45\u8272\u548c\u6df1\u8272\u3002",
+      "description": "AI SDK 对话流程、上下文顺序、精简行为规则、检索与原文读取说明；浅色和深色。",
       "evidence": [
         {
           "spec": "e2e/tavern.spec.ts",
