@@ -1,4 +1,5 @@
 <script lang="ts">
+ import { LoadingBar } from "@hasbai/ui/progress";
  import { Notice } from '@hasbai/ui/notice';
   import { onMount } from "svelte";
   import { createBrowserClient } from "@hasbai/auth";
@@ -37,30 +38,34 @@
     }
   }
   async function login() {
+    loading = true;
     error = "";
     try {
       await client.loginWithRedirect();
     } catch {
       error = "无法打开登录，请重试";
+      loading = false;
     }
   }
   async function logout() {
+    loading = true;
     authenticated = false;
     api = undefined;
     try {
       await client.logout({ logoutParams: { returnTo: location.origin } });
     } catch {
       error = "退出失败，请重试";
+      loading = false;
     }
   }
 </script>
 
 {#if authenticated && api}<Tavern {api} {logout} />{:else}
-  <main class="login">
+  <LoadingBar active={loading}/><main class="login" aria-busy={loading}>
     <div class="login-mark"><BrandMark size={42}/></div>
     <p class="eyebrow">北极小站</p>
     <h1>Tavern</h1>
-    {#if loading}<p role="status">正在恢复登录…</p>{:else}<Button
+    {#if !loading}<Button
         onclick={login}>登录</Button
       >{/if}
     {#if error}<Notice variant="error">{error}</Notice>{/if}

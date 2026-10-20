@@ -33,6 +33,7 @@
     "./notice": "./src/components/notice/index.ts",
     "./notice/index.js": "./src/components/notice/index.ts",
     "./motion": "./src/motion.ts",
+    "./progress": "./src/components/progress/index.ts",
     "./neutral.css": "./src/neutral.css"
   },
   "dependencies": {

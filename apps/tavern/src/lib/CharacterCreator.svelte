@@ -1,10 +1,11 @@
 <script lang="ts">
+ import { trackLoading, Spinner } from "@hasbai/ui/progress";
  import { onDestroy, untrack, type Snippet } from 'svelte';
  import { Button } from '@hasbai/ui/button';
  import { Input } from '@hasbai/ui/input';
  import { Notice } from '@hasbai/ui/notice';
  import * as Dialog from '@hasbai/ui/dialog';
- import { Sparkles, UserRound, BookOpen, MessageCircle, Plus, Trash2, Undo2, Upload } from '@lucide/svelte';
+ import { Check, Sparkles, UserRound, BookOpen, MessageCircle, Plus, Trash2, Undo2, Upload } from '@lucide/svelte';
  import { CHARACTER_FIELDS, characterCard, characterDraft, emptyCharacterDraft, generatedCharacterCard, validateCharacterDraft, type CharacterDraft, type CharacterField } from '../../shared/character-draft';
  import type { Character, JsonObject } from '../../shared/types';
  import { avatarImage, MAX_AVATAR_BYTES } from '../../shared/avatar';
@@ -70,18 +71,19 @@
   { title: '人物设定', icon: BookOpen, fields: ['description', 'personality', 'scenario'] },
   { title: '开场与对白', icon: MessageCircle, fields: ['first_mes', 'mes_example'] },
  ];
+ trackLoading(()=>locked);
 </script>
 
 <Dialog.Header>
  <Dialog.Title class="creator-title">{character?.name ?? '创建角色'}</Dialog.Title>
 </Dialog.Header>
- {#if status}<div class="creator-feedback" role="status"><span>{status}</span>{#if previous}<Button type="button" variant="ghost" onclick={undo} disabled={locked}><Undo2 size={16} aria-hidden="true"/>撤销生成</Button>{/if}</div>{/if}
+ {#if status}<div class="creator-feedback" role="status"><span class="creator-result">{#if status==='已生成'}<Check size={16} aria-hidden="true"/>{:else}<Undo2 size={16} aria-hidden="true"/>{/if}<span class="sr-only">{status}</span></span>{#if previous}<Button type="button" variant="ghost" onclick={undo} disabled={locked}><Undo2 size={16} aria-hidden="true"/>撤销生成</Button>{/if}</div>{/if}
  {#if error}<Notice variant="error">{error}</Notice>{/if}
 <form id="character-form" class="creator-scroll" onsubmit={save}>
  <section class="creator-ai">
   <label class="sr-only" for="character-brief">角色构想</label>
   <textarea id="character-brief" rows="2" bind:value={brief} disabled={locked} placeholder="角色构想"></textarea>
-  <div class="creator-ai-actions"><Button type="button" variant="outline" onclick={generate} disabled={locked || !canGenerate}><Sparkles size={16} aria-hidden="true"/>{generating ? '正在生成…' : 'AI 生成'}</Button></div>
+  <div class="creator-ai-actions"><Button type="button" variant="outline" onclick={generate} disabled={locked || !canGenerate}><span aria-hidden="true">{#if generating}<Spinner/>{:else}<Sparkles size={16}/>{/if}</span>AI 生成</Button></div>
  </section>
  <fieldset disabled={locked} class="creator-fields">
   <section class="creator-section">
@@ -94,7 +96,7 @@
     {#each imageKinds as {kind,label}}
      <section class="creator-image"><h3>{label}</h3>
       {#if kind==='portrait'}<div class="creator-portrait">{#if previews.portrait||character?.portraitImageId}<img src={previews.portrait||imageUrl(character!.portraitImageId!)} alt="角色立绘"/>{:else}<span>尚无立绘</span>{/if}</div>{/if}
-      <div class="creator-avatar-actions"><label class="image-upload"><Upload size={16} aria-hidden="true"/>上传{label}<input type="file" accept="image/png,image/jpeg,image/webp" aria-label={`上传${label}`} onchange={event=>uploadImage(event,kind)}/></label><Button type="button" variant="outline" disabled={locked||![imagePrompt,draft.name,draft.description].some(text=>text.trim())} onclick={()=>generateImage(kind)}><Sparkles size={16} aria-hidden="true"/>{generatingImage===kind?`生成${label}中…`:`AI 生成${label}`}</Button>{#if images[kind]}<Button type="button" variant="ghost" onclick={()=>images={...images,[kind]:undefined}}>撤销{label}</Button>{/if}</div>
+      <div class="creator-avatar-actions"><label class="image-upload"><Upload size={16} aria-hidden="true"/>上传{label}<input type="file" accept="image/png,image/jpeg,image/webp" aria-label={`上传${label}`} onchange={event=>uploadImage(event,kind)}/></label><Button type="button" variant="outline" disabled={locked||![imagePrompt,draft.name,draft.description].some(text=>text.trim())} onclick={()=>generateImage(kind)}><span aria-hidden="true">{#if generatingImage===kind}<Spinner/>{:else}<Sparkles size={16}/>{/if}</span>AI 生成{label}</Button>{#if images[kind]}<Button type="button" variant="ghost" onclick={()=>images={...images,[kind]:undefined}}>撤销{label}</Button>{/if}</div>
      </section>
     {/each}
    </div>
@@ -118,4 +120,4 @@
  {#if character?.sourceUrl}<a href={character.sourceUrl} target="_blank" rel="noopener noreferrer">角色来源</a>{/if}
  {#if character?.unsupported.length}<div class="tags"><span>扩展仅保留</span>{#each character.unsupported as item}<span>{item}</span>{/each}</div>{/if}
 </form>
-<Dialog.Footer class="creator-footer"><div class="actions"><Button type="button" variant="outline" disabled={saving} onclick={oncancel}>{generating || generatingImage ? '取消生成并关闭' : '取消'}</Button>{#if character}<Button type="button" variant="outline" disabled={locked} onclick={() => save(undefined, true)}>开始对话</Button>{/if}<Button type="submit" form="character-form" disabled={locked}>{saving ? '保存中…' : '保存角色'}</Button></div></Dialog.Footer>
+<Dialog.Footer class="creator-footer"><div class="actions"><Button type="button" variant="outline" disabled={saving} onclick={oncancel}>{generating || generatingImage ? '取消生成并关闭' : '取消'}</Button>{#if character}<Button type="button" variant="outline" disabled={locked} onclick={() => save(undefined, true)}>开始对话</Button>{/if}<Button type="submit" form="character-form" disabled={locked}>{#if saving}<Spinner/>{/if}保存角色</Button></div></Dialog.Footer>

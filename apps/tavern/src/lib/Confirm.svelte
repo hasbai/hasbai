@@ -1,4 +1,5 @@
 <script lang="ts">
+ import { Spinner } from "@hasbai/ui/progress";
   import * as Dialog from "@hasbai/ui/dialog";
   import { Button } from "@hasbai/ui/button";
   let {
@@ -28,7 +29,7 @@
       ><Button variant="outline" disabled={busy} onclick={() => (open = false)}
         >取消</Button
       ><Button variant="destructive" disabled={busy} onclick={onconfirm}
-        >{busy ? "处理中…" : "确认"}</Button
+        >{#if busy}<Spinner/>{/if}确认</Button
       ></Dialog.Footer
     ></Dialog.Content
   ></Dialog.Root
