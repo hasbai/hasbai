@@ -8,10 +8,11 @@ const settings={userName:'旅人',persona:'一位从北方归来的旅人。',sy
 const book={id:'b1',name:'北境港城',enabled:true,count:2,raw:{name:'北境港城',entries:[{keys:['港城'],content:'港城的灯塔每晚亮起。',enabled:true},{keys:[],content:'故事发生在初秋。',constant:true,enabled:true}]},unsupported:[]};
 const session={id:'s1',title:'港城的雨夜',characterName:'岚',updatedAt:1790990000000,settings,bookIds:['b1'],character:raw,generationId:null as string|null};
 const greeting={id:'m1',role:'assistant',content:raw.data.first_mes,status:'completed',ordinal:0,requestId:null,createdAt:1790990000000};
-async function fixture(page:Page,{empty=false,fail=false,delay=false,streamDelay=false,stopDelay=false,partial=false,long=false,promptAdmin=true,agent=false}={}) {
+async function fixture(page:Page,{empty=false,fail=false,delay=false,streamDelay=false,stopDelay=false,partial=false,long=false,promptAdmin=true,agent=false,telegram=false}={}) {
  let promptTexts={...DEFAULT_PROMPTS};let activities:Record<string,unknown>[]=[];let estimatedTokens=8250,coveredMessages=0;
  const current=structuredClone(session);
  const cards=empty?[]:[structuredClone(character)],books=empty?[]:[structuredClone(book)],sessions=empty?[]:[structuredClone(current)];let messages:Record<string,unknown>[]=empty?[]:[structuredClone(greeting)];let pending='';let generationCount=0;let savedSettings=structuredClone(settings);if(long)messages=[{...greeting,content:Array.from({length:18},(_,i)=>`第${i+1}段。雨点敲着旅店的窗，岚整理好桌边的书，等待你的回答。`).join('\n\n')}];
+ if(telegram)messages=[{...greeting,id:'telegram-input',role:'user',content:'@alice: 绷\n@alice: 骇人\n@bob: deepseek v3？',ordinal:0},{...greeting,id:'telegram-reply',content:'看到啦。你们刚才聊的是模型版本吧？',ordinal:1}];
  await page.route('**/api/**',async route=>{
   const req=route.request(),url=new URL(req.url()),p=url.pathname,method=req.method();if(delay)return;
   if(fail){await route.fulfill({status:503,json:{message:'服务暂时不可用'}});return;}
@@ -75,6 +76,9 @@ test('chat stream editing export and keyboard',async({page})=>{
  await fixture(page);await page.getByRole('button',{name:'开始对话',exact:true}).click();await expect(page.getByText('门外传来脚步声。',{exact:false})).toBeVisible();await shot(page,'chat.png');await page.getByLabel('发送消息',{exact:true}).fill('我是从北方回来的旅人。');await page.getByLabel('发送消息',{exact:true}).press('Enter');await expect(page.getByText('岚把热茶放在桌上。',{exact:false})).toBeVisible();await expect(page.getByRole('button',{name:'会话设置'})).toBeEnabled();await page.getByRole('log',{name:'消息历史'}).evaluate(e=>e.scrollTop=e.scrollHeight);await shot(page,'chat-reply.png');
  await page.getByRole('button',{name:'会话设置'}).click();await expect(page.getByRole('dialog')).toBeVisible();if(page.viewportSize()!.width>639)await expect(page.getByLabel('会话名称')).toBeFocused();else await expect(page.getByRole('dialog')).toBeFocused();await shot(page,'chat-settings.png');await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);const editTrigger=page.getByRole('button',{name:'编辑第 2 条消息'});await editTrigger.focus();await expect(editTrigger).toBeFocused();const messageLog=page.getByRole('log',{name:'消息历史'});await messageLog.evaluate(e=>e.scrollTop=0);await expect.poll(()=>messageLog.evaluate(e=>e.scrollTop)).toBe(0);await editTrigger.click();await expect(page.getByRole('dialog')).toBeVisible();await shot(page,'chat-edit.png');await page.getByLabel('消息内容').fill('新的旅程。');await page.getByRole('button',{name:'保存并删除后续',exact:true}).click();await expect(page.getByText('新的旅程。',{exact:true})).toBeVisible();
  const download=page.waitForEvent('download');await page.getByRole('button',{name:'导出对话'}).click();expect((await download).suggestedFilename()).toMatch(/\.jsonl$/);
+});
+test('telegram conversations show formatted stored dialogue instead of transport JSON',async({page})=>{
+ await fixture(page,{telegram:true});await nav(page,'对话');await page.getByRole('button',{name:/港城的雨夜/}).click();await expect(page.getByText('@alice: 绷',{exact:false})).toBeVisible();await expect(page.locator('.message-text').first()).not.toContainText('"speaker"');await expect(page.locator('.message-text').first()).toHaveText('@alice: 绷\n@alice: 骇人\n@bob: deepseek v3？');await shot(page,'chat-telegram.png');
 });
 test('empty error and loading states',async({page})=>{
  await fixture(page,{empty:true});await expect(page.getByRole('heading',{name:'角色库为空'})).toBeVisible();await shot(page,'library-empty.png');await nav(page,'世界书');await shot(page,'worldbooks-empty.png');await nav(page,'对话');await shot(page,'chat-empty.png');

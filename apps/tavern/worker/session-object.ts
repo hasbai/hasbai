@@ -45,7 +45,9 @@ export class TavernSession extends DurableObject<Env> {
     store.import(row,messages);
    }
    if(store.directory()?.owner!==owner)throw new HttpError(404,'会话不存在');
-   if(store.deleted())throw new HttpError(404,'会话不存在');store.recover();this.store=store;await this.scheduleSync();return store;
+   if(store.deleted())throw new HttpError(404,'会话不存在');store.recover();
+   if(await this.env.DB.prepare('SELECT id FROM channel_routes WHERE owner=? AND session_id=? LIMIT 1').bind(owner,id).first())store.formatTelegram();
+   this.store=store;await this.scheduleSync();return store;
   })();
   try{return await this.loading;}finally{this.loading=undefined;}
  }
@@ -168,6 +170,7 @@ export class TavernSession extends DurableObject<Env> {
    try{
     switch(method){
      case 'read':value=await this.read(owner,id);break;
+     case 'progress':{const store=await this.load(owner,id);value={message:store.progress(string(data.requestId)),generating:!!store.get().generation_id};break;}
      case 'stop':value=data.requestId!==undefined?await this.stopRequest(owner,id,string(data.requestId)):await this.stop(owner,id,string(data.generationId));break;
      case 'update':value=await this.update(owner,id,data);break;
      case 'changeMessage':value=await this.changeMessage(owner,id,data);break;
@@ -191,6 +194,7 @@ export class TavernSession extends DurableObject<Env> {
 }
 
 export type SessionResults={
+ progress:{message:ReturnType<SessionStore['progress']>;generating:boolean};
  read:{session:ReturnType<typeof session>;messages:ReturnType<typeof message>[];activities:AgentActivity[];context:ContextUsage};
  stop:{ok:boolean};update:ReturnType<typeof session>;changeMessage:{ok:boolean};command:{ok:boolean};remove:{ok:boolean};
  export:{row:SessionRow;messages:ReturnType<typeof message>[];snapshots:ReturnType<SessionStore['snapshots']>};

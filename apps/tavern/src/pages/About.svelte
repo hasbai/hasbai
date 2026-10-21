@@ -22,7 +22,7 @@
  const systemParts=['用户系统提示词 + 角色卡 system_prompt','用户 persona','世界书 before_char','角色描述','角色性格','初始场景','世界书 after_char','示例对白','角色卡 post_history_instructions','工具使用指导','历史摘要'];
  const stagePrompts:Record<Stage,PromptKey[]>={character:['character'],body:['systemTemplate'],tools:['tools',...TOOL_PROMPT_KEYS],director:['director'],summary:['summaryTask']};
  const promptRole=(key:PromptKey)=>TOOL_PROMPT_KEYS.includes(key as typeof TOOL_PROMPT_KEYS[number])?'tools':key==='director'||key==='summaryTask'?'user':'system';
- const journey=[{icon:MessageSquare,title:'你的输入',subtitle:'浏览器 / Telegram → Worker'},{icon:Database,title:'会话与记忆',subtitle:'每会话 SQLite DO'},{icon:Layers3,title:'上下文与模型',subtitle:'AI SDK → AI Gateway'},{icon:Sparkles,title:'正文与下一步',subtitle:'流式正文 → Director'}];
+ const journey=[{icon:MessageSquare,title:'你的输入',subtitle:'浏览器 / Telegram 文本 → Worker'},{icon:Database,title:'会话与记忆',subtitle:'每会话 SQLite DO'},{icon:Layers3,title:'上下文与模型',subtitle:'AI SDK → AI Gateway'},{icon:Sparkles,title:'正文与下一步',subtitle:'流式正文 / 编辑回复 → Director'}];
  trackLoading(()=>loading||saving||personalSaving);
 </script>
 

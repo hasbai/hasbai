@@ -17,6 +17,21 @@ async function invoke(method:Parameters<TavernSession['invoke']>[2],data:Record<
 function seed(id='s',owner='owner'){db.prepare('INSERT INTO sessions(id,owner,title,character_json,character_name,settings_json,created_at,updated_at,summary_json) VALUES(?,?,?,?,?,?,?,?,?)').run(id,owner,'旅店',JSON.stringify({name:'岚',first_mes:'你好'}),'岚',JSON.stringify(DEFAULT_SETTINGS),1,2,'historical-checkpoint');db.prepare("INSERT INTO messages(id,session_id,role,content,status,ordinal,created_at,finish_reason,candidates_json) VALUES(?,?,'assistant','旧正文','completed',0,3,'stop',?)").run('m-'+id,id,'["问问往事。"]');}
 beforeEach(()=>{db=new DatabaseSync(':memory:');for(const name of readdirSync(new URL('../migrations/',import.meta.url)).filter(n=>n.endsWith('.sql')).sort())db.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'));sqlDbs=new Map();objects=new Map();work=[];alarms=new Map();intercept=undefined;deleteStorage=undefined;env={PROMPTS:{get:async()=>null},DB:{prepare:statement,batch:async(stmts:D1PreparedStatement[])=>{db.exec('BEGIN');try{const result=[];for(const stmt of stmts)result.push(await stmt.run());db.exec('COMMIT');return result;}catch(error){db.exec('ROLLBACK');throw error;}}},SESSIONS:{getByName:(name:string)=>{const [owner,id]=JSON.parse(name);return target(owner,id);}}} as unknown as Env;});
 afterEach(async()=>{await Promise.allSettled(work);db.close();for(const sqlite of sqlDbs.values())sqlite.close();});
+it('converts Telegram source records in place on load and clears only derived context across restarts',async()=>{
+ seed();const raw=JSON.stringify({speaker:{id:12,name:'@alice'},text:'第一行\n/ooc 普通正文'});
+ db.prepare("INSERT INTO channel_routes VALUES('r','[12,0]',12,0,'owner','profile','s',1,1)").run();
+ db.prepare("INSERT INTO messages(id,session_id,role,content,status,ordinal,created_at) VALUES('u','s','user',?,'completed',1,4)").run(raw);
+ const first=await invoke('read');expect(first.value.messages[1]).toMatchObject({id:'u',content:'@alice: 第一行\n  > /ooc 普通正文',ordinal:1,createdAt:4});expect(first.value.messages[0].content).toBe('旧正文');
+ const sqlite=sqlDbs.get(sessionName('owner','s'))!;expect(sqlite.prepare("SELECT content FROM messages WHERE id='u'").get()?.content).toBe('@alice: 第一行\n  > /ooc 普通正文');expect(sqlite.prepare('SELECT summary_json FROM sessions').get()?.summary_json).toBeNull();
+ objects.delete(sessionName('owner','s'));expect((await invoke('read')).value.messages).toEqual(first.value.messages);expect((await invoke('read',{},'foreign')).status).toBe(404);
+ seed('browser');db.prepare("INSERT INTO messages(id,session_id,role,content,status,ordinal,created_at) VALUES('b','browser','user',?,'completed',1,4)").run(raw);expect((await invoke('read',{},'owner','browser')).value.messages[1].content).toBe(raw);
+});
+it('exposes only the matching persisted body draft through the owner-scoped progress RPC',async()=>{
+ seed();await invoke('read');const sqlite=sqlDbs.get(sessionName('owner','s'))!;
+ sqlite.prepare("INSERT INTO messages(id,session_id,role,content,status,ordinal,created_at,request_id) VALUES('draft','s','assistant','','pending',1,4,'request')").run();sqlite.prepare("INSERT INTO generation_drafts VALUES('draft','正文草稿')").run();
+ Object.assign(target(),{active:{id:'draft',requestId:'request',abort:new AbortController()}});
+ expect((await invoke('progress',{requestId:'request'})).value.message).toMatchObject({status:'pending',content:'正文草稿'});expect((await invoke('progress',{requestId:'other'})).value.message).toBeNull();expect((await invoke('progress',{requestId:'request'},'foreign')).status).toBe(404);
+});
 it('imports once, fences every legacy write, retains source IDs and all version metadata',async()=>{
  seed();const old=db.prepare('SELECT * FROM messages').all();const first=await invoke('read');expect(first.ok).toBe(true);expect(first.value.messages[0]).toMatchObject({id:'m-s',content:'旧正文',finishReason:'stop',candidates:['问问往事。']});
  expect(db.prepare('UPDATE sessions SET generation_id=? WHERE id=? AND (generation_id IS NULL OR generation_until<=?)').run('legacy','s',Date.now()).changes).toBe(0);

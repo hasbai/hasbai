@@ -153,6 +153,17 @@
             "chat-settings.png",
             "chat-edit.png"
           ]
+        },
+        {
+          "spec": "e2e/tavern.spec.ts",
+          "test": "telegram conversations show formatted stored dialogue instead of transport JSON",
+          "projects": [
+            "iphone",
+            "desktop"
+          ],
+          "snapshots": [
+            "chat-telegram.png"
+          ]
         }
       ]
     },

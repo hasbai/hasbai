@@ -8,9 +8,11 @@ import { telegramWebhook } from './telegram-webhook';
 import { DEFAULT_SETTINGS, type AgentActivity } from '../shared/types';
 import { TELEGRAM_COMMANDS, telegramHelp } from './telegram-commands';
 import { userPrompt } from '../shared/commands';
+import { telegramEdit } from './telegram-edit';
 vi.mock('cloudflare:workers',()=>({DurableObject:class {constructor(public ctx:DurableObjectState,public env:Env){}}}));
 
 let db:DatabaseSync,env:Env,databases:Map<string,DatabaseSync>,inboxes:Map<string,MessageInbox>,modelCalls:ReturnType<typeof vi.fn<(name:string,request:Request)=>Promise<Response>>>,fetcher:ReturnType<typeof vi.fn<(url:string|URL|Request,options?:RequestInit)=>Promise<Response>>>,busy:boolean,accepted:boolean;
+const reactions=vi.fn<(url:string|URL|Request,options?:RequestInit)=>Promise<Response>>();
 const user={sub:'auth0|owner',username:'月石',email:'owner',admin:false};
 const other={sub:'auth0|other',username:'其他',email:'other',admin:true};
 const views=new Map<string,{session:{generationId:string|null};messages:Record<string,unknown>[];activities?:AgentActivity[]} >();
@@ -43,8 +45,8 @@ beforeEach(()=>{
   if(accepted){const prior=views.get(name);if(!prior?.messages.some(m=>m.requestId===data.requestId))views.set(name,{session:{generationId:null},messages:[...(prior?.messages??[]),{id:data.requestId,role:'assistant',content:'你好。',status:'completed',finishReason:'stop',requestId:data.requestId}]});}
   return new Response('data: {}\n\n',{headers:{'Content-Type':'text/event-stream'}});
  });
- env=Object.assign({} as Env,{TELEGRAM_BOT_TOKEN:'test-token',TELEGRAM_WEBHOOK_SECRET:'test-secret',TELEGRAM_BOT_USERNAME:'saki_main_bot',PROMPTS:{get:async()=>null},DB:{prepare:statement,batch:async(stmts:D1PreparedStatement[])=>{db.exec('BEGIN');try{const result=[];for(const s of stmts)result.push(await s.run());db.exec('COMMIT');return result;}catch(e){db.exec('ROLLBACK');throw e;}}},MESSAGE_INBOX:{getByName:(key:string)=>inbox(key)},SESSIONS:{getByName:(key:string)=>({fetch:(req:Request)=>modelCalls(key,req),invoke:async(_owner:string,_id:string,method:string)=>JSON.stringify({ok:true,value:method==='read'?views.get(key)??{session:{generationId:null},messages:[]}:{ok:true}})})}});
- fetcher=vi.fn(async()=>Response.json({ok:true,result:{message_id:42,status:'administrator'}}));vi.stubGlobal('fetch',fetcher);
+ env=Object.assign({} as Env,{TELEGRAM_BOT_TOKEN:'test-token',TELEGRAM_WEBHOOK_SECRET:'test-secret',TELEGRAM_BOT_USERNAME:'saki_main_bot',PROMPTS:{get:async()=>null},DB:{prepare:statement,batch:async(stmts:D1PreparedStatement[])=>{db.exec('BEGIN');try{const result=[];for(const s of stmts)result.push(await s.run());db.exec('COMMIT');return result;}catch(e){db.exec('ROLLBACK');throw e;}}},MESSAGE_INBOX:{getByName:(key:string)=>inbox(key)},SESSIONS:{getByName:(key:string)=>({fetch:(req:Request)=>modelCalls(key,req),invoke:async(_owner:string,_id:string,method:string,data:Record<string,unknown>)=>{const view=views.get(key)??{session:{generationId:null},messages:[]};return JSON.stringify({ok:true,value:method==='read'?view:method==='progress'?{message:view.messages.find(m=>m.role==='assistant'&&m.requestId===data.requestId)??null,generating:!!view.session.generationId}:{ok:true}});}})}});
+ fetcher=vi.fn(async()=>Response.json({ok:true,result:{message_id:42,status:'administrator'}}));reactions.mockReset().mockResolvedValue(Response.json({ok:true,result:true}));vi.stubGlobal('fetch',(url:string|URL|Request,options?:RequestInit)=>String(url).endsWith('/setMessageReaction')?reactions(url,options):fetcher(url,options));
 });
 afterEach(()=>{db.close();for(const local of databases.values())local.close();vi.unstubAllGlobals();vi.clearAllMocks();});
 it('isolates browser private settings and atomically consumes one-time expiring codes',async()=>{
@@ -126,7 +128,7 @@ it('waits for command activity completion and delivers a terminal failure instea
 });
 it('keeps OOC on its own instruction line with speaker identity and denies other members control of the session',async()=>{
  await bind();const b=await bind('group',-1),u=update(30,-1);u.message.text='/ooc@saki_main_bot 放慢节奏\n我走到窗边';
- await webhook(u);const content=String(databases.get(b.key)!.prepare('SELECT text FROM inbox_jobs').get()?.text);await inbox(b.key).alarm();expect(content).toContain('"id":12');expect(userPrompt(content)).toContain('[OOC：');expect(userPrompt(content)).toContain('放慢节奏');expect(userPrompt(content)).toContain('我走到窗边');
+ await webhook(u);const content=String(databases.get(b.key)!.prepare('SELECT text FROM inbox_jobs').get()?.text);await inbox(b.key).alarm();expect(content).toContain('@member:');expect(content).not.toContain('"speaker"');expect(userPrompt(content)).toContain('[OOC：');expect(userPrompt(content)).toContain('放慢节奏');expect(userPrompt(content)).toContain('我走到窗边');
  const outsider=update(31,-1);outsider.message.from.id=13;outsider.message.text='/status@saki_main_bot';await webhook(outsider);await inbox(b.key).alarm();expect(modelCalls).toHaveBeenCalledTimes(1);expect(fetcher.mock.calls.map(c=>JSON.parse(String(c[1]?.body)).text).join()).toContain('绑定账号');
 });
 it('cannot take over an already linked Telegram account with another owner code',async()=>{
@@ -157,10 +159,10 @@ it('retries a busy Tavern session using the same UUID and processes queued input
  const local=databases.get(b.key)!,id=local.prepare('SELECT request_id FROM inbox_jobs WHERE update_id=1').get()?.request_id;
  expect(local.prepare('SELECT phase FROM inbox_jobs WHERE update_id=1').get()?.phase).toBe('queued');busy=false;await object.alarm();await object.alarm();expect(modelCalls).toHaveBeenCalledTimes(3);expect(local.prepare('SELECT request_id FROM inbox_jobs WHERE update_id=1').get()?.request_id).toBe(id);
 });
-it('waits for durable successful Tavern terminal state and never delivers partial/error text',async()=>{
+it('shows pending prose as a preview and replaces it with a failure receipt if generation fails',async()=>{
  const b=await bind(),object=inbox(b.key);accepted=false;await object.receive(b.id,update());const job=databases.get(b.key)!.prepare('SELECT * FROM inbox_jobs').get()!;
- const key=JSON.stringify([user.sub,b.sessionId]);views.set(key,{session:{generationId:'running'},messages:[{requestId:job.request_id,role:'assistant',status:'pending',content:'半稿'}]});await object.alarm();expect(fetcher).not.toHaveBeenCalled();
- views.set(key,{session:{generationId:null},messages:[{requestId:job.request_id,role:'assistant',status:'aborted',finishReason:'interrupted',content:'半稿'}]});await inbox(b.key,true).alarm();expect(fetcher).not.toHaveBeenCalled();expect((await object.status(b.id)).jobs[0].phase).toBe('attention');await expect(object.resolve(b.id,'retry')).rejects.toThrow('未完成');expect((await object.status(b.id)).jobs[0].phase).toBe('attention');
+ const key=JSON.stringify([user.sub,b.sessionId]);views.set(key,{session:{generationId:'running'},messages:[{requestId:job.request_id,role:'assistant',status:'pending',content:'半稿'}]});await object.alarm();expect(fetcher).toHaveBeenCalledTimes(1);
+ views.set(key,{session:{generationId:null},messages:[{requestId:job.request_id,role:'assistant',status:'aborted',finishReason:'interrupted',content:'半稿'}]});await inbox(b.key,true).alarm();expect(fetcher).toHaveBeenCalledTimes(2);expect(JSON.parse(String(fetcher.mock.calls[1][1]?.body)).text).toContain('回复未完成');expect((await object.status(b.id)).jobs[0].phase).toBe('attention');await expect(object.resolve(b.id,'retry')).rejects.toThrow('未完成');expect((await object.status(b.id)).jobs[0].phase).toBe('attention');
 });
 it('stops on uncertain delivery, survives restart and explicitly retries only unsent chunks',async()=>{
  const b=await bind(),object=inbox(b.key);await object.receive(b.id,update());fetcher.mockRejectedValueOnce(new Error('URL with secret must never escape'));
@@ -199,4 +201,41 @@ it('rejects bad webhook secrets, malformed oversized input and ignores commands 
 it('redacts transport failures and records negative API responses as failed sends',async()=>{
  fetcher.mockRejectedValueOnce(new Error('test-token'));await expect(telegramApi('test-token','sendMessage',{})).rejects.toEqual(new TelegramError('uncertain'));
  fetcher.mockResolvedValueOnce(Response.json({ok:false},{status:403}));await expect(telegramApi('test-token','sendMessage',{})).rejects.toMatchObject({kind:'rejected'});
+});
+
+it('reacts after durable ingress and streams a native reply by editing the same message before completion',async()=>{
+ const b=await bind(),object=inbox(b.key),u=update(500);u.message.message_id=17;accepted=false;
+ reactions.mockImplementation(async(_url,options)=>{expect(databases.get(b.key)!.prepare('SELECT message_id FROM inbox_sources').get()?.message_id).toBe(17);expect(JSON.parse(String(options?.body))).toMatchObject({message_id:17,reaction:[{type:'emoji',emoji:'👀'}]});return Response.json({ok:true,result:true});});
+ await object.receive(b.id,u);expect(reactions).toHaveBeenCalledTimes(1);expect(modelCalls).not.toHaveBeenCalled();
+ const job=databases.get(b.key)!.prepare('SELECT * FROM inbox_jobs').get()!,key=JSON.stringify([user.sub,b.sessionId]);
+ views.set(key,{session:{generationId:'running'},messages:[{role:'assistant',requestId:job.request_id,status:'pending',content:'第一段'}]});await object.alarm();
+ expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toMatchObject({text:'第一段',reply_parameters:{message_id:17}});expect((await object.status(b.id)).jobs[0].phase).toBe('generating');
+ views.get(key)!.messages[0].content='第一段，第二段';await inbox(b.key,true).alarm();expect(String(fetcher.mock.calls[1][0])).toContain('/editMessageText');expect(JSON.parse(String(fetcher.mock.calls[1][1]?.body))).toMatchObject({message_id:42,text:'第一段，第二段'});
+ Object.assign(views.get(key)!.messages[0],{status:'completed',finishReason:'stop',content:'第一段，第二段。'});views.get(key)!.session.generationId=null;await object.alarm();expect((await object.status(b.id)).jobs).toEqual([]);expect(fetcher.mock.calls.filter(c=>String(c[0]).endsWith('/sendMessage'))).toHaveLength(1);
+});
+it('does not block generation on a rejected reaction and keeps legacy tasks without guessing a reply ID',async()=>{
+ const b=await bind();reactions.mockRejectedValueOnce(new Error('reaction unavailable'));await inbox(b.key).receive(b.id,update(600));const local=databases.get(b.key)!;local.prepare('DELETE FROM inbox_sources').run();await inbox(b.key,true).alarm();expect(modelCalls).toHaveBeenCalledTimes(1);expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).not.toHaveProperty('reply_parameters');
+});
+it('replays edits with known IDs after uncertain results and accepts Telegram not-modified acknowledgements',async()=>{
+ fetcher.mockResolvedValueOnce(Response.json({ok:false,description:'Bad Request: message is not modified'},{status:400}));await expect(telegramEdit('test-token',12,42,'正文')).resolves.toBeUndefined();
+ fetcher.mockRejectedValueOnce(new Error('lost response'));await expect(telegramEdit('test-token',12,42,'正文')).rejects.toMatchObject({kind:'retry'});
+ const b=await bind();await inbox(b.key).receive(b.id,update(700));const local=databases.get(b.key)!;local.prepare("UPDATE inbox_jobs SET phase='sending'").run();local.prepare("INSERT INTO inbox_chunks VALUES(700,0,'正文','sending',42)").run();fetcher.mockClear();await inbox(b.key,true).alarm();expect(String(fetcher.mock.calls[0][0])).toContain('/editMessageText');expect((await inbox(b.key).status(b.id)).jobs).toEqual([]);
+});
+
+it('never resends an uncertain preview creation after a crash even if the durable draft grew',async()=>{
+ const b=await bind(),object=inbox(b.key);accepted=false;await object.receive(b.id,update(800));const local=databases.get(b.key)!,job=local.prepare('SELECT * FROM inbox_jobs').get()!;local.prepare("UPDATE inbox_jobs SET phase='generating'").run();local.prepare("INSERT INTO inbox_chunks VALUES(800,0,'旧草稿','sending',NULL)").run();
+ views.set(JSON.stringify([user.sub,b.sessionId]),{session:{generationId:'running'},messages:[{role:'assistant',requestId:job.request_id,status:'pending',content:'旧草稿继续增长'}]});await inbox(b.key,true).alarm();expect(fetcher).not.toHaveBeenCalled();expect((await object.status(b.id)).jobs[0].phase).toBe('attention');
+});
+
+it('resumes pending generation after explicit preview retry and delivers its final content',async()=>{
+ const b=await bind(),object=inbox(b.key);accepted=false;await object.receive(b.id,update(900));const local=databases.get(b.key)!,job=local.prepare('SELECT * FROM inbox_jobs').get()!,key=JSON.stringify([user.sub,b.sessionId]);
+ views.set(key,{session:{generationId:'running'},messages:[{role:'assistant',requestId:job.request_id,status:'pending',content:'第一段'}]});fetcher.mockRejectedValueOnce(new Error('send result lost'));await object.alarm();expect((await object.status(b.id)).jobs[0].phase).toBe('attention');
+ await object.resolve(b.id,'retry');views.get(key)!.messages[0].content='第一段还在增长';await object.alarm();expect((await object.status(b.id)).jobs[0].phase).toBe('generating');
+ Object.assign(views.get(key)!.messages[0],{status:'completed',finishReason:'stop',content:'第一段还在增长，结束。'});await object.alarm();expect((await object.status(b.id)).jobs).toEqual([]);expect(JSON.parse(String(fetcher.mock.calls.at(-1)![1]?.body)).text).toBe('第一段还在增长，结束。');expect(modelCalls).toHaveBeenCalledTimes(1);
+});
+it('drops unsent long preview chunks after generation fails and preserves an unknown creation result',async()=>{
+ const b=await bind(),object=inbox(b.key);accepted=false;await object.receive(b.id,update(901));const local=databases.get(b.key)!,job=local.prepare('SELECT * FROM inbox_jobs').get()!,key=JSON.stringify([user.sub,b.sessionId]);
+ views.set(key,{session:{generationId:'running'},messages:[{role:'assistant',requestId:job.request_id,status:'pending',content:'😀'.repeat(2100)}]});fetcher.mockResolvedValueOnce(Response.json({ok:true,result:{message_id:42}})).mockResolvedValueOnce(Response.json({ok:false,parameters:{retry_after:1}},{status:429}));await object.alarm();expect(local.prepare('SELECT count(*) n FROM inbox_chunks').get()?.n).toBe(2);
+ local.prepare("DELETE FROM test_meta WHERE key='notBefore'").run();Object.assign(views.get(key)!.messages[0],{status:'error',finishReason:'upstream'});fetcher.mockClear();await object.alarm();expect(fetcher).toHaveBeenCalledTimes(1);expect(String(fetcher.mock.calls[0][0])).toContain('/editMessageText');expect(local.prepare('SELECT count(*) n FROM inbox_chunks').get()?.n).toBe(1);
+ local.prepare("UPDATE inbox_chunks SET telegram_id=NULL,state='sending'").run();local.prepare("UPDATE inbox_jobs SET phase='generating'").run();fetcher.mockClear();await object.alarm();expect(fetcher).not.toHaveBeenCalled();expect((await object.status(b.id)).jobs[0].error).toContain('结果不明');
 });
