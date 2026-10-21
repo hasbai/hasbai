@@ -221,8 +221,8 @@ test('agent commands context and expandable results preserve a linear history',a
  await input.click();await expect(page.getByRole('listbox',{name:'可用命令'})).toBeVisible();await shot(page,'chat-commands.png',true);
  await input.click();await page.getByRole('option',{name:'/ooc',exact:false}).click();await input.fill('/ooc 放慢节奏，不跳时。\n我把行囊放在桌边。');const sent=page.waitForRequest(r=>r.url().endsWith('/generate'));await input.press('Enter');expect((await sent).postDataJSON().content).toBe('/ooc 放慢节奏，不跳时。\n我把行囊放在桌边。');
  await expect(page.getByText('岚把热茶放在桌上。',{exact:false})).toBeVisible();await page.locator('.agent-activity summary').filter({hasText:'search_memory'}).click();await expect(page.getByText('灯塔每晚亮起。',{exact:false})).toBeVisible();await expect(page.locator('[data-kind="compression"]')).toHaveText('压缩上下文已完成');await expect(page.getByText('对话生成',{exact:true})).toHaveCount(0);await expect(page.getByText('covered',{exact:false})).toHaveCount(0);await shot(page,'chat-agent-results.png');
- await page.getByRole('button',{name:'上下文占用',exact:true}).click();await expect(page.getByText('上下文占用（估算）',{exact:true})).toBeVisible();await shot(page,'chat-context.png');
- await input.fill('保留草稿');await input.click();await page.getByRole('option',{name:'/compress',exact:false}).click();await expect(input).toHaveValue('保留草稿');await expect(page.locator('[data-kind="compression"]')).toHaveCount(2);await expect(page.locator('[data-kind="compression"] details')).toHaveCount(0);await expect(page.getByText('旅人与岚在旅店交谈。',{exact:false})).toHaveCount(0);
+ await page.getByRole('button',{name:'上下文占用',exact:true}).click();await expect(page.getByRole('heading',{name:'上下文占用',exact:true})).toBeVisible();await shot(page,'chat-context.png');
+ await input.click();await input.fill('保留草稿');await expect(input).toHaveValue('保留草稿');await expect(input).toBeFocused();await input.click();await page.getByRole('option',{name:'/compress',exact:false}).click();await expect(input).toHaveValue('保留草稿');await expect(page.locator('[data-kind="compression"]')).toHaveCount(2);await expect(page.locator('[data-kind="compression"] details')).toHaveCount(0);await expect(page.getByText('旅人与岚在旅店交谈。',{exact:false})).toHaveCount(0);
  await input.fill('/status');await input.press('Enter');await page.locator('.agent-activity summary').filter({hasText:'当前状态'}).click();await expect(page.locator('.agent-activity').filter({has:page.locator('summary').filter({hasText:'当前状态'})}).getByText('港城旅店',{exact:false})).toBeVisible();
  const command=page.locator('.reading-column > .agent-activities').filter({has:page.locator('summary').filter({hasText:'当前状态'})});
  await input.fill('命令后继续对话');await input.press('Enter');await expect(page.getByRole('article')).toHaveCount(5);
@@ -282,16 +282,21 @@ test('desktop navigation collapses both rails without losing the conversation',a
  await page.getByRole('button',{name:'收起侧栏'}).click();
  await expect(page.getByRole('button',{name:'展开侧栏'})).toHaveAttribute('aria-expanded','false');
  await expect(page.locator('.shell')).toHaveAttribute('data-animated','true');
- await expect(page.locator('#primary-navigation')).toHaveAttribute('inert','');
+ await expect(page.locator('#primary-navigation')).not.toHaveAttribute('inert','');
+ await expect(page.locator('#primary-navigation').getByRole('button',{name:'展开侧栏'})).toBeVisible();
  await expect(page.locator('#conversation-navigation')).toHaveAttribute('inert','');
  await expect(draft).toHaveValue('保留的草稿');
- await expect.poll(async()=>Math.round((await page.locator('.chat-main').boundingBox())!.x)).toBe(0);
+ await expect.poll(async()=>Math.round((await page.locator('.chat-main').boundingBox())!.x)).toBe(68);
  await shot(page,'chat-collapsed-wide.png');
  await page.getByRole('button',{name:'展开侧栏'}).click();
  await expect(page.getByRole('navigation',{name:'主要导航'})).toBeVisible();
  await expect(page.getByRole('button',{name:'港城的雨夜 岚'})).toBeVisible();
  await expect(draft).toHaveValue('保留的草稿');
  await page.getByRole('button',{name:'切换深色模式'}).click();await shot(page,'chat-wide-dark.png');
+ await page.setViewportSize({width:768,height:600});
+ const brand=await page.locator('.navigation-heading .brand').boundingBox();const toggle=await page.getByRole('button',{name:'收起侧栏'}).boundingBox();expect(brand!.x+brand!.width).toBeLessThanOrEqual(toggle!.x);
+ await shot(page,'chat-tablet-navigation.png');
+ await page.setViewportSize({width:1024,height:320});await page.getByRole('button',{name:'退出',exact:true}).scrollIntoViewIfNeeded();await expect(page.getByRole('button',{name:'退出',exact:true})).toBeInViewport();await expect(draft).toBeInViewport();await shot(page,'chat-short-desktop.png');
  await page.getByRole('button',{name:'收起侧栏'}).click();
  await page.setViewportSize({width:390,height:844});
  await expect(page.getByRole('link',{name:'角色库',exact:true})).toBeVisible();
@@ -309,4 +314,51 @@ test('one progress bar survives concurrent loading and releases on navigation',a
  release[0]();await expect(page.getByRole('progressbar')).toHaveCount(1);
  await nav(page,'角色库');await expect(page.getByRole('heading',{name:'岚',exact:true})).toBeVisible();
  await expect(page.getByRole('progressbar')).toHaveCount(0);release[1]();
+});
+
+
+test('chat viewport keeps one reading scroll and composer above the keyboard',async({page})=>{
+ await page.addInitScript(()=>{
+  const native=window.visualViewport!;
+  let height:number|undefined,top:number|undefined;
+  const viewport=new EventTarget();
+  Object.defineProperties(viewport,{
+   height:{get:()=>height??native.height,set:(value:number)=>height=value},
+   offsetTop:{get:()=>top??native.offsetTop,set:(value:number)=>top=value},
+   width:{get:()=>native.width},offsetLeft:{get:()=>native.offsetLeft},
+   pageTop:{get:()=>native.pageTop},pageLeft:{get:()=>native.pageLeft},scale:{get:()=>native.scale},
+  });
+  native.addEventListener('resize',()=>viewport.dispatchEvent(new Event('resize')));
+  native.addEventListener('scroll',()=>viewport.dispatchEvent(new Event('scroll')));
+  Object.defineProperty(window,'visualViewport',{configurable:true,value:viewport});
+ });
+ await fixture(page,{long:true});
+ await nav(page,'对话');await page.getByRole('button',{name:/港城的雨夜/}).click();
+ const input=page.getByLabel('发送消息',{exact:true});await input.fill('键盘中的草稿');
+ const noOuterScroll=()=>page.evaluate(()=>document.documentElement.scrollHeight<=window.innerHeight+1&&document.body.scrollHeight<=window.innerHeight+1&&window.scrollY===0);
+ await expect.poll(noOuterScroll).toBe(true);
+ await expect(page.locator('.composer-footer,.workspace-toolbar')).toHaveCount(0);
+ await expect(page.getByText(/Shift \+ Enter|输入约|（估算）|摘要约|已压缩 \d|包含角色设定/)).toHaveCount(0);
+ const trigger=page.getByRole('button',{name:'上下文占用',exact:true});
+ expect(await trigger.evaluate(e=>!!e.closest('.composer-inner'))).toBe(true);
+ await expect(trigger).toHaveText(/^\d+%$/);
+ const composer=page.locator('.composer');const before=await composer.boundingBox();await trigger.click();
+ await expect(page.getByRole('heading',{name:'上下文占用',exact:true})).toBeVisible();
+ await expect(page.locator('.context-details')).toContainText(/\d[\d,]* \/ 32,768 tokens/);
+ expect(await composer.boundingBox()).toEqual(before);await page.keyboard.press('Escape');await input.focus();
+ await page.evaluate(()=>{Object.assign(window.visualViewport!,{height:420,offsetTop:40});window.visualViewport!.dispatchEvent(new Event('resize'));window.visualViewport!.dispatchEvent(new Event('scroll'));});
+ await expect.poll(()=>page.locator('.shell').evaluate(e=>Math.round(e.getBoundingClientRect().height))).toBe(420);
+ await expect.poll(()=>page.locator('.shell').evaluate(e=>Math.round(e.getBoundingClientRect().top))).toBe(40);
+ if(page.viewportSize()!.width<641)await expect(page.getByRole('navigation',{name:'主要导航'})).toBeHidden();
+ const bounds=await composer.boundingBox();expect(bounds!.y+bounds!.height).toBeLessThanOrEqual(461);
+ await expect(input).toHaveValue('键盘中的草稿');await expect.poll(noOuterScroll).toBe(true);
+ await expect.poll(()=>page.getByRole('log').evaluate(e=>e.scrollHeight>e.clientHeight)).toBe(true);
+ await page.getByRole('log').evaluate(e=>e.scrollTop=0);await expect.poll(()=>page.getByRole('log').evaluate(e=>e.scrollTop)).toBe(0);
+ await expect(page.locator('.shell')).toHaveScreenshot('chat-keyboard-viewport.png',{animations:'disabled',caret:'hide'});
+ await page.evaluate(()=>{Object.assign(window.visualViewport!,{height:window.innerHeight,offsetTop:0});window.visualViewport!.dispatchEvent(new Event('resize'));});
+ await expect(page.getByRole('navigation',{name:'主要导航'})).toBeVisible();await expect.poll(noOuterScroll).toBe(true);
+ await input.fill('多行草稿\n'.repeat(20));await expect.poll(noOuterScroll).toBe(true);
+ await expect(input).toBeInViewport();await shot(page,'chat-viewport-restored.png');
+ await nav(page,'设置');await expect(page.getByRole('heading',{name:'对话设置',exact:true})).toBeVisible();
+ expect(await page.locator('.shell').evaluate(e=>getComputedStyle(e).position)).not.toBe('fixed');
 });

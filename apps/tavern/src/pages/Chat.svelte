@@ -6,6 +6,7 @@
  import { Notice } from '@hasbai/ui/notice';
  import { onMount, onDestroy, tick } from 'svelte';import { Button } from '@hasbai/ui/button';import * as Dialog from '@hasbai/ui/dialog';
  import { MessageCircle, ArrowUp, Copy, Check, Square, RefreshCw, Pencil, Download, Trash2, SlidersHorizontal, ChevronLeft, ArrowUpRight } from '@lucide/svelte';
+ import * as Popover from '@hasbai/ui/popover';
  import { generationNotice } from '../../shared/outcomes';
  import type { Api } from '../lib/api';import type { Message, Session, Worldbook, ModelOption } from '../../shared/types';import Confirm from '../lib/Confirm.svelte';import GenerationSettings from '../lib/GenerationSettings.svelte';
  import AgentActivities from '../lib/AgentActivities.svelte';
@@ -15,7 +16,7 @@
  import { DEFAULT_SETTINGS } from '../../shared/types';
  let {api,initialId='',collapsed=false,onlibrary}:{api:Api;initialId?:string;collapsed?:boolean;onlibrary:()=>void}=$props();
  let text=$state('');
- let activities=$state<AgentActivity[]>([]),context=$state<ContextUsage>(),commandOpen=$state(false),commandIndex=$state(-1),contextOpen=$state(false),deleteMessage=$state<Message>(),messageDeleteOpen=$state(false);
+ let activities=$state<AgentActivity[]>([]),context=$state<ContextUsage>(),commandOpen=$state(false),commandIndex=$state(-1),deleteMessage=$state<Message>(),messageDeleteOpen=$state(false);
  const commands=[{id:'compress',label:'/compress',description:'压缩全部对话上下文'},{id:'ooc',label:'/ooc',description:'本行写系统指令，换行写对白'},{id:'status',label:'/status',description:'查看状态与上下文'}] as const;
  let availableCommands=$derived(commands.filter(c=>!text.trim().startsWith('/')||c.label.startsWith(text.trim())));
  let usedTokens=$derived((context?.estimatedTokens??0)+Math.ceil(estimateTokens(userPrompt(text))*(context?.inputRatio??1.2))+(text.trim()?8:0));
@@ -115,18 +116,18 @@
     <div class="composer-inner">
      <label class="sr-only" for="message-input">发送消息</label>
      <textarea id="message-input" bind:this={input} bind:value={text} placeholder="写下你的行动或对白…" rows="1" maxlength={24000} disabled={busy&&!generating} role="combobox" aria-expanded={commandOpen&&availableCommands.length>0} aria-controls="composer-commands" aria-autocomplete="list" aria-activedescendant={commandIndex>=0&&availableCommands[commandIndex]?`command-${availableCommands[commandIndex].id}`:undefined} onfocus={()=>{commandOpen=true;commandIndex=-1;}} onclick={()=>commandOpen=true} oninput={()=>{commandOpen=text.trim().startsWith('/')||!text.trim();commandIndex=-1;}} onblur={e=>{if(!(e.relatedTarget instanceof HTMLElement)||!e.relatedTarget.closest('.command-menu'))commandOpen=false;}} oncompositionstart={()=>composing=true} oncompositionend={()=>composing=false} onkeydown={keydown}></textarea>
+     {#if context}<Popover.Root><Popover.Trigger class="context-trigger" aria-label="上下文占用"><span class="context-ring" aria-hidden="true" style={`--usage:${Math.min(100,percent??0)}%`}></span><span>{percent===null?'—':percent+'%'}</span></Popover.Trigger><Popover.Content trapFocus={false} side="top" align="end" class="context-details" onOpenAutoFocus={e=>e.preventDefault()} onCloseAutoFocus={e=>{if(document.activeElement===input)e.preventDefault();}}><Popover.Title role="heading" aria-level={2}>上下文占用</Popover.Title><p>{usedTokens.toLocaleString()} / {context.contextTokens?.toLocaleString()??'—'} tokens</p></Popover.Content></Popover.Root>{/if}
      {#if generating||active.generationId}<Button class="composer-submit" type="button" aria-label="停止" onclick={stop}><Square size={18} fill="currentColor" aria-hidden="true"/></Button>
      {:else}<Button class="composer-submit" type="submit" aria-label="发送" disabled={!text.trim()||busy}><ArrowUp size={22} strokeWidth={2} aria-hidden="true"/></Button>{/if}
     </div>
-    <div class="composer-footer"><span>{text.includes('/ooc')?'/ooc 本行指令 · 换行后输入对白':'Shift + Enter 换行'}</span><button type="button" class="context-trigger" aria-expanded={contextOpen} aria-label="上下文占用" onclick={()=>contextOpen=!contextOpen}><span class="context-ring" style={`--usage:${Math.min(100,percent??0)}%`}></span>{context?`${percent===null?'容量未知':percent+'%'} · 约 ${usedTokens.toLocaleString()} tokens`:'上下文容量未读取'}</button></div>
-    {#if contextOpen}<div class="context-details"><strong>上下文占用（估算）</strong><p>输入约 {usedTokens.toLocaleString()} / {context?.contextTokens?.toLocaleString()??'容量未知'} tokens</p><p>已压缩 {context?.coveredMessages??0} 条 · 摘要约 {context?.summaryTokens??0} tokens</p><p>包含角色设定、世界书、有效历史、状态和当前草稿。</p></div>{/if}
+
     </div>
    </form>
   {:else}<div class="empty chat-empty"><MessageCircle size={36}/><h2>暂无对话</h2><Button onclick={onlibrary}>选择角色</Button></div>{/if}
  </section>
 </div>
 <Dialog.Root bind:open={config}><Dialog.Content><Dialog.Header><Dialog.Title>会话设置</Dialog.Title></Dialog.Header>{#if configDraft}<div class="stack detail-body"><div class="field"><label for="session-title">会话名称</label><input id="session-title" bind:value={configDraft.title} maxlength="120"/></div><GenerationSettings bind:settings={configDraft.settings} {models} disabled={busy} scope="当前会话" id="session"/><div class="field"><label for="session-name">你的名字</label><input id="session-name" bind:value={configDraft.settings.userName} maxlength="80"/></div><div class="field"><label for="session-persona">你的角色设定</label><textarea id="session-persona" bind:value={configDraft.settings.persona} rows="4" maxlength="12000"></textarea></div><div class="field"><div class="field-heading"><label for="session-system-prompt">System Prompt</label><Button type="button" variant="ghost" disabled={busy} onclick={()=>{if(configDraft)configDraft.settings.systemPrompt=systemTemplate;}}>恢复默认提示</Button></div><textarea id="session-system-prompt" bind:value={configDraft.settings.systemPrompt} rows="4"></textarea></div><h2>世界书</h2>{#each books as b}<label class="checkbox-row"><input type="checkbox" disabled={!b.enabled} checked={configDraft.bookIds.includes(b.id)} onchange={e=>toggleBook(b.id,e.currentTarget.checked)}/>{b.name}<span class="muted">{b.enabled?`${b.count} 条`:'已停用'}</span></label>{/each}{#if !books.length}<Button variant="outline" onclick={()=>config=false}>关闭</Button>{/if}</div>{/if}{#if error}<Notice variant="error">{error}</Notice>{/if}<Dialog.Footer><Button variant="outline" disabled={busy} onclick={()=>config=false}>取消</Button><Button disabled={busy} onclick={saveConfig}>保存</Button></Dialog.Footer></Dialog.Content></Dialog.Root>
-<Dialog.Root bind:open={edit}><Dialog.Content><Dialog.Header><Dialog.Title>编辑消息</Dialog.Title></Dialog.Header><p class="muted">保存后会删除此消息后面的全部消息。</p><label for="edit-message">消息内容</label><textarea id="edit-message" bind:value={editText} rows="10" maxlength="24000"></textarea>{#if error}<Notice variant="error">{error}</Notice>{/if}<Dialog.Footer><Button variant="outline" disabled={busy} onclick={()=>edit=false}>取消</Button><Button disabled={busy||!editText.trim()} onclick={saveEdit}>保存并删除后续</Button></Dialog.Footer></Dialog.Content></Dialog.Root>
+<Dialog.Root bind:open={edit}><Dialog.Content><Dialog.Header><Dialog.Title>编辑消息</Dialog.Title></Dialog.Header><label for="edit-message">消息内容</label><textarea id="edit-message" bind:value={editText} rows="10" maxlength="24000"></textarea>{#if error}<Notice variant="error">{error}</Notice>{/if}<Dialog.Footer><Button variant="outline" disabled={busy} onclick={()=>edit=false}>取消</Button><Button disabled={busy||!editText.trim()} onclick={saveEdit}>保存并删除后续</Button></Dialog.Footer></Dialog.Content></Dialog.Root>
 <Confirm bind:open={deleteOpen} title={`删除会话「${active?.title??''}」？`} {busy} onconfirm={remove}/>
 
 <Confirm bind:open={messageDeleteOpen} title="删除此消息及后续全部消息？" {busy} onconfirm={removeMessage}/>
