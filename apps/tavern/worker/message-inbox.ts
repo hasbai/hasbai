@@ -39,7 +39,6 @@ export class MessageInbox extends DurableObject<Env> {
   const control=telegramControl(m,this.env.TELEGRAM_BOT_USERNAME);
   if(!control&&!addressed(m,this.env.TELEGRAM_BOT_USERNAME)){
    this.ctx.storage.transactionSync(()=>{this.ctx.storage.sql.exec('INSERT OR IGNORE INTO inbox_seen VALUES(?,?)',id,Date.now());this.ctx.storage.sql.exec('INSERT OR IGNORE INTO inbox_background VALUES(?,?)',id,telegramText(m));this.ctx.storage.sql.exec('DELETE FROM inbox_background WHERE update_id NOT IN (SELECT update_id FROM inbox_background ORDER BY update_id DESC LIMIT 100)');this.ctx.storage.sql.exec('DELETE FROM inbox_seen WHERE received_at<?',Date.now()-7*86400000);});
-   await this.react(update);
    return {accepted:true};
   }
   const now=Date.now();
