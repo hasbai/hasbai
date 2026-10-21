@@ -52,7 +52,8 @@
         "composer",
         "model-controls",
         "agent-controls",
-        "desktop-navigation"
+        "desktop-navigation",
+        "chat-viewport"
       ]
     },
     {
@@ -487,7 +488,9 @@
           ],
           "snapshots": [
             "chat-collapsed-wide.png",
-            "chat-wide-dark.png"
+            "chat-wide-dark.png",
+            "chat-tablet-navigation.png",
+            "chat-short-desktop.png"
           ]
         }
       ]
@@ -503,6 +506,25 @@
           "projects": [
             "iphone",
             "desktop"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "chat-viewport",
+      "kind": "screenshot",
+      "description": "可见视口收缩、偏移与恢复；单一正文滚动、输入框内占用浮层和键盘时隐藏底部导航。",
+      "evidence": [
+        {
+          "spec": "e2e/tavern.spec.ts",
+          "test": "chat viewport keeps one reading scroll and composer above the keyboard",
+          "projects": [
+            "iphone",
+            "desktop"
+          ],
+          "snapshots": [
+            "chat-keyboard-viewport.png",
+            "chat-viewport-restored.png"
           ]
         }
       ]

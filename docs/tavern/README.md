@@ -23,6 +23,7 @@
 | 参数、模型白名单、独立 Director | [MODELS](MODELS.md) | `shared/settings.ts`、`worker/inference.ts`、`worker/gateway.ts`、`worker/director.ts` |
 | 当前实现与未解决验收 | [PROGRESS](PROGRESS.md) | 当前 main 与逐层证据 |
 | 交互图解 | [ARCHITECTURE.html](ARCHITECTURE.html) | 文档辅助图，不是运行时或验收证据 |
+| UI 提示排查 | [2026-10-21 排查结果](UI-AUDIT.md) | 五应用及共享 UI，逐项处理结果 |
 | 决策与交付追溯 | [交付历史](history/DELIVERY.md)、[Agent 演进](history/AGENT-ITERATIONS.md)、[候选试验](history/CANDIDATE-EXPERIMENT.md) | 旧候选/预算/认证方案不作为当前契约 |
 
 根 `pnpm dev:tavern` 启动 5176，API 在应用目录用 `pnpm exec wrangler dev --port 8787`；本地检查、隔离 D1/workerd、Linux 截图与子代理 PR/CI/squash 交付只在[共享 TESTING](../TESTING.md)维护。沿用 Workers Builds 自动部署。
