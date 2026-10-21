@@ -233,7 +233,8 @@ html:has(.chat-shell),body:has(.chat-shell){overflow:hidden;overscroll-behavior:
  .chat-shell .navigation-rail{display:block;order:2;flex-shrink:0;height:calc(64px + env(safe-area-inset-bottom))}
  .chat-shell .sidebar{position:static;height:100%;padding-bottom:env(safe-area-inset-bottom)}
  .chat-shell .workspace{flex:1;min-height:0;overflow:hidden}
- .chat-shell.keyboard-open .navigation-rail{display:none}
+ .chat-shell:has(.chat-workspace:not(.show-list)) .navigation-rail{display:none}
+ .chat-shell .composer{padding-bottom:max(12px,env(safe-area-inset-bottom))}
  .chat-shell.keyboard-open .composer{padding-bottom:8px}
 }
 

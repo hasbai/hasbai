@@ -53,7 +53,8 @@
         "model-controls",
         "agent-controls",
         "desktop-navigation",
-        "chat-viewport"
+        "chat-viewport",
+        "mobile-immersive"
       ]
     },
     {
@@ -525,6 +526,24 @@
           "snapshots": [
             "chat-keyboard-viewport.png",
             "chat-viewport-restored.png"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mobile-immersive",
+      "kind": "screenshot",
+      "description": "移动端进入具体对话隐藏底栏并释放占位；返回会话列表或删除会话后恢复导航，重新进入保留草稿。",
+      "evidence": [
+        {
+          "spec": "e2e/tavern.spec.ts",
+          "test": "mobile conversations hide navigation and restore it in the session list",
+          "projects": [
+            "iphone"
+          ],
+          "snapshots": [
+            "chat-mobile-immersive.png",
+            "chat-mobile-session-list.png"
           ]
         }
       ]

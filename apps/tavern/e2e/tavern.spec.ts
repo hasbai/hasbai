@@ -57,7 +57,7 @@ async function fixture(page:Page,{empty=false,fail=false,delay=false,streamDelay
  });
  await page.goto('/e2e/index.html');
 }
-async function nav(page:Page,name:string){await page.getByRole('navigation').getByRole('link',{name,exact:true}).click();}
+async function nav(page:Page,name:string){if(!await page.getByRole('navigation').isVisible())await page.getByRole('button',{name:'返回会话列表'}).click();await page.getByRole('navigation').getByRole('link',{name,exact:true}).click();}
 async function shot(page:Page,name:string,keepFocus=false){const dialog=page.getByRole('dialog');if(await dialog.isVisible()){await expect.poll(()=>dialog.evaluate(el=>el.contains(document.activeElement))).toBe(true);await dialog.focus();await expect(dialog).toBeFocused();}await page.mouse.move(0,0);if(!keepFocus)await page.evaluate(()=>{if(document.activeElement instanceof HTMLElement)document.activeElement.blur();});await expect(page).toHaveScreenshot(name,{fullPage:true});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);}
 test('library and character editor',async({page})=>{
  await fixture(page);await expect(page.getByRole('heading',{name:'岚',exact:true})).toBeVisible();await shot(page,'library.png');
@@ -299,6 +299,8 @@ test('desktop navigation collapses both rails without losing the conversation',a
  await page.setViewportSize({width:1024,height:320});await page.getByRole('button',{name:'退出',exact:true}).scrollIntoViewIfNeeded();await expect(page.getByRole('button',{name:'退出',exact:true})).toBeInViewport();await expect(draft).toBeInViewport();await shot(page,'chat-short-desktop.png');
  await page.getByRole('button',{name:'收起侧栏'}).click();
  await page.setViewportSize({width:390,height:844});
+ await expect(page.getByRole('link',{name:'角色库',exact:true})).toBeHidden();
+ await page.getByRole('button',{name:'返回会话列表'}).click();
  await expect(page.getByRole('link',{name:'角色库',exact:true})).toBeVisible();
  await expect(page.locator('#primary-navigation')).not.toHaveAttribute('inert','');
 });
@@ -356,9 +358,22 @@ test('chat viewport keeps one reading scroll and composer above the keyboard',as
  await page.getByRole('log').evaluate(e=>e.scrollTop=0);await expect.poll(()=>page.getByRole('log').evaluate(e=>e.scrollTop)).toBe(0);
  await expect(page.locator('.shell')).toHaveScreenshot('chat-keyboard-viewport.png',{animations:'disabled',caret:'hide'});
  await page.evaluate(()=>{Object.assign(window.visualViewport!,{height:window.innerHeight,offsetTop:0});window.visualViewport!.dispatchEvent(new Event('resize'));});
- await expect(page.getByRole('navigation',{name:'主要导航'})).toBeVisible();await expect.poll(noOuterScroll).toBe(true);
+ if(page.viewportSize()!.width<641)await expect(page.getByRole('navigation',{name:'主要导航'})).toBeHidden();else await expect(page.getByRole('navigation',{name:'主要导航'})).toBeVisible();await expect.poll(noOuterScroll).toBe(true);
  await input.fill('多行草稿\n'.repeat(20));await expect.poll(noOuterScroll).toBe(true);
  await expect(input).toBeInViewport();await shot(page,'chat-viewport-restored.png');
  await nav(page,'设置');await expect(page.getByRole('heading',{name:'对话设置',exact:true})).toBeVisible();
  expect(await page.locator('.shell').evaluate(e=>getComputedStyle(e).position)).not.toBe('fixed');
+});
+
+
+test('mobile conversations hide navigation and restore it in the session list',async({page})=>{
+ test.skip(page.viewportSize()!.width>=641,'Mobile conversation navigation');
+ await fixture(page);const navigation=page.getByRole('navigation',{name:'主要导航'});
+ await expect(navigation).toBeVisible();await page.getByRole('button',{name:'开始对话',exact:true}).click();
+ await expect(navigation).toBeHidden();const input=page.getByLabel('发送消息',{exact:true});await input.fill('返回后保留的草稿');
+ const composer=await page.locator('.composer').boundingBox();expect(Math.round(composer!.y+composer!.height)).toBe(page.viewportSize()!.height);
+ await shot(page,'chat-mobile-immersive.png');
+ await page.getByRole('button',{name:'返回会话列表'}).click();await expect(navigation).toBeVisible();await shot(page,'chat-mobile-session-list.png');
+ await page.getByRole('button',{name:'港城的雨夜 岚'}).click();await expect(navigation).toBeHidden();await expect(input).toHaveValue('返回后保留的草稿');
+ await page.getByRole('button',{name:'删除会话',exact:true}).click();await page.getByRole('button',{name:'确认',exact:true}).click();await expect(navigation).toBeVisible();await expect(input).toHaveCount(0);
 });
