@@ -4,7 +4,7 @@ import { boundedBody, HttpError, json } from './http';
 import { telegramControl, telegramHelp } from './telegram-commands';
 
 async function notice(env:Env,m:NonNullable<ReturnType<typeof telegramUpdate>>['message'],text:string){
- try{await telegramApi(env.TELEGRAM_BOT_TOKEN,'sendMessage',{chat_id:m.chat.id,...(m.message_thread_id?{message_thread_id:m.message_thread_id}:{}),text});}catch{console.error(JSON.stringify({event:'telegram_notice_failed'}));}
+ try{await telegramApi(env.TELEGRAM_BOT_TOKEN,'sendMessage',{chat_id:m.chat.id,...(m.message_thread_id?{message_thread_id:m.message_thread_id}:{}),reply_parameters:{message_id:m.message_id},text});}catch{console.error(JSON.stringify({event:'telegram_notice_failed'}));}
 }
 
 export async function telegramWebhook(request:Request,env:Env){

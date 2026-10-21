@@ -1,6 +1,6 @@
-const indent=(text:string)=>text.replace(/\r?\n/g,'\n  ');
+const indent=(text:string)=>text.replace(/\r?\n/g,'\n  > ');
 
-/** Project persisted Telegram envelopes without changing the source messages. */
+/** Convert Telegram transport envelopes into the dialogue stored by Tavern. */
 export function telegramDialogue(text:string):string {
  return text.split('\n').map(line=>{
   if(!line.startsWith('{'))return line;

@@ -1,4 +1,5 @@
 import type { AgentActivity, FinishReason, Message } from '../shared/types';
+import { telegramDialogue } from '../shared/telegram-input';
 import { HttpError } from './http';
 import type { Summary } from './context';
 import { message, type MessageRow, type SessionRow } from './store';
@@ -36,6 +37,17 @@ export class SessionStore {
  deleted(){return this.rows<{deleted:number}>('SELECT deleted FROM session_meta WHERE id=?',this.id)[0]?.deleted===1;}
  get():SessionRow {if(this.deleted())throw new HttpError(404,'会话不存在');const row=this.rows<SessionRow & Record<string,SqlStorageValue>>('SELECT * FROM sessions WHERE id=?',this.id)[0];if(!row)throw new HttpError(404,'会话不存在');return row;}
  messages():Message[]{return this.rawMessages().map(message);}
+ formatTelegram(){
+  const changed=this.messages().filter(m=>m.role==='user').map(m=>({id:m.id,content:telegramDialogue(m.content),before:m.content})).filter(m=>m.content!==m.before);
+  if(!changed.length)return;
+  this.transaction(()=>{
+   for(const m of changed)this.write('UPDATE messages SET content=? WHERE id=? AND session_id=?',m.content,m.id,this.id);
+   this.write('UPDATE sessions SET summary_json=NULL WHERE id=?',this.id);
+   this.write('DELETE FROM model_projections');this.write('DELETE FROM director_synopsis');
+   if(this.rows("SELECT name FROM sqlite_master WHERE type='table' AND name='lore_chunks'").length)this.write('DELETE FROM lore_chunks');
+   this.dirty();
+  });
+ }
  snapshots():TurnSnapshot[]{return this.rows<TurnSnapshot & Record<string,SqlStorageValue>>('SELECT * FROM turn_snapshots');}
  snapshot(id:string){return this.rows<TurnSnapshot & Record<string,SqlStorageValue>>('SELECT * FROM turn_snapshots WHERE message_id=?',id)[0];}
  projection(id:string):ModelProjection|null{const row=this.rows<{value_json:string}>('SELECT value_json FROM model_projections WHERE message_id=?',id)[0];return row?JSON.parse(row.value_json):null;}
@@ -114,6 +126,7 @@ export class SessionStore {
  saveOutput(assistantId:string,content:string){if(!this.pending(assistantId))return false;return this.write("UPDATE messages SET content=? WHERE id=? AND session_id=? AND status='pending'",content,assistantId,this.id)>0;}
  /** Private checkpoint: pending API messages do not expose in-progress drafts. */
  saveDraft(assistantId:string,content:string){if(!this.owns(assistantId))return false;this.write('INSERT INTO generation_drafts VALUES(?,?) ON CONFLICT(message_id) DO UPDATE SET content=excluded.content',assistantId,content);return true;}
+ progress(requestId:string){const row=this.findRequest(requestId);if(!row)return null;const item=message(row),draft=item.status==='pending'?this.rows<{content:string}>('SELECT content FROM generation_drafts WHERE message_id=?',item.id)[0]?.content:undefined;return {status:item.status,finishReason:item.finishReason,content:draft??item.content};}
  discardDraft(assistantId:string){this.write('DELETE FROM generation_drafts WHERE message_id=?',assistantId);}
  finish(assistantId:string,output:string,status:Message['status'],finishReason:FinishReason,candidates:string[],state?:StoryState,projection?:ModelProjection){return this.transaction(()=>{
   if(this.owns(assistantId)){
