@@ -149,10 +149,11 @@ it('persists before acknowledgement, deduplicates updates and resumes fixed requ
  expect(persisted).toMatch(/^[a-f0-9-]{36}$/);
  await inbox(b.key,true).receive(b.id,update());await inbox(b.key).alarm();expect(modelCalls).toHaveBeenCalledTimes(1);
 });
-it('stores background group messages without generating until addressed and preserves speaker IDs',async()=>{
- await bind();const b=await bind('group',-1),u=update(2,-1);u.message.text='普通群聊';await inbox(b.key).receive(b.id,u);await inbox(b.key).alarm();expect(modelCalls).not.toHaveBeenCalled();
- await inbox(b.key).receive(b.id,update(3,-1));await inbox(b.key).alarm();const local=databases.get(b.key)!;expect(local.prepare('SELECT phase FROM inbox_jobs').get()?.phase).toBe('done');
+it('stores background without reacting and reacts only to group mentions or replies that trigger a response',async()=>{
+ await bind();const b=await bind('group',-1),u=update(2,-1);u.message.text='普通群聊';await inbox(b.key).receive(b.id,u);await inbox(b.key).receive(b.id,u);await inbox(b.key).alarm();expect(modelCalls).not.toHaveBeenCalled();expect(reactions).not.toHaveBeenCalled();
+ await inbox(b.key).receive(b.id,update(3,-1));expect(reactions).toHaveBeenCalledTimes(1);expect(JSON.parse(String(reactions.mock.calls[0][1]?.body)).message_id).toBe(3);await inbox(b.key).alarm();const local=databases.get(b.key)!;expect(local.prepare('SELECT phase FROM inbox_jobs').get()?.phase).toBe('done');
  expect(local.prepare('SELECT count(*) AS n FROM inbox_background').get()?.n).toBe(0);
+ const reply=update(4,-1);reply.message.text='接着说';reply.message.reply_to_message={from:{id:1,is_bot:true,username:'saki_main_bot'}};await inbox(b.key).receive(b.id,reply);await inbox(b.key).receive(b.id,reply);expect(reactions).toHaveBeenCalledTimes(2);expect(JSON.parse(String(reactions.mock.calls[1][1]?.body)).message_id).toBe(4);
 });
 it('retries a busy Tavern session using the same UUID and processes queued inputs in order',async()=>{
  const b=await bind(),object=inbox(b.key);await object.receive(b.id,update());await object.receive(b.id,update(2));busy=true;await object.alarm();
