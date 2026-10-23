@@ -54,7 +54,8 @@
         "agent-controls",
         "desktop-navigation",
         "chat-viewport",
-        "mobile-immersive"
+        "mobile-immersive",
+        "model-phases"
       ]
     },
     {
@@ -555,6 +556,37 @@
           "snapshots": [
             "chat-mobile-immersive.png",
             "chat-mobile-session-list.png"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "model-phases",
+      "kind": "screenshot",
+      "description": "模型处理、流式思考与生成共用展开模块；顶部条不随模型调用启动。",
+      "evidence": [
+        {
+          "spec": "e2e/tavern.spec.ts",
+          "test": "model phases share expandable streaming reasoning without a system loading bar",
+          "projects": [
+            "iphone",
+            "desktop"
+          ],
+          "snapshots": [
+            "chat-prefill.png",
+            "chat-reasoning.png",
+            "chat-generating.png",
+            "chat-reasoning-dark.png"
+          ]
+        },
+        {
+          "spec": "e2e/tavern.spec.ts",
+          "test": "model phases share expandable streaming reasoning without a system loading bar",
+          "projects": [
+            "desktop"
+          ],
+          "snapshots": [
+            "chat-reasoning-short.png"
           ]
         }
       ]

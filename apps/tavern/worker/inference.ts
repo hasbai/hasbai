@@ -9,6 +9,7 @@ import type { InferenceMetrics } from './metrics';
 type Observation = Parameters<InferenceMetrics['observe']>[0] & { model?: string };
 export type InferenceEvent =
  | { type: 'text'; text: string }
+ | { type: 'reasoning'; text: string }
  | { type: 'observation'; value: Observation; logId: string | null }
  | { type: 'finish'; reason: string; calls: ToolCall[] };
 export class InferenceError extends Error {
@@ -92,7 +93,8 @@ export async function* inferRoleplay(env: Env, username: string, requestId: stri
    tools: definitions, toolChoice: input.tool_choice, maxRetries: 0, streamRetries: 0, abortSignal: combined, includeRawChunks: true, onError: () => {},
   });
   for await (const part of result.fullStream) {
-   if (part.type === 'text-delta') yield { type: 'text', text: part.text };
+   if (part.type === 'reasoning-delta') yield { type: 'reasoning', text: part.text };
+   else if (part.type === 'text-delta') yield { type: 'text', text: part.text };
    else if (part.type === 'raw') yield { type: 'observation', value: part.rawValue as Observation, logId };
    else if (part.type === 'tool-call') {
     if (part.invalid) throw new InferenceError(null, 'unsupported');

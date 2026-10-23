@@ -12,10 +12,12 @@
  import AgentActivities from '../lib/AgentActivities.svelte';
  import { directCommand, userPrompt } from '../../shared/commands';
  import { estimateTokens } from '../../shared/prompt';
- import type { AgentActivity, ContextUsage, SessionDetail } from '../../shared/types';
+ import type { AgentActivity, ContextUsage, SessionDetail, GenerationProgress } from '../../shared/types';
  import { DEFAULT_SETTINGS } from '../../shared/types';
  let {api,initialId='',collapsed=false,onlibrary}:{api:Api;initialId?:string;collapsed?:boolean;onlibrary:()=>void}=$props();
  let text=$state('');
+ let modelProgress=$state<GenerationProgress>();
+ let commandRunning=$state(false);
  let activities=$state<AgentActivity[]>([]),context=$state<ContextUsage>(),commandOpen=$state(false),commandIndex=$state(-1),deleteMessage=$state<Message>(),messageDeleteOpen=$state(false);
  const commands=[{id:'compress',label:'/compress',description:'压缩全部对话上下文'},{id:'ooc',label:'/ooc',description:'本行写系统指令，换行写对白'},{id:'status',label:'/status',description:'查看状态与上下文'}] as const;
  let availableCommands=$derived(commands.filter(c=>!text.trim().startsWith('/')||c.label.startsWith(text.trim())));
@@ -30,7 +32,7 @@
  let sessions=$state<Session[]>([]),active=$state<Session>(),messages=$state<Message[]>([]),loading=$state(true),error=$state(''),busy=$state(false),generating=$state(false),mobileList=$state(true),config=$state(false),configDraft=$state<Session>(),books=$state<Worldbook[]>([]),edit=$state(false),editMessage=$state<Message>(),editText=$state(''),deleteOpen=$state(false);let abort:AbortController|undefined;let log=$state<HTMLDivElement>();let alive=true;let selectionVersion=0;let generationId='';let composing=false;let poll:ReturnType<typeof setTimeout>|undefined;
  onMount(()=>{void load();});onDestroy(()=>{alive=false;selectionVersion++;abort?.abort();if(poll)clearTimeout(poll);});
  async function load(){loading=true;error='';try{sessions=(await api.request<{sessions:Session[]}>('sessions')).sessions;if(initialId)await select(initialId);}catch(e){error=(e as Error).message;}finally{loading=false;}}
- async function select(id:string,silent=false){if(generating)return;const changed=active?.id!==id;const version=++selectionVersion;busy=true;backgroundRefresh=silent;candidatePending='';error='';try{const d=await api.request<SessionDetail>('sessions/'+id);if(!alive||version!==selectionVersion)return;const readingTop=log?.scrollTop??0;active={...d.session,settings:{...DEFAULT_SETTINGS,...d.session.settings}};messages=d.messages;activities=d.activities??[];context=d.context;generationId=d.session.generationId??'';if(poll)clearTimeout(poll);if(generationId&&!generating)poll=setTimeout(()=>{if(alive&&active?.id===id&&version===selectionVersion)void select(id,true);},1200);mobileList=false;await tick();if(alive&&version===selectionVersion&&log)log.scrollTop=changed?log.scrollHeight:readingTop;}catch(e){if(alive&&version===selectionVersion)error=(e as Error).message;}finally{if(alive&&version===selectionVersion){busy=false;backgroundRefresh=false;}}}
+ async function select(id:string,silent=false){if(generating)return;const changed=active?.id!==id;const version=++selectionVersion;busy=true;backgroundRefresh=silent;if(changed)modelProgress=undefined;candidatePending='';error='';try{const d=await api.request<SessionDetail>('sessions/'+id);if(!alive||version!==selectionVersion)return;const readingTop=log?.scrollTop??0;active={...d.session,settings:{...DEFAULT_SETTINGS,...d.session.settings}};messages=d.messages;activities=d.activities??[];context=d.context;generationId=d.session.generationId??'';if(poll)clearTimeout(poll);if(generationId&&!generating)poll=setTimeout(()=>{if(alive&&active?.id===id&&version===selectionVersion)void select(id,true);},1200);mobileList=false;await tick();if(alive&&version===selectionVersion&&log)log.scrollTop=changed?log.scrollHeight:readingTop;}catch(e){if(alive&&version===selectionVersion)error=(e as Error).message;}finally{if(alive&&version===selectionVersion){busy=false;backgroundRefresh=false;}}}
  function keydown(e:KeyboardEvent){
   if(e.isComposing||composing||e.keyCode===229)return;
   if(e.key==='Escape'){commandOpen=false;commandIndex=-1;return;}
@@ -44,22 +46,23 @@
  }
  async function runCommand(command:'compress'|'status',fromText=true){
   if(!active||busy||generating||active.generationId)return;
-  const sessionId=active.id,original=text;busy=true;commandOpen=false;error='';if(fromText)text='';
+  const sessionId=active.id,original=text;busy=true;commandRunning=true;commandOpen=false;error='';if(fromText)text='';
   try{await api.request('sessions/'+sessionId+'/command','POST',{requestId:crypto.randomUUID(),content:'/'+command});await select(sessionId);}
-  catch(e){error=(e as Error).message;if(fromText)text=original;}finally{busy=false;}
+  catch(e){error=(e as Error).message;if(fromText)text=original;}finally{busy=false;commandRunning=false;}
  }
- async function send(regenerate=false,candidate?:{messageId:string;content:string},target?:Message){if(!active||generating||busy||active.generationId||(!regenerate&&!(candidate?.content??text).trim()))return;if(candidate&&(messages.at(-1)?.id!==candidate.messageId||!messages.at(-1)?.candidates?.includes(candidate.content)))return;const command=!regenerate&&!candidate?directCommand(text):null;if(command){await runCommand(command);return;}commandOpen=false;commandIndex=-1;error='';generating=true;abort=new AbortController();const requestId=crypto.randomUUID(),sessionId=active.id;let pending='';const content=candidate?.content??text;candidatePending='';messages=messages.map(m=>({...m,candidates:[]}));
+ async function send(regenerate=false,candidate?:{messageId:string;content:string},target?:Message){if(!active||generating||busy||active.generationId||(!regenerate&&!(candidate?.content??text).trim()))return;if(candidate&&(messages.at(-1)?.id!==candidate.messageId||!messages.at(-1)?.candidates?.includes(candidate.content)))return;const command=!regenerate&&!candidate?directCommand(text):null;if(command){await runCommand(command);return;}commandOpen=false;commandIndex=-1;error='';modelProgress=undefined;generating=true;abort=new AbortController();const requestId=crypto.randomUUID(),sessionId=active.id;let pending='';const content=candidate?.content??text;candidatePending='';messages=messages.map(m=>({...m,candidates:[]}));
   if(!regenerate&&!candidate)text='';
   try{await api.generate(sessionId,{requestId,content,regenerate,...(target?{messageId:target.id}:{})},e=>{if(!alive||active?.id!==sessionId)return;
    if(e.type==='start'){pending=e.messageId;generationId=e.messageId;if(active)active.generationId=e.messageId;if(!regenerate)messages=[...messages,{id:'local-user',role:'user',content,status:'completed',ordinal:messages.length,requestId,createdAt:Date.now()}];else {const selected=target??messages.at(-1);if(selected){messages=messages.filter(m=>m.ordinal<selected.ordinal||(selected.role==='user'&&m.id===selected.id));activities=activities.filter(a=>a.ordinal<selected.ordinal);}}messages=[...messages,{id:pending,role:'assistant',content:'',status:'pending',ordinal:messages.length,requestId,createdAt:Date.now()}];}
    if(e.type==='activity')activities=activities.some(a=>a.id===e.activity.id)?activities.map(a=>a.id===e.activity.id?e.activity:a):[...activities,e.activity];
    if(e.type==='context')context=e.context;
+   if(e.type==='progress')modelProgress=e.phase===null?undefined:{messageId:e.messageId,target:e.target,phase:e.phase,reasoning:(e.phase==='prefill'?'':modelProgress?.reasoning??'')+(e.text??'')};
    if(e.type==='delta')messages=messages.map(m=>m.id===pending?{...m,content:m.content+e.text}:m);
-   if(e.type==='candidates_pending')candidatePending=e.messageId;
+   if(e.type==='candidates_pending'){candidatePending=e.messageId;modelProgress=undefined;}
    if(e.type==='error')error=e.message;
    if(e.type==='done'){messages=messages.map(m=>m.id===pending?e.message:m);if(e.message.finishReason)error='';}
   },abort.signal);}catch(e){if(alive&&!abort.signal.aborted){error=(e as Error).message;if(!pending&&!regenerate&&!candidate)text=text?content+'\n'+text:content;}}
-  finally{if(alive&&active?.id===sessionId){generating=false;candidatePending='';generationId='';if(active)active.generationId=null;const failure=error;await select(sessionId);error=failure;sessions=(await api.request<{sessions:Session[]}>('sessions').catch(()=>({sessions}))).sessions;}}
+  finally{if(alive&&active?.id===sessionId){generating=false;modelProgress=undefined;candidatePending='';generationId='';if(active)active.generationId=null;const failure=error;await select(sessionId,true);error=failure;sessions=(await api.request<{sessions:Session[]}>('sessions').catch(()=>({sessions}))).sessions;}}
  }
  async function stop(){if(!active||!generationId)return;error='';try{await api.request('sessions/'+active.id+'/stop','POST',{generationId});abort?.abort();if(!generating)await select(active.id);}catch(e){error=(e as Error).message;}}
  async function openConfig(){if(!active)return;busy=true;error='';try{const [b,m,p]=await Promise.all([api.request<{worldbooks:Worldbook[]}>('worldbooks'),api.request<{models:ModelOption[]}>('models'),api.request<{texts:{systemTemplate:string}}>('prompts')]);books=b.worldbooks;models=m.models;systemTemplate=p.texts.systemTemplate;configDraft=structuredClone($state.snapshot(active));config=true;}catch(e){error=(e as Error).message;}finally{busy=false;}}
@@ -68,7 +71,7 @@
  async function removeMessage(){if(!active||!deleteMessage)return;busy=true;error='';try{await api.request('sessions/'+active.id+'/messages','DELETE',{messageId:deleteMessage.id});deleteMessage=undefined;messageDeleteOpen=false;await select(active.id);}catch(e){error=(e as Error).message;}finally{busy=false;}}
  async function remove(){if(!active)return;busy=true;error='';try{await api.request('sessions/'+active.id,'DELETE');sessions=sessions.filter(s=>s.id!==active!.id);active=undefined;messages=[];deleteOpen=false;mobileList=true;}catch(e){error=(e as Error).message;}finally{busy=false;}}
  function toggleBook(id:string,checked:boolean){if(configDraft)configDraft.bookIds=checked?[...configDraft.bookIds,id]:configDraft.bookIds.filter(i=>i!==id);}
- trackLoading(()=>loading||busy&&!backgroundRefresh||generating);
+ trackLoading(()=>loading||busy&&!backgroundRefresh&&!commandRunning);
 </script>
 <div class="chat-workspace" class:show-list={mobileList} class:nav-collapsed={collapsed}>
  <aside id="conversation-navigation" class="conversation-list" inert={collapsed&&desktop.current}><div class="list-heading"><h1>对话 <span class="count">{sessions.length}</span></h1><Button variant="ghost" aria-label="新建对话" onclick={onlibrary}><MessageCircle size={18}/></Button></div>{#if error&&!active}<Notice variant="error">{error}<Button variant="outline" onclick={load}>重试</Button></Notice>{/if}{#if loading}<LoadingPlaceholder layout="list"/>{/if}{#each sessions as s(s.id)}<button class="conversation" aria-current={active?.id===s.id?'page':undefined} disabled={generating||busy} onclick={()=>select(s.id)}><strong>{s.title}</strong><span>{s.characterName}</span></button>{/each}{#if !loading&&!sessions.length}<Button variant="outline" onclick={onlibrary}>选择角色</Button>{/if}</aside>
@@ -83,7 +86,7 @@
       <article class="message" class:from-user={m.role==='user'} aria-label={`${m.role==='user'?'你的消息':'角色回复'}，第 ${m.ordinal+1} 条`}>
        <div class="message-body">
         {#if m.content}<p class="message-text">{m.content}</p>{/if}
-        <AgentActivities activities={activities.filter(a=>a.messageId===m.id)}/>
+        <AgentActivities activities={activities.filter(a=>a.messageId===m.id)} progress={modelProgress?.messageId===m.id?modelProgress:undefined}/>
         {#if m.status==='error'||m.status==='aborted'}
          <div class="message-outcome" role="status"><span>{m.finishReason?generationNotice(m.finishReason):m.status==='aborted'?'已停止生成':'生成失败，请重试'}</span>
          </div>

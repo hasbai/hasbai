@@ -12,7 +12,7 @@ it('adds generation defaults to historical snapshots and preserves identity and 
  expect(normalizeSettings(old).thinkingEnabled).toBe(false);
  expect(normalizeSettings(old).reasoningEffort).toBe('low');
 });
-it.each([{thinkingEnabled:'false'},{reasoningEffort:'xhigh'},{reasoningEffort:null},{reasoningEffort:undefined},{modelId:'dynamic/saki'},{topP:0},{topP:1.1},{topK:1.5},{frequencyPenalty:3},{presencePenalty:NaN},{temperature:undefined}])('rejects explicit invalid settings %j', invalid=>{
+it.each([{thinkingEnabled:'false'},{reasoningEffort:'xhigh'},{reasoningEffort:null},{reasoningEffort:undefined},{modelId:'dynamic/saki'},{topP:0},{topP:1.1},{topK:1.5},{frequencyPenalty:3},{presencePenalty:NaN},{temperature:undefined},{minP:-0.1},{minP:1.01},{minP:null},{repetitionPenalty:0},{repetitionPenalty:2.01}])('rejects explicit invalid settings %j', invalid=>{
  expect(()=>normalizeSettings({...DEFAULT_SETTINGS,...invalid})).toThrow();
 });
 it('holds delimiter across every possible chunk boundary and never emits the protocol',()=>{

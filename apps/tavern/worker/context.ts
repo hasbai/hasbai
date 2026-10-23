@@ -2,7 +2,7 @@ import { splitOoc } from '../shared/commands';
 import { telegramDialogue } from '../shared/telegram-input';
 import { SUMMARY_TASK } from '../shared/instructions';
 import { buildPrompt, estimateTokens, type PromptMessage } from '../shared/prompt';
-import type { Book, JsonObject, Message, Settings } from '../shared/types';
+import { SAMPLING_TEMPLATES, type Book, type JsonObject, type Message, type Settings } from '../shared/types';
 import { inferRoleplay, InferenceError } from './inference';
 import { modelInput } from './models';
 
@@ -46,7 +46,7 @@ export class ConversationContext {
   public contextTokens: number | null, readonly options: { protocol: string; inputRatio: number; state?:string; summaryTask?:string; currentInput?:Message; telegram?:boolean },
   readonly infer: (messages: PromptMessage[]) => Promise<string>,
   readonly onCompression?: (status:'running'|'completed'|'error',result:unknown)=>Promise<void>) {}
- async restore(raw?: string | null) { this.summary = await validSummary(raw, this.history); }
+ async restore(raw?: string | null) { this.summary = await validSummary(raw, this.history); this.wireProjection=null; }
  useProjection(messages:PromptMessage[]){this.wireProjection=this.extend({...this.prompt(),messages:messages.map(m=>structuredClone(m))},[]);}
  prompt(projection: { protocol: string } = this.options, suffix: PromptMessage[] = []) {
   if(this.wireProjection)return this.extend(this.wireProjection,suffix);
@@ -137,10 +137,10 @@ async function summarizeSource(previous:string,history:Message[],options:{contex
 export async function summarizeWithModel(env: Env, username: string, requestId: string, settings: Settings, messages: PromptMessage[], signal: AbortSignal, observe?:(event:Parameters<import('./metrics').InferenceMetrics['observe']>[0],logId:string|null)=>void) {
  let text = '', finish = '';
  try {
-  for await (const event of inferRoleplay(env,username,requestId,{messages,...modelInput({...settings,thinkingEnabled:false})},signal)) {
+  for await (const event of inferRoleplay(env,username,requestId,{messages,...modelInput({...settings,...SAMPLING_TEMPLATES.instruct,thinkingEnabled:false})},signal)) {
    if(event.type==='observation')observe?.(event.value,event.logId);
    else if(event.type==='text')text+=event.text;
-   else {if(event.calls.length)throw new Error('会话压缩失败');finish=event.reason;}
+   else if(event.type==='finish'){if(event.calls.length)throw new Error('会话压缩失败');finish=event.reason;}
   }
  } catch(error) {
   if(error instanceof InferenceError){const limit=contextLimit(error.value);if(limit)throw new SummaryRetry(limit);}

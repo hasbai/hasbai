@@ -75,3 +75,15 @@ it('delivers prose before the provider finishes and cancels a blocked upstream r
  await expect(waiting).rejects.toMatchObject({reason:'interrupted'});
  expect(cancel).toHaveBeenCalledOnce(); expect(fetch).toHaveBeenCalledOnce();
 });
+
+it('streams provider reasoning separately from prose without waiting for completion',async()=>{
+ let controller!:ReadableStreamDefaultController<Uint8Array>;
+ vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response(new ReadableStream({start(c){controller=c;}}),{headers:{'Content-Type':'text/event-stream'}})));
+ const stream=inferRoleplay(env,'u','r',{messages},signal());
+ const first=stream.next();await vi.waitFor(()=>expect(controller).toBeDefined());
+ const push=(v:unknown)=>controller.enqueue(new TextEncoder().encode('data: '+JSON.stringify(v)+'\n\n'));
+ push(chunk({reasoning_content:'先确认'}));
+ let event=await first;while(event.value?.type!=='reasoning')event=await stream.next();expect(event.value).toEqual({type:'reasoning',text:'先确认'});
+ push(chunk({reasoning_content:'已知事实。'}));push(chunk({content:'她点点头。'},'stop'));controller.close();
+ const rest=await collect(stream);expect(rest).toContainEqual({type:'reasoning',text:'已知事实。'});expect(rest.filter(e=>e.type==='text')).toEqual([{type:'text',text:'她点点头。'}]);
+});

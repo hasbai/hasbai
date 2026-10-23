@@ -64,6 +64,7 @@
      {/if}
     {/if}
    </ol>
+   {#if stage==='director'}<p class="muted">超限时压缩已确认历史，保存摘要供后续正文复用。本轮输入、正文与候选任务保留。</p>{/if}
 
   </div>
   <div class="prompt-editor" aria-labelledby="prompt-title">
