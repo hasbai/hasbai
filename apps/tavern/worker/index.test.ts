@@ -30,7 +30,7 @@ async function readType(reader:ReadableStreamDefaultReader<Uint8Array>,type:stri
 it('installs/imports without duplicate private rows and preserves raw exports',async()=>{const a=await(await call('/api/characters','POST',card)).json() as {id:string};const b=await(await call('/api/characters','POST',card)).json() as {id:string};expect(a.id).toBe(b.id);expect(await(await call('/api/characters/'+a.id+'/export')).json()).toEqual(card);vi.mocked(identity).mockResolvedValue({sub:'auth0|other',email:'other',username:'其他用户',admin:true});expect((await call('/api/characters/'+a.id)).status).toBe(404);});
 it('denies missing JWT and cross-origin writes',async()=>{vi.mocked(identity).mockRejectedValue(new AuthError(401,'请先登录'));expect((await call('/api/settings')).status).toBe(401);vi.mocked(identity).mockResolvedValue({sub:'owner',email:'owner',username:'月石',admin:true});const r=await worker.fetch(new Request('https://tavern.test/api/settings',{method:'PUT',headers:{Origin:'https://evil.test'}}),env,ctx);expect(r.status).toBe(403);});
 it('snapshots role definitions and creates selected alternate greeting',async()=>{const {c,s}=await seed();await call('/api/characters/'+c.id,'DELETE');const history=await(await call('/api/sessions/'+s.id)).json() as {session:{character:unknown};messages:{content:string}[]};expect(history.session.character).toEqual(card);expect(history.messages[0].content).toBe('你好，旅人。');});
-it('persists streamed output, fixed dynamic route, no reasoning leak and idempotent replay',async()=>{const {s}=await seed(),requestId=crypto.randomUUID();const r=await call('/api/sessions/'+s.id+'/generate','POST',{requestId,content:'你好',model:'override'});expect(r.headers.get('Content-Type')).toContain('event-stream');const text=await r.text();await Promise.all(work);expect(text).toContain('欢迎来到港城。');expect(text).not.toContain('private');expect(aiRun).toHaveBeenCalledWith(expect.objectContaining({provider:'compat',endpoint:'chat/completions',query:expect.objectContaining({model:'dynamic/rp',stream:true}),headers:expect.objectContaining({'cf-aig-collect-log-payload':'true'})}),expect.objectContaining({gateway:{id:'default',skipCache:true,collectLog:true,eventId:requestId,retries:{maxAttempts:1},metadata:{app:'tavern',task:'roleplay',username:'月石'}}}));const duplicate=await call('/api/sessions/'+s.id+'/generate','POST',{requestId,content:'你好'});expect((await duplicate.json() as {replayed:boolean}).replayed).toBe(true);expect(aiRun).toHaveBeenCalledTimes(2);expect(sessionDb.prepare('SELECT generation_id FROM sessions WHERE id=?').get(s.id)?.generation_id).toBeNull();});
+it('persists streamed output, fixed dynamic route, separate reasoning progress and idempotent replay',async()=>{const {s}=await seed(),requestId=crypto.randomUUID();const r=await call('/api/sessions/'+s.id+'/generate','POST',{requestId,content:'你好',model:'override'});expect(r.headers.get('Content-Type')).toContain('event-stream');const text=await r.text();await Promise.all(work);expect(text).toContain('欢迎来到港城。');const frames=text.split('\n').filter(l=>l.startsWith('data: ')).map(l=>JSON.parse(l.slice(6)));expect(frames.filter(e=>e.type==='delta').map(e=>e.text).join('')).not.toContain('private');expect(frames.filter(e=>e.type==='progress'&&e.target==='body').map(e=>e.phase)).toEqual(['prefill','reasoning','generation',null]);expect(frames).toContainEqual(expect.objectContaining({type:'progress',phase:'reasoning',text:'private'}));expect(aiRun).toHaveBeenCalledWith(expect.objectContaining({provider:'compat',endpoint:'chat/completions',query:expect.objectContaining({model:'dynamic/rp',stream:true}),headers:expect.objectContaining({'cf-aig-collect-log-payload':'true'})}),expect.objectContaining({gateway:{id:'default',skipCache:true,collectLog:true,eventId:requestId,retries:{maxAttempts:1},metadata:{app:'tavern',task:'roleplay',username:'月石'}}}));const duplicate=await call('/api/sessions/'+s.id+'/generate','POST',{requestId,content:'你好'});expect((await duplicate.json() as {replayed:boolean}).replayed).toBe(true);expect(aiRun).toHaveBeenCalledTimes(2);expect(sessionDb.prepare('SELECT generation_id FROM sessions WHERE id=?').get(s.id)?.generation_id).toBeNull();});
 it('limits natural Telegram projection to the server-bound session and rebuilds an older wire prefix',async()=>{
  const {s}=await seed(),raw=JSON.stringify({speaker:{id:12,name:'@alice'},text:'你好'});
  await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:raw,telegram:true})).text();await Promise.all(work);
@@ -280,7 +280,7 @@ it('normalizes legacy session/settings JSON and rejects unknown logical model be
  const session=await(await call('/api/sessions/'+s.id)).json() as {session:{settings:typeof DEFAULT_SETTINGS}};expect(session.session.settings).toEqual({...DEFAULT_SETTINGS,userName:old.userName,persona:old.persona,systemPrompt:old.systemPrompt,temperature:old.temperature});
  expect((await call('/api/settings','PUT',{...DEFAULT_SETTINGS,modelId:'dynamic/saki'})).status).toBe(400);
  await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'出发'})).text();await Promise.all(work);
- expect(aiRun.mock.calls[0][0].query).toMatchObject({temperature:0.3,top_p:1,chat_template_kwargs:{enable_thinking:false},frequency_penalty:0,presence_penalty:0});expect(aiRun.mock.calls[0][0].query).not.toHaveProperty('top_k');expect(aiRun.mock.calls[0][0].query).not.toHaveProperty('max_tokens');
+ expect(aiRun.mock.calls[0][0].query).toMatchObject({temperature:0.3,top_p:0.8,chat_template_kwargs:{enable_thinking:false},frequency_penalty:0,presence_penalty:1.5});expect(aiRun.mock.calls[0][0].query).toHaveProperty('top_k',20);expect(aiRun.mock.calls[0][0].query).not.toHaveProperty('max_tokens');
 });
 it('preserves session effort and the Director template with a best-effort auxiliary budget',async()=>{
  const {s}=await seed(),path='/api/sessions/'+s.id;
@@ -497,7 +497,7 @@ it('immediately cancels candidate recovery and retains the generated body',async
  const {s}=await seed();const cancelled=vi.fn();aiRun.mockResolvedValueOnce(completion('正文。'));aiRun.mockResolvedValueOnce(new ReadableStream({cancel:cancelled}));
  const reader=(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'你好'})).body!.getReader();await reader.read();let wire='';const drain=(async()=>{for(;;){const next=await reader.read();if(next.done)return;wire+=new TextDecoder().decode(next.value);}})();await vi.waitFor(()=>expect(aiRun).toHaveBeenCalledTimes(2));const id=sessionDb.prepare('SELECT generation_id FROM sessions WHERE id=?').get(s.id)?.generation_id;await call('/api/sessions/'+s.id+'/stop','POST',{generationId:id});await drain;await Promise.all(work);expect(cancelled).toHaveBeenCalled();expect(sessionDb.prepare('SELECT content,status,finish_reason FROM messages WHERE id=?').get(id as string)).toMatchObject({content:'正文。',status:'aborted',finish_reason:'stopped'});expect(wire).not.toContain('我去港口');
 });
-it.each(['http','stream'])('rebuilds disposable Director context only after %s overflow',async mode=>{
+it.each(['http','stream'])('persists Director compression after %s overflow and reuses it next turn',async mode=>{
  const {s}=await seed();sessionDb.prepare('UPDATE messages SET content=? WHERE session_id=?').run('旧事。'.repeat(2000),s.id);let directors=0;aiRun.mockImplementation(async request=>{
   const q=request.query as {messages:{role:string;content:string}[];response_format?:unknown};
   if(q.messages.at(-1)?.content.startsWith('本次任务是压缩'))return completion('旧事。');
@@ -506,7 +506,20 @@ it.each(['http','stream'])('rebuilds disposable Director context only after %s o
   if(++directors===1)return mode==='http'?Response.json({error:{n_ctx:4096}},{status:400}):new ReadableStream({start(c){c.enqueue(new TextEncoder().encode('data: {"error":{"n_ctx":4096}}\n\n'));c.close();}});
   expect(JSON.stringify(q.messages)).toContain('旧事。');return candidateCompletion(['我去港口。','我坐下喝茶。','我问问来路。']);
  });
- const wire=await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'接下来呢'})).text();await Promise.all(work);expect(JSON.parse(wire.trim().split('data: ').at(-1)!).message).toMatchObject({content:'已完成正文。',status:'completed',candidates:['我去港口。','我坐下喝茶。','我问问来路。']});expect(directors).toBe(2);expect(sessionDb.prepare('SELECT summary_json FROM sessions WHERE id=?').get(s.id)?.summary_json).toBeNull();
+ const wire=await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'接下来呢'})).text();await Promise.all(work);expect(JSON.parse(wire.trim().split('data: ').at(-1)!).message).toMatchObject({content:'已完成正文。',status:'completed',candidates:['我去港口。','我坐下喝茶。','我问问来路。']});expect(directors).toBe(2);
+ const checkpoint=sessionDb.prepare('SELECT summary_json FROM sessions WHERE id=?').get(s.id)?.summary_json;
+ expect(JSON.parse(checkpoint as string)).toMatchObject({text:'旧事。',covered:[expect.any(String)]});
+ const saved=await(await call('/api/sessions/'+s.id)).json() as import('../shared/types').SessionDetail;
+ expect(saved.context.coveredMessages).toBe(1);expect(saved.context.estimatedTokens).toBeLessThan(saved.context.contextTokens!);
+ const frames=wire.split('\n').filter(l=>l.startsWith('data: ')).map(l=>JSON.parse(l.slice(6)));
+ expect(frames.filter(e=>e.type==='context').at(-1).context).toEqual(saved.context);
+ const calls=aiRun.mock.calls.length;
+ await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'再问一句'})).text();await Promise.all(work);
+ expect(aiRun.mock.calls.length-calls).toBe(2);
+ const next=aiRun.mock.calls[calls][0].query as {messages:{content:string}[]};
+ expect(JSON.stringify(next.messages)).not.toContain('旧事。'.repeat(100));expect(JSON.stringify(next.messages)).not.toContain(DIRECTOR_RULE);
+ expect(next.messages.some(m=>m.content==='已完成正文。')).toBe(true);
+ expect(sessionDb.prepare('SELECT summary_json FROM sessions WHERE id=?').get(s.id)?.summary_json).toBe(checkpoint);
 });
 it('reuses body worldbook activation, raw user text and wire prefix for Director',async()=>{
  const {s}=await seed();const book=await(await call('/api/worldbooks','POST',{raw:{name:'火山',entries:[{keys:['火山'],content:'火山之约必须保密。',enabled:true}]}})).json() as {id:string};await call('/api/sessions/'+s.id,'PATCH',{bookIds:[book.id]});
@@ -834,4 +847,43 @@ it('uses editable tool descriptions and exact stage tasks while preserving perso
  await call('/api/sessions/'+s.id+'/command','POST',{requestId:crypto.randomUUID(),content:'/compress'});await Promise.all(work);
  const summary=aiRun.mock.calls.at(-1)![0].query as {messages:{role:string;content:string}[]};expect(summary.messages.at(-1)?.content).toBe(texts.summaryTask);expect(summary.messages.some(m=>m.role==='system')).toBe(false);
  expect((await(await call('/api/sessions/'+s.id)).json() as import('../shared/types').SessionDetail).session.settings.systemPrompt).toBe('保留的会话系统提示');
+});
+
+it('persists capacity-triggered compression before Director even when its candidates fail',async()=>{
+ const {s}=await seed();sessionDb.prepare('UPDATE messages SET content=? WHERE session_id=?').run('旧事。'.repeat(2000),s.id);
+ db.prepare('UPDATE model_capabilities SET value_json=?').run(JSON.stringify({contextTokens:9000,inputRatio:1.2,source:'llama.cpp:n_ctx'}));
+ const body=Array.from({length:350},(_,i)=>`第${i+1}盏灯在街边亮了。`).join('');let summaries=0;
+ aiRun.mockImplementation(async request=>{const q=request.query as {messages:{content:string}[];response_format?:unknown};
+  if(q.messages.at(-1)?.content.startsWith('本次任务是压缩')){summaries++;return completion('旧事。');}
+  return completion(q.response_format?'无效候选':body);
+ });
+ const wire=await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'继续'})).text();await Promise.all(work);
+ expect(terminal(wire)).toMatchObject({status:'completed',content:body,candidates:[]});expect(summaries).toBeGreaterThan(0);
+ const checkpoint=sessionDb.prepare('SELECT summary_json FROM sessions WHERE id=?').get(s.id)?.summary_json;expect(JSON.parse(checkpoint as string).covered).toHaveLength(1);
+ const saved=await(await call('/api/sessions/'+s.id)).json() as import('../shared/types').SessionDetail;expect(saved.context.estimatedTokens).toBeLessThan(9000);
+ const previous=summaries;aiRun.mockImplementation(async request=>(request.query as {response_format?:unknown}).response_format?candidateCompletion(['去港口。','喝茶。','看窗外。']):completion('后续正文。'));
+ await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'说一句话'})).text();await Promise.all(work);
+ expect(summaries).toBe(previous);expect(sessionDb.prepare('SELECT summary_json FROM sessions WHERE id=?').get(s.id)?.summary_json).toBe(checkpoint);
+});
+
+it('retains the last successful Director checkpoint when another required reduction fails',async()=>{
+ const {s}=await seed();sessionDb.prepare('UPDATE messages SET content=? WHERE session_id=?').run('旧事。'.repeat(2000),s.id);
+ db.prepare('UPDATE model_capabilities SET value_json=?').run(JSON.stringify({contextTokens:9000,inputRatio:1.2,source:'llama.cpp:n_ctx'}));
+ Object.assign(env.PROMPTS,{get:vi.fn(async()=>JSON.stringify({revision:'large-director',texts:{...DEFAULT_PROMPTS,director:DIRECTOR_RULE+'候选任务。'.repeat(2000)}}))});
+ let summaries=0;
+ aiRun.mockImplementation(async request=>{const q=request.query as {messages:{content:string}[];response_format?:unknown};
+  if(q.messages.at(-1)?.content.startsWith('本次任务是压缩')){summaries++;if(summaries===1)return completion('旧事。');throw Error('摘要上游失败');}
+  return q.response_format?Response.json({error:{n_ctx:1024}},{status:400}):completion('正文。');
+ });
+ const wire=await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'继续'})).text();await Promise.all(work);
+ expect(terminal(wire)).toMatchObject({status:'completed',content:'正文。',candidates:[]});expect(summaries).toBeGreaterThan(1);
+ const checkpoint=sessionDb.prepare('SELECT summary_json FROM sessions WHERE id=?').get(s.id)?.summary_json;expect(JSON.parse(checkpoint as string).text).toBe('旧事。');
+ const events=wire.split('\n').filter(l=>l.startsWith('data: ')).map(l=>JSON.parse(l.slice(6)));
+ let phase:string|null=null;for(const event of events){if(event.type==='progress')phase=event.phase;if(event.type==='activity'&&event.activity.kind==='compression'&&event.activity.status==='running')expect(phase).toBeNull();}
+ const saved=await(await call('/api/sessions/'+s.id)).json() as import('../shared/types').SessionDetail;expect(saved.context.coveredMessages).toBe(1);expect(saved.context.estimatedTokens).toBeLessThan(9000);
+ Object.assign(env.PROMPTS,{get:vi.fn(async()=>JSON.stringify({revision:'normal-director',texts:DEFAULT_PROMPTS}))});
+ aiRun.mockImplementation(async request=>(request.query as {response_format?:unknown}).response_format?candidateCompletion(['去港口。','喝茶。','看窗外。']):completion('后续正文。'));
+ const at=aiRun.mock.calls.length;await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'再说一句'})).text();await Promise.all(work);
+ expect(sessionDb.prepare('SELECT summary_json FROM sessions WHERE id=?').get(s.id)?.summary_json).toBe(checkpoint);
+ expect(JSON.stringify(aiRun.mock.calls[at][0].query)).not.toContain('旧事。'.repeat(100));
 });

@@ -1,7 +1,7 @@
 import { beforeEach, afterEach, it, expect, vi } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { capabilities, modelInput, recordFeedback, modelOptions } from './models';
-import { DEFAULT_SETTINGS } from '../shared/types';
+import { DEFAULT_SETTINGS, SAMPLING_TEMPLATES } from '../shared/types';
 import { explicitContextLimit, errorFeedback } from './generation';
 let db: DatabaseSync, env: Env, work: Promise<unknown>[];
 const ctx = { waitUntil: (p: Promise<unknown>) => { work.push(p); } };
@@ -10,8 +10,8 @@ beforeEach(() => { db = new DatabaseSync(':memory:'); db.exec('CREATE TABLE mode
 afterEach(async () => { await Promise.all(work); db.close(); vi.unstubAllGlobals(); });
 it('always exposes RP and forwards sampling and thinking without route or schema checks', async () => {
  expect(await modelOptions(env,ctx)).toMatchObject([{id:'rp',available:true,contextTokens:null,parameters:{topK:true,thinking:true}}]);
- expect(modelInput({...DEFAULT_SETTINGS,topK:20,thinkingEnabled:false})).toMatchObject({top_k:20,top_p:1,chat_template_kwargs:{enable_thinking:false},presence_penalty:0,frequency_penalty:0});
- expect(modelInput({...DEFAULT_SETTINGS,thinkingEnabled:true})).toMatchObject({chat_template_kwargs:{enable_thinking:true},reasoning_effort:'low',reasoning_format:'deepseek'});expect(modelInput(DEFAULT_SETTINGS)).toHaveProperty('reasoning_effort','none');expect(modelInput(DEFAULT_SETTINGS)).not.toHaveProperty('top_k');
+ expect(modelInput({...DEFAULT_SETTINGS,topK:20,thinkingEnabled:false})).toMatchObject({top_k:20,top_p:0.8,chat_template_kwargs:{enable_thinking:false},presence_penalty:1.5,frequency_penalty:0});
+ expect(modelInput({...DEFAULT_SETTINGS,thinkingEnabled:true})).toMatchObject({chat_template_kwargs:{enable_thinking:true},reasoning_effort:'low',reasoning_format:'deepseek'});expect(modelInput(DEFAULT_SETTINGS)).toHaveProperty('reasoning_effort','none');expect(modelInput({...DEFAULT_SETTINGS,topK:0})).not.toHaveProperty('top_k');
  expect(()=>modelInput({...DEFAULT_SETTINGS,modelId:'other'})).toThrow('模型不可用');
 });
 it.each(['low','medium','high'] as const)('forwards selected %s effort only when thinking is enabled',effort=>{
@@ -39,4 +39,9 @@ it('keeps a smaller explicit limit whether props finishes before or after the er
  const cold=await capabilities(env,ctx);await Promise.all(work);await recordFeedback(env,cold,{contextLimit:8192});expect((await capabilities(env,ctx)).contextTokens).toBe(8192);
  db.exec('DELETE FROM model_capabilities');let release:()=>void=()=>{};vi.mocked(fetch).mockImplementation(()=>new Promise<Response>(r=>release=()=>r(Response.json({default_generation_settings:{n_ctx:32768}}))));
  const unknown=await capabilities(env,ctx);await recordFeedback(env,unknown,{contextLimit:16384});release();await Promise.all(work);expect((await capabilities(env,ctx)).contextTokens).toBe(16384);
+});
+
+it.each(['thinking','instruct'] as const)('forwards all six %s template values without changes',mode=>{
+ const t=SAMPLING_TEMPLATES[mode];
+ expect(modelInput({...DEFAULT_SETTINGS,...t,thinkingEnabled:mode==='thinking'})).toMatchObject({temperature:t.temperature,top_p:t.topP,top_k:t.topK,min_p:t.minP,presence_penalty:t.presencePenalty,repetition_penalty:t.repetitionPenalty});
 });

@@ -1,8 +1,9 @@
 import { CHARACTER_RESPONSE_FORMAT, generatedCharacterCard, validateCharacterDraft } from '../shared/character-draft';
 import { body, HttpError } from './http';
 import { inferRoleplay } from './inference';
+import { modelInput } from './models';
 import { readPrompts } from './prompts';
-import type { JsonObject } from '../shared/types';
+import { DEFAULT_SETTINGS, type JsonObject } from '../shared/types';
 
 export async function generateCharacter(request: Request, env: Env, username: string): Promise<JsonObject> {
  let input: { brief: string; draft: ReturnType<typeof validateCharacterDraft> };
@@ -20,7 +21,7 @@ export async function generateCharacter(request: Request, env: Env, username: st
     { role: 'system' as const, content: texts.character },
     { role: 'user' as const, content: JSON.stringify(input) },
    ], response_format: CHARACTER_RESPONSE_FORMAT, stream: true,
-   temperature: 0.8, chat_template_kwargs: { enable_thinking: false }, reasoning_effort: 'none', reasoning_format: 'deepseek',
+   ...modelInput(DEFAULT_SETTINGS),
   };
   let text = '', reason: string | undefined;
   for await (const event of inferRoleplay(env,username,crypto.randomUUID(),inputModel,signal,'character-generation')) {

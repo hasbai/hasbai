@@ -144,12 +144,12 @@ test('long chat reading width and scroll position',async({page})=>{
 
 test('model controls compact prompt defaults persistence and reset preserve persona',async({page})=>{
  await fixture(page);await nav(page,'设置');const thinking=page.getByRole('switch',{name:'启用思考'});await expect(thinking).toHaveAttribute('aria-checked','false');const effort=page.getByLabel('思考强度',{exact:true});await expect(effort).toHaveValue('low');await expect(effort).toBeDisabled();await expect(page.getByLabel('对话模型')).toHaveValue('rp');await expect(page.getByLabel('Top K',{exact:false})).toBeEnabled();await page.getByLabel('Top K',{exact:false}).fill('20');
- await page.getByLabel('你的角色设定',{exact:true}).fill('保留这份角色设定');await thinking.click();await expect(effort).toBeEnabled();await effort.selectOption('high');await page.getByLabel('Top P',{exact:true}).fill('0.85');await page.getByLabel('频率惩罚',{exact:false}).fill('0.2');
+ await page.getByLabel('你的角色设定',{exact:true}).fill('保留这份角色设定');await thinking.click();await expect(effort).toBeEnabled();await expect(page.getByLabel('温度',{exact:true})).toHaveValue('1');await expect(page.getByLabel('Top P',{exact:true})).toHaveValue('0.95');await expect(page.getByLabel('存在惩罚',{exact:false})).toHaveValue('0');await expect(page.getByLabel('Min P',{exact:true})).toHaveValue('0');await expect(page.getByLabel('重复惩罚',{exact:true})).toHaveValue('1');await effort.selectOption('high');await page.getByLabel('Top P',{exact:true}).fill('0.85');await page.getByLabel('频率惩罚',{exact:false}).fill('0.2');
  await page.getByLabel('System Prompt',{exact:true}).fill('用详细的对白和动作继续，每次写四段。');
  // Mobile input focus scrolls the page; pin the fixed navigation before the full-page screenshot.
  if(page.viewportSize()!.width<=639){await page.evaluate(()=>{if(document.activeElement instanceof HTMLElement)document.activeElement.blur();window.scrollTo(0,0);});await expect.poll(()=>page.evaluate(()=>window.scrollY)).toBe(0);}await shot(page,'settings-thinking-high.png');
  const put=page.waitForRequest(r=>r.url().endsWith('/settings')&&r.method()==='PUT');await page.getByRole('button',{name:'保存设置'}).click();expect((await put).postDataJSON()).toMatchObject({thinkingEnabled:true,reasoningEffort:'high',topP:0.85,topK:20,frequencyPenalty:0.2,systemPrompt:'用详细的对白和动作继续，每次写四段。'});await expect(page.getByRole('status')).toHaveText('已保存');
- await nav(page,'角色库');await nav(page,'设置');await expect(thinking).toHaveAttribute('aria-checked','true');await expect(effort).toHaveValue('high');await thinking.click();await expect(effort).toBeDisabled();await expect(effort).toHaveValue('high');await thinking.click();await expect(page.getByLabel('System Prompt',{exact:true})).toHaveValue('用详细的对白和动作继续，每次写四段。');await page.getByRole('button',{name:'恢复默认',exact:true}).click();await expect(thinking).toHaveAttribute('aria-checked','false');await expect(effort).toHaveValue('low');await expect(effort).toBeDisabled();await expect(page.getByLabel('Top P',{exact:true})).toHaveValue('1');await expect(page.getByLabel('你的角色设定',{exact:true})).toHaveValue('保留这份角色设定');await page.getByRole('button',{name:'恢复默认提示',exact:true}).click();await expect(page.getByLabel('System Prompt',{exact:true})).toHaveValue(DEFAULT_SYSTEM_PROMPT);await shot(page,'settings-reset.png');
+ await nav(page,'角色库');await nav(page,'设置');await expect(thinking).toHaveAttribute('aria-checked','true');await expect(effort).toHaveValue('high');await thinking.click();await expect(effort).toBeDisabled();await expect(effort).toHaveValue('high');await expect(page.getByLabel('温度',{exact:true})).toHaveValue('0.7');await expect(page.getByLabel('Top P',{exact:true})).toHaveValue('0.8');await expect(page.getByLabel('存在惩罚',{exact:false})).toHaveValue('1.5');await thinking.click();await expect(page.getByLabel('System Prompt',{exact:true})).toHaveValue('用详细的对白和动作继续，每次写四段。');await page.getByRole('button',{name:'恢复默认',exact:true}).click();await expect(thinking).toHaveAttribute('aria-checked','true');await expect(effort).toHaveValue('high');await expect(effort).toBeEnabled();await expect(page.getByLabel('Top P',{exact:true})).toHaveValue('0.95');await expect(page.getByLabel('你的角色设定',{exact:true})).toHaveValue('保留这份角色设定');await page.getByRole('button',{name:'恢复默认提示',exact:true}).click();await expect(page.getByLabel('System Prompt',{exact:true})).toHaveValue(DEFAULT_SYSTEM_PROMPT);await shot(page,'settings-reset.png');
  await page.getByRole('button',{name:'保存设置'}).click();await nav(page,'对话');await page.getByRole('button',{name:/港城的雨夜/}).click();await page.getByRole('button',{name:'会话设置'}).click();await expect(page.getByRole('switch',{name:'启用思考'})).toHaveAttribute('aria-checked','false');await page.getByRole('switch',{name:'启用思考'}).click();await page.getByLabel('思考强度',{exact:true}).selectOption('medium');await shot(page,'chat-thinking-medium.png');const patch=page.waitForRequest(r=>r.url().endsWith('/sessions/s1')&&r.method()==='PATCH');await page.getByRole('button',{name:'保存',exact:true}).click();expect((await patch).postDataJSON().settings).toMatchObject({thinkingEnabled:true,reasoningEffort:'medium'});await page.getByRole('button',{name:'会话设置'}).click();await expect(page.getByRole('switch',{name:'启用思考'})).toHaveAttribute('aria-checked','true');await expect(page.getByLabel('思考强度',{exact:true})).toHaveValue('medium');
 });
 test('candidate click sends exact text once and preserves the free draft after reopening',async({page})=>{
@@ -380,4 +380,31 @@ test('mobile conversations hide navigation and restore it in the session list',a
  await page.getByRole('button',{name:'返回会话列表'}).click();await expect(navigation).toBeVisible();await shot(page,'chat-mobile-session-list.png');
  await page.getByRole('button',{name:'港城的雨夜 岚'}).click();await expect(navigation).toBeHidden();await expect(input).toHaveValue('返回后保留的草稿');
  await page.getByRole('button',{name:'删除会话',exact:true}).click();await page.getByRole('button',{name:'确认',exact:true}).click();await expect(navigation).toBeVisible();await expect(input).toHaveCount(0);
+});
+
+test('model phases share expandable streaming reasoning without a system loading bar',async({page})=>{
+ await fixture(page);await page.getByRole('button',{name:'开始对话',exact:true}).click();
+ await expect(page.getByRole('progressbar',{name:'加载进度'})).toHaveCount(0);
+ await page.evaluate(()=>{const original=window.fetch;window.fetch=async(...args)=>{
+  const response=await original(...args);if(!String(args[0]).endsWith('/generate'))return response;
+  const frames=(await response.text()).split('\n').filter(l=>l.startsWith('data: ')).map(l=>JSON.parse(l.slice(6)));
+  const start=frames.find(e=>e.type==='start');
+  return new Response(new ReadableStream({start(controller){const send=(e:unknown)=>controller.enqueue(new TextEncoder().encode('data: '+JSON.stringify(e)+'\n\n'));
+   send(start);send({type:'progress',messageId:start.messageId,target:'body',phase:'prefill'});
+   Object.assign(window,{advanceModelPhase:(phase:string,text?:string)=>{
+    if(phase==='done'){for(const event of frames.filter(e=>e.type!=='start'))send(event);controller.close();return;}
+    if(phase==='generation')send({type:'delta',text:'岚把热茶放在桌上。'});
+    send({type:'progress',messageId:start.messageId,target:'body',phase,text});
+   }});
+  }}),{headers:response.headers});
+ };});
+ const advance=(phase:string,text?:string)=>page.evaluate(({phase,text})=>{(window as typeof window&{advanceModelPhase:(phase:string,text?:string)=>void}).advanceModelPhase(phase,text);},{phase,text});
+ const input=page.getByLabel('发送消息',{exact:true});await input.fill('今晚发生了什么？');await input.press('Enter');
+ const progress=page.locator('.agent-activity[data-phase]');await expect(progress).toHaveAttribute('data-phase','prefill');await expect(progress.getByRole('status')).toHaveText('处理中');await expect(page.getByRole('progressbar')).toHaveCount(0);await shot(page,'chat-prefill.png');
+ await advance('reasoning','先确认旅人刚才的问题。');await expect(progress.getByRole('status')).toHaveText('思考中');await progress.locator('summary').focus();await page.keyboard.press('Enter');await expect(progress.getByLabel('思考过程')).toHaveText('先确认旅人刚才的问题。');
+ await advance('reasoning','再结合旅店里已经发生的事。');await expect(progress.getByLabel('思考过程')).toContainText('再结合旅店里已经发生的事。');await shot(page,'chat-reasoning.png');
+ await advance('generation');await expect(progress.getByRole('status')).toHaveText('生成中');await expect(progress).toHaveAttribute('open','');await expect(progress.getByLabel('思考过程')).toBeVisible();await expect(page.locator('.message-text').last()).not.toContainText('先确认');await expect(page.getByRole('progressbar')).toHaveCount(0);await shot(page,'chat-generating.png');
+ await page.evaluate(()=>document.documentElement.classList.add('dark'));await shot(page,'chat-reasoning-dark.png');
+ if(page.viewportSize()!.width>639){await page.setViewportSize({width:1280,height:600});await expect(page.getByRole('button',{name:'停止',exact:true})).toBeInViewport();await shot(page,'chat-reasoning-short.png');}
+ await advance('done');await expect(progress).toHaveCount(0);await expect(page.getByRole('button',{name:'会话设置'})).toBeEnabled();await expect(page.getByRole('progressbar')).toHaveCount(0);
 });

@@ -1,6 +1,6 @@
 import { agentTools } from '../shared/instructions';
 import { contextUsage, telegramSession } from './session-context';
-import type { AgentActivity } from '../shared/types';
+import type { AgentActivity, ContextUsage, GenerationProgress } from '../shared/types';
 import { readPrompts } from './prompts';
 import { capabilities, modelInput, recordFeedback, type Capability } from './models';
 import { candidateDelimiter, CandidateStream } from '../shared/candidates';
@@ -92,7 +92,18 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
  // the stream also releases a write blocked by a paused/disconnected reader.
  const onDisconnect=()=>{if(ending||disconnected)return;disconnected=true;try{transport.terminate();}catch{/* The reader may already have cancelled. */}};request.signal.addEventListener('abort',onDisconnect,{once:true});if(request.signal.aborted)onDisconnect();void writer.closed.catch(onDisconnect);
  report=async(kind,key,status,title,result,input)=>{const value:AgentActivity={id:assistantId+':'+key,messageId:assistantId,ordinal:store.findMessage(assistantId)!.ordinal,kind,title,status,result,input,createdAt:Date.now()};const previous=store.activities().find(a=>a.id===value.id);if(previous){value.createdAt=previous.createdAt;value.input??=previous.input;}store.activity(value);if(!disconnected&&!ending)try{transport.enqueue(frame({type:'activity',activity:value}));}catch{onDisconnect();}};
- const publishContext=async()=>{if(!disconnected)try{transport.enqueue(frame({type:'context',context:contextUsage(conversation)}));}catch{onDisconnect();}};
+ const publishContext=async(usage:ContextUsage=contextUsage(conversation))=>{if(!disconnected)try{transport.enqueue(frame({type:'context',context:usage}));}catch{onDisconnect();}};
+ // Progress is display-only and never waits for the browser or writes token-by-token to SQLite.
+ async function* inferenceProgress(target:GenerationProgress['target'],input:Parameters<typeof inferRoleplay>[3]) {
+  let phase:GenerationProgress['phase']='prefill';
+  const progress=(text?:string,finished=false)=>{if(!disconnected&&!ending)try{transport.enqueue(frame({type:'progress',messageId:assistantId,target,phase:finished?null:phase,...(text?{text}:{})}));}catch{onDisconnect();}};
+  progress();
+  try{for await(const event of inferRoleplay(env,username,requestId,input,abort.signal)){
+   if(event.type==='reasoning'){phase='reasoning';progress(event.text);}
+   else if(event.type==='text'&&phase!=='generation'){phase='generation';progress();}
+   yield event;
+  }}finally{progress(undefined,true);}
+ }
  const work=(async()=>{
   let status:Message['status']='completed';let failure='';
   try{
@@ -114,17 +125,17 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
    finishReason='interrupted';
    let upstreamReason:string|undefined;let streamLimit:number|undefined;
    try{
-    for await(const event of inferRoleplay(env,username,requestId,{messages:prompt.messages,tools,tool_choice:'auto',...modelInput(opts)},abort.signal)){
+    for await(const event of inferenceProgress('body',{messages:prompt.messages,tools,tool_choice:'auto',...modelInput(opts)})){
      if(event.type==='observation'){metrics.observe(event.value);if(typeof event.value.model==='string')model=event.value.model;gatewayLogId=event.logId;}
      else if(event.type==='text'){requestOutput+=event.text;output+=parser.push(event.text);if(Date.now()-draftSavedAt>=1000){await checkpointDraft();draftSavedAt=Date.now();}await streamOutput();}
-     else {upstreamReason=event.reason;calls=event.calls;}
+     else if(event.type==='finish'){upstreamReason=event.reason;calls=event.calls;}
     }
    }catch(error){
     if(!(error instanceof InferenceError))throw error;
     finishReason=error.reason;gatewayLogId=error.logId;await errorFeedback(env,capability,error.value).catch(()=>{});streamLimit=contextLimit(error.value);if(!streamLimit||error.hasToolFragments)throw error;
    }
    await checkpointDraft();
-   if(streamLimit){if(output.length||calls.length)throw new Error('生成途中上下文超限');conversation.contextTokens=streamLimit;const before=prompt.estimatedTokens;await conversation.compress();prompt=await conversation.fit(conversation.options,toolTranscript);if(prompt.estimatedTokens>=before)throw new Error('会话压缩未缩短输入');await saveSummary();continue;}
+   if(streamLimit){if(output.length||calls.length)throw new Error('生成途中上下文超限');conversation.contextTokens=streamLimit;const before=prompt.estimatedTokens;await conversation.compress();prompt=await conversation.fit(conversation.options,toolTranscript);if(prompt.estimatedTokens>=before)throw new Error('会话压缩未缩短输入');await saveSummary();await publishContext();continue;}
    if(upstreamReason==='tool_calls'){
     finishReason='unsupported';
     if(!calls.length)throw new Error('工具调用为空');
@@ -155,9 +166,14 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
    await send({type:'candidates_pending',messageId:assistantId});
    const committedHistory=storyMessages([...store.messages().filter(m=>m.id!==assistantId),{id:assistantId,role:'assistant',content:output,status:'completed',ordinal:store.findMessage(assistantId)!.ordinal,requestId,createdAt:now}]);
    // Persist only confirmed story, never the request's state snapshots or control turns.
-   const summary=await validSummary(checkpoint,committedHistory);
-   const canonical=buildPrompt(conversation.card,conversation.books,committedHistory.slice(summary?.covered.length??0),opts,null,{...contextOptions,inputRatio:capability.inputRatio,summary:summary?.text});
-   storyProjection={key:await contentHash([projectionContext,committedHistory.map(m=>[m.id,m.content])]),messages:canonical.messages};
+   const updateStoryContext=async()=>{
+    const summary=await validSummary(checkpoint,committedHistory);
+    const canonical=buildPrompt(conversation.card,conversation.books,committedHistory.slice(summary?.covered.length??0),opts,null,{...contextOptions,inputRatio:capability.inputRatio,summary:summary?.text});
+    storyProjection={key:await contentHash([projectionContext,committedHistory.map(m=>[m.id,m.content])]),messages:canonical.messages};
+    const context=new ConversationContext(committedHistory,conversation.card,conversation.books,opts,conversation.contextTokens,{...contextOptions,inputRatio:capability.inputRatio,state:stateContext(agent.state)},conversation.infer);
+    await context.restore(checkpoint);await publishContext(contextUsage(context));
+   };
+   await updateStoryContext();
    await owns();
    candidateStartedAt=Date.now();candidateOutcome='generating';
    try{
@@ -168,15 +184,22 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
     // Preserve the body prefix, including tool transcript and any existing checkpoint.
     synopsisSource='body-prefix';synopsisCovered=conversation.summary?.covered.length??0;
     let fallback:ConversationContext|undefined;
+    const saveFallback=async()=>{
+     // Keep each successful checkpoint even if a later reduction or Director request fails.
+     conversation.contextTokens=fallback!.contextTokens;
+     await conversation.restore(fallback!.summary?JSON.stringify(fallback!.summary):null);
+     await saveSummary();await updateStoryContext();
+    };
     const rebuild=async(limit:number|null)=>{
      if(!fallback){
-      fallback=new ConversationContext(structuredClone(committedHistory.filter(m=>m.id!==assistantId&&m.id!==conversation.options.currentInput?.id)),conversation.card,conversation.books,opts,limit,{...contextOptions,inputRatio:capability.inputRatio,currentInput:conversation.options.currentInput},synopsisOptions.infer,observeCompression);
+      fallback=new ConversationContext(structuredClone(committedHistory.filter(m=>m.id!==assistantId&&m.id!==conversation.options.currentInput?.id)),conversation.card,conversation.books,opts,limit,{...contextOptions,inputRatio:capability.inputRatio,currentInput:conversation.options.currentInput},synopsisOptions.infer,async(status,result)=>{await observeCompression(status,result);if(status==='completed')await saveFallback();});
       await fallback.restore(conversation.summary?JSON.stringify(conversation.summary):null);
      }
      fallback.contextTokens=limit;
      let rebuilt=await fallback.fit();
      let tail:PromptMessage[]=[{role:'assistant',content:output},directorTask(agent.state,directorRule)];
      while(fallback.extend(rebuilt,tail).needsCompression){const before=rebuilt.estimatedTokens;await fallback.compress();rebuilt=await fallback.fit();if(rebuilt.estimatedTokens>=before)throw Error('完整正文与候选任务超过上下文');tail=[{role:'assistant',content:output},directorTask(agent.state,directorRule)];}
+     if(conversation.contextTokens!==fallback.contextTokens){conversation.contextTokens=fallback.contextTokens;await saveSummary();await updateStoryContext();}
      synopsisOptions.contextTokens=fallback.contextTokens;if(director)director.contextTokens=fallback.contextTokens;
      return [...rebuilt.messages,...tail];
     };
@@ -189,7 +212,7 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
     }
     directorStartedAt=Date.now();candidates=await director.run(messages=>{
      modelRequests++;
-     return inferRoleplay(env,username,requestId,{messages,tools,tool_choice:'none',response_format:DIRECTOR_RESPONSE_FORMAT,...modelInput(opts),...(opts.thinkingEnabled?{thinking_budget_tokens:0}:{})},abort.signal);
+     return inferenceProgress('director',{messages,tools,tool_choice:'none',response_format:DIRECTOR_RESPONSE_FORMAT,...modelInput(opts),...(opts.thinkingEnabled?{thinking_budget_tokens:0}:{})});
     },abort.signal,owns,rebuild);
     candidateOutcome=director.outcome;candidateFirstAt=director.firstAt;model=director.model||model;gatewayLogId=director.gatewayLogId;metrics=director.metrics;
    }catch(error){candidateOutcome='error';candidateError=(error as Error).message;if(abort.signal.aborted)throw error;candidates=[];}

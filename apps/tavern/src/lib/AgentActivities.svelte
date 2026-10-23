@@ -1,13 +1,20 @@
 <script lang="ts">
  import { ChevronRight, CircleCheck, LoaderCircle, CircleAlert, Wrench, Layers3, Clapperboard, MessageCircle, Info } from '@lucide/svelte';
- import type { AgentActivity } from '../../shared/types';
- let {activities}:{activities:AgentActivity[]}=$props();
- let visible=$derived(activities.filter(activity=>activity.kind!=='body'));
+ import type { AgentActivity, GenerationProgress } from '../../shared/types';
+ let {activities,progress}:{activities:AgentActivity[];progress?:GenerationProgress}=$props();
+ const phases={prefill:'处理中',reasoning:'思考中',generation:'生成中'};
+ let visible=$derived(activities.filter(activity=>activity.kind!=='body'&&!(progress?.target==='director'&&activity.kind==='director'&&activity.status==='running')));
  const labels={running:'运行中',completed:'已完成',error:'失败',stopped:'已停止'};
  const icons={body:MessageCircle,director:Clapperboard,tool:Wrench,compression:Layers3,status:Info};
  function format(value:unknown):string{if(typeof value==='string'){try{return JSON.stringify(JSON.parse(value),null,2);}catch{return value;}}return JSON.stringify(value,null,2)??'';}
 </script>
-{#if visible.length}<div class="agent-activities" aria-label="Agent 执行记录">
+{#if visible.length||progress}<div class="agent-activities" aria-label="Agent 执行记录">
+ {#if progress}
+  <details class="agent-activity" data-status="running" data-phase={progress.phase}>
+   <summary><ChevronRight class="activity-chevron" size={14} aria-hidden="true"/><LoaderCircle class="activity-spinner" size={15} aria-hidden="true"/><span role="status">{phases[progress.phase]}</span>{#if progress.target==='director'}<span class="activity-status">Director</span>{/if}</summary>
+   <div class="activity-result">{#if progress.reasoning}<pre aria-label="思考过程">{progress.reasoning}</pre>{:else}<span>{phases[progress.phase]}</span>{/if}</div>
+  </details>
+ {/if}
  {#each visible as activity(activity.id)}{@const Icon=icons[activity.kind]}
  {#if activity.kind==='compression'}
   <div class="agent-activity" data-kind="compression" data-status={activity.status}>

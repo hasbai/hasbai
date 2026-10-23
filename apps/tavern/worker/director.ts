@@ -48,7 +48,7 @@ export class DirectorAgent {
     for await(const event of await infer(this.prompt().messages)){
      if(event.type==='observation'){this.metrics.observe(event.value);this.gatewayLogId=event.logId;if(typeof event.value.model==='string')this.model=event.value.model;}
      else if(event.type==='text'){text+=event.text;this.rawOutput=text;if(event.text.trim())this.firstAt??=Date.now();}
-     else {if(event.calls.length)throw Error('Director响应无效');reason=event.reason;}
+     else if(event.type==='finish'){if(event.calls.length)throw Error('Director响应无效');reason=event.reason;}
      if(new TextEncoder().encode(text).length>8192)throw Error('Director输出过长');
     }
    }catch(error){
