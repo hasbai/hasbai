@@ -1,3 +1,4 @@
+import { observeRequest } from '@hasbai/observability';
 import { identity, authenticatedUsername, AuthError } from './auth';
 import { body, boundedBody, HttpError, json } from './http';
 import { discover, download } from './discovery';
@@ -15,6 +16,7 @@ import { characterForm, characterImages, generateCharacterImage } from './charac
 import { readPrompts, savePrompts } from './prompts';
 export default {
  async fetch(request:Request,env:Env,ctx:Pick<ExecutionContext,'waitUntil'>):Promise<Response> {
+  return observeRequest(request,'tavern',env.VERSION?.id,async()=>{
   const url=new URL(request.url),p=url.pathname,method=request.method;
   try {
    if(p==='/health')return json({ok:true,service:'tavern',version:env.VERSION.id});
@@ -130,7 +132,8 @@ export default {
    if(error instanceof HttpError||error instanceof AuthError)return json({message:error.message},error.status);
    if(error instanceof Error&&/UNIQUE constraint/i.test(error.message))return json({message:'内容已存在'},409);
    if(error instanceof Error&&/^(文件|角色|世界书|JSON|PNG|CHARX|不支持)/.test(error.message))return json({message:error.message},400);
-   console.error(JSON.stringify({level:'error',event:'tavern_request_failed',path:p}));return json({message:'服务暂时不可用，请重试'},500);
+   return json({message:'服务暂时不可用，请重试'},500);
   }
+  });
  }
 } satisfies ExportedHandler<Env>;

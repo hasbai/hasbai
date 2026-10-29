@@ -22,7 +22,8 @@
     "pg": "catalog:",
     "svelte": "catalog:",
     "tailwindcss": "catalog:",
-    "tw-animate-css": "catalog:"
+    "tw-animate-css": "catalog:",
+    "@hasbai/observability": "workspace:*"
   },
   "devDependencies": {
     "@playwright/test": "catalog:",

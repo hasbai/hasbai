@@ -1,3 +1,4 @@
+import { observeRequest } from '@hasbai/observability';
 import { verifyUserToken } from '@hasbai/auth/server';
 import { hasPermission } from '@hasbai/auth/config';
 import { boundedImage, imageType, imageUrl, imageModels, type ImageAsset } from '@hasbai/images';
@@ -17,6 +18,7 @@ export async function saveImage(env:Env,bytes:Uint8Array,type:string,name:string
  return asset(row);
 }
 export default {async fetch(request:Request,env:Env):Promise<Response>{
+ return observeRequest(request,'images',env.VERSION?.id,async()=>{
  const url=new URL(request.url),p=url.pathname;
  try{
   if(p==='/health'||p==='/api/version')return json({ok:true,service:'images',id:env.VERSION.id});
@@ -72,4 +74,5 @@ export default {async fetch(request:Request,env:Env):Promise<Response>{
   }
   throw new HttpError(404,'接口不存在');
  }catch(error){return json({message:error instanceof HttpError?error.message:'图片服务暂时不可用'},error instanceof HttpError?error.status:503);}
+ });
 }};

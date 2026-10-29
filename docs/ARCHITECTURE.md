@@ -36,6 +36,7 @@ flowchart LR
 | `packages/auth` | SDK 工厂、公开配置、公共 claims 与 permission helper | 密码、管理凭据、逐轮用户资料查询 |
 | `packages/data` | Neon PostgREST 客户端工厂 | 应用 repository 和业务读取包装视图 |
 | `packages/images` | 图片类型、大小限制、模型白名单及资源契约 | 存储凭据与业务权限 |
+| `packages/observability` | 脱敏请求摘要、状态分级与响应就绪计时；见[日志说明](OBSERVABILITY.md) | 请求正文、凭据及外部日志服务 |
 | `packages/markdown` | 安全 Markdown 渲染与阅读组件、数学/引用/图表扩展 | 内容自动改写或发布决策 |
 
 视觉与复用要求见[DESIGN](DESIGN.md)。根脚本默认代理财务；财务源码、原脚本与视觉清单中的相对路径以 `apps/financial` 为工作目录，CI 等待脚本位于根 `scripts/wait-ci.mjs`。

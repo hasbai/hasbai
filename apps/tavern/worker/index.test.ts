@@ -64,7 +64,7 @@ it('records provider cache and first body observations for body and candidate st
  aiRun.mockResolvedValueOnce(new Response('data: '+JSON.stringify({choices:[{delta:{content:'故事。\n[TAVERN_NEXT]\n去港口。\n问问来路。\n坐下喝茶。'},finish_reason:'stop'}],usage:{prompt_tokens:1000,completion_tokens:3,prompt_tokens_details:{cached_tokens:800}},timings:{cache_n:800,prompt_n:200,prompt_ms:100,predicted_ms:50}})+'\n\ndata: [DONE]\n\n',{headers:{'Content-Type':'text/event-stream'}}));
  try{const response=await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'你好'});await response.text();await Promise.all(work);
   expect(aiRun).toHaveBeenCalledTimes(2);expect(aiRun.mock.calls[0][0].query).toHaveProperty('cache_prompt',true);
-  expect(info).toHaveBeenCalledWith('tavern-generation-outcome',expect.objectContaining({bodyRequests:1,candidateRequests:1,bodyMetrics:expect.objectContaining({promptTokens:1000,outputTokens:3,cachedTokens:800,prefillTokens:200,prefillMs:100,decodeMs:50}),firstBodyMs:expect.any(Number),modelFirstBodyMs:expect.any(Number),promptBudget:expect.objectContaining({detectedContextTokens:16384,includedMessages:2})}));
+  expect(info).toHaveBeenCalledWith(expect.objectContaining({event:'generation_outcome',bodyRequests:1,candidateRequests:1,bodyMetrics:expect.objectContaining({promptTokens:1000,outputTokens:3,cachedTokens:800,prefillTokens:200,prefillMs:100,decodeMs:50}),firstBodyMs:expect.any(Number),modelFirstBodyMs:expect.any(Number),promptBudget:expect.objectContaining({detectedContextTokens:16384,includedMessages:2})}));
  }finally{info.mockRestore();}
 });
 it('keeps inline candidate protocol out of deltas and stored story before an independent candidate model call',async()=>{
@@ -271,7 +271,7 @@ it.each([{status:502,reason:'upstream'},{status:200,reason:'unsupported'}])('cla
  const text=await response.text();await Promise.all(work);expect(text).not.toContain('private provider failure');expect(aiRun).toHaveBeenCalledTimes(1);expect(cancelled).toBe(true);
  expect(sessionDb.prepare('SELECT generation_id FROM sessions WHERE id=?').get(s.id)?.generation_id).toBeNull();
  expect(sessionDb.prepare("SELECT finish_reason FROM messages WHERE request_id=? AND role='assistant'").get(requestId)?.finish_reason).toBe(reason);
- expect(info).toHaveBeenCalledWith('tavern-generation-outcome',expect.objectContaining({gatewayLogId:'failed-gateway-log',requestId,finishReason:reason}));info.mockRestore();
+ expect(info).toHaveBeenCalledWith(expect.objectContaining({event:'generation_outcome',gatewayLogId:'failed-gateway-log',requestId,finishReason:reason}));info.mockRestore();
 });
 
 it('normalizes legacy session/settings JSON and rejects unknown logical model before inference',async()=>{

@@ -10,6 +10,7 @@
 | 登录、JWT、audience、用户与管理员权限 | [AUTHORIZATION](AUTHORIZATION.md) | `packages/auth`、`auth0/login-claims.js`、各 Worker |
 | 共用组件、主题、交互和可访问性 | [DESIGN](DESIGN.md) | `packages/ui`，各应用设计契约 |
 | Markdown、数学、图表、引用与源码保真 | [MARKDOWN](MARKDOWN.md) | `packages/markdown`、博客编辑器 |
+| 日志、链路追踪、脱敏与用量 | [OBSERVABILITY](OBSERVABILITY.md) | 各应用 Wrangler 配置、共享日志包 |
 | 本地检查、截图、迁移、CI、提交发布 | [TESTING](TESTING.md) | package scripts、workflow、`scripts/affected.mjs` |
 
 ## 应用文档

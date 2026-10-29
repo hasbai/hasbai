@@ -1,13 +1,53 @@
 {
-  "$schema":"./node_modules/wrangler/config-schema.json",
-  "name":"zboard",
-  "main":"worker/index.ts",
-  "compatibility_date":"2026-09-28",
-  "compatibility_flags":["nodejs_compat"],
-  "routes":[{"pattern":"zboard.hasbai.xyz","custom_domain":true}],
-  "assets":{"directory":"dist","binding":"ASSETS","not_found_handling":"single-page-application","run_worker_first":["/api/*","/sub/*","/health"]},
-  "vars":{"AUTH0_DOMAIN":"auth.hasbai.xyz","AUTH0_AUDIENCE":"https://zboard.hasbai.xyz/api"},
-  "version_metadata":{"binding":"VERSION"},
-  "observability":{"enabled":true,"head_sampling_rate":0.1,"logs":{"invocation_logs":false},"traces":{"enabled":true,"head_sampling_rate":0.1}},
-  "d1_databases":[{"binding":"DB","database_name":"zboard","database_id":"a120a0fb-f6a4-4590-b769-c388dad0e46f","migrations_dir":"migrations"}]
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "zboard",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-09-28",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "routes": [
+    {
+      "pattern": "zboard.hasbai.xyz",
+      "custom_domain": true
+    }
+  ],
+  "assets": {
+    "directory": "dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": [
+      "/api/*",
+      "/sub/*",
+      "/health"
+    ]
+  },
+  "vars": {
+    "AUTH0_DOMAIN": "auth.hasbai.xyz",
+    "AUTH0_AUDIENCE": "https://zboard.hasbai.xyz/api"
+  },
+  "version_metadata": {
+    "binding": "VERSION"
+  },
+  "observability": {
+    "enabled": true,
+    "redact_query_string": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "invocation_logs": false
+    },
+    "traces": {
+      "enabled": false,
+      "head_sampling_rate": 0
+    }
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "zboard",
+      "database_id": "a120a0fb-f6a4-4590-b769-c388dad0e46f",
+      "migrations_dir": "migrations"
+    }
+  ]
 }

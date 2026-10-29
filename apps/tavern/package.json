@@ -29,7 +29,8 @@
     "tailwindcss": "catalog:",
     "tw-animate-css": "catalog:",
     "@hasbai/messaging": "workspace:*",
-    "@hasbai/images": "workspace:*"
+    "@hasbai/images": "workspace:*",
+    "@hasbai/observability": "workspace:*"
   },
   "devDependencies": {
     "@playwright/test": "catalog:",
