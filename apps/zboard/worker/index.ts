@@ -1,3 +1,4 @@
+import { observeRequest } from '@hasbai/observability';
 import { identity, AuthError } from "./auth";
 import { clientConfig, subscription } from "./subscription";
 import {
@@ -63,6 +64,7 @@ function subscriptionOrigin(url: URL): string {
 
 export default {
   async fetch(request: Request, env: Env) {
+    return observeRequest(request, "zboard", env.VERSION?.id, async () => {
     const url = new URL(request.url);
     try {
       if (request.method === "OPTIONS") {
@@ -90,13 +92,11 @@ export default {
       if (error instanceof HttpError || error instanceof AuthError) {
         return json({ message: error.message }, error.status);
       }
-      console.error(
-        JSON.stringify({ level: "error", event: "request_failed" }),
-      );
       if (errorToString(error).includes("UNIQUE constraint"))
         return json({ message: "名称或用户身份已存在" }, 409);
       return json({ message: "internal error" }, 500);
     }
+    });
   },
 } satisfies ExportedHandler<Env>;
 

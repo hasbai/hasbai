@@ -1,0 +1,8 @@
+{
+  "name": "@hasbai/observability",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

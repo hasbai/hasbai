@@ -32,7 +32,8 @@
     "svelte": "catalog:",
     "tw-animate-css": "catalog:",
     "zod": "catalog:",
-    "@hasbai/images": "workspace:*"
+    "@hasbai/images": "workspace:*",
+    "@hasbai/observability": "workspace:*"
   },
   "devDependencies": {
     "@playwright/test": "catalog:",

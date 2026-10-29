@@ -50,13 +50,15 @@
   },
   "observability": {
     "enabled": true,
-    "head_sampling_rate": 0.1,
+    "redact_query_string": true,
     "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
       "invocation_logs": false
     },
     "traces": {
-      "enabled": true,
-      "head_sampling_rate": 0.1
+      "enabled": false,
+      "head_sampling_rate": 0
     }
   },
   "d1_databases": [

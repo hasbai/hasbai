@@ -1,7 +1,9 @@
+import { observeRequest } from "@hasbai/observability";
 import { localeFromPath, withoutLocale } from "$lib/locales";
 import { localesResponse, supportedLocales } from "$lib/server/settings";
 import type { Handle } from "@sveltejs/kit";
-export const handle: Handle = async ({ event, resolve }) => {
+export const handle: Handle = async ({ event, resolve }) =>
+ observeRequest(event.request, "blog", event.platform?.env.VERSION?.id, async () => {
   const path = event.url.pathname;
   const locales =
     path.startsWith("/api/") || path.startsWith("/images/")
@@ -29,4 +31,4 @@ export const handle: Handle = async ({ event, resolve }) => {
   )
     response.headers.set("Cache-Control", "private,no-store");
   return response;
-};
+});
