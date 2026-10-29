@@ -19,7 +19,8 @@
         "page-states",
         "character-generation",
         "character-avatar",
-        "character-portrait"
+        "character-portrait",
+        "greeting-picker"
       ]
     },
     {
@@ -590,6 +591,24 @@
           ]
         }
       ]
+    },
+    {
+      "id": "greeting-picker",
+      "evidence": [
+        {
+          "spec": "e2e/tavern.spec.ts",
+          "test": "greeting cards default to random and allow choosing before creation",
+          "projects": [
+            "desktop",
+            "iphone"
+          ],
+          "snapshots": [
+            "greeting-picker.png",
+            "greeting-picker-dark.png"
+          ]
+        }
+      ],
+      "kind": "screenshot"
     }
   ]
 }

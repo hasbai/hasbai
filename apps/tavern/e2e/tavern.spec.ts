@@ -8,6 +8,11 @@ const settings={userName:'旅人',persona:'一位从北方归来的旅人。',sy
 const book={id:'b1',name:'北境港城',enabled:true,count:2,raw:{name:'北境港城',entries:[{keys:['港城'],content:'港城的灯塔每晚亮起。',enabled:true},{keys:[],content:'故事发生在初秋。',constant:true,enabled:true}]},unsupported:[]};
 const session={id:'s1',title:'港城的雨夜',characterName:'岚',updatedAt:1790990000000,settings,bookIds:['b1'],character:raw,generationId:null as string|null};
 const greeting={id:'m1',role:'assistant',content:raw.data.first_mes,status:'completed',ordinal:0,requestId:null,createdAt:1790990000000};
+async function startConversation(page:Page) {
+ await page.getByRole('button',{name:'开始对话',exact:true}).click();
+ await expect(page.getByRole('button',{name:/随机开场/})).toHaveAttribute('aria-pressed','true');
+ await page.getByRole('dialog').getByRole('button',{name:'开始对话',exact:true}).click();
+}
 async function fixture(page:Page,{empty=false,fail=false,delay=false,streamDelay=false,stopDelay=false,partial=false,long=false,promptAdmin=true,agent=false,telegram=false}={}) {
  let promptTexts={...DEFAULT_PROMPTS};let activities:Record<string,unknown>[]=[];let estimatedTokens=8250,coveredMessages=0;
  const current=structuredClone(session);
@@ -73,7 +78,7 @@ test('worldbooks settings and dark mode',async({page})=>{
  await fixture(page);await nav(page,'世界书');await expect(page.getByRole('heading',{name:'北境港城'})).toBeVisible();await shot(page,'worldbooks.png');await page.getByRole('button',{name:'编辑 北境港城'}).click();await shot(page,'worldbook-editor.png');await page.keyboard.press('Escape');await nav(page,'设置');await page.getByLabel('你的名字').fill('远行者');await page.getByRole('button',{name:'保存设置'}).click();await expect(page.getByRole('status')).toHaveText('已保存');await shot(page,'settings.png');await page.getByRole('button',{name:'切换深色模式'}).last().click();await nav(page,'角色库');await shot(page,'library-dark.png');
 });
 test('chat stream editing export and keyboard',async({page})=>{
- await fixture(page);await page.getByRole('button',{name:'开始对话',exact:true}).click();await expect(page.getByText('门外传来脚步声。',{exact:false})).toBeVisible();await shot(page,'chat.png');await page.getByLabel('发送消息',{exact:true}).fill('我是从北方回来的旅人。');await page.getByLabel('发送消息',{exact:true}).press('Enter');await expect(page.getByText('岚把热茶放在桌上。',{exact:false})).toBeVisible();await expect(page.getByRole('button',{name:'会话设置'})).toBeEnabled();await page.getByRole('log',{name:'消息历史'}).evaluate(e=>e.scrollTop=e.scrollHeight);await shot(page,'chat-reply.png');
+ await fixture(page);await startConversation(page);await expect(page.getByText('门外传来脚步声。',{exact:false})).toBeVisible();await shot(page,'chat.png');await page.getByLabel('发送消息',{exact:true}).fill('我是从北方回来的旅人。');await page.getByLabel('发送消息',{exact:true}).press('Enter');await expect(page.getByText('岚把热茶放在桌上。',{exact:false})).toBeVisible();await expect(page.getByRole('button',{name:'会话设置'})).toBeEnabled();await page.getByRole('log',{name:'消息历史'}).evaluate(e=>e.scrollTop=e.scrollHeight);await shot(page,'chat-reply.png');
  await page.getByRole('button',{name:'会话设置'}).click();await expect(page.getByRole('dialog')).toBeVisible();if(page.viewportSize()!.width>639)await expect(page.getByLabel('会话名称')).toBeFocused();else await expect(page.getByRole('dialog')).toBeFocused();await shot(page,'chat-settings.png');await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);const editTrigger=page.getByRole('button',{name:'编辑第 2 条消息'});await editTrigger.focus();await expect(editTrigger).toBeFocused();const messageLog=page.getByRole('log',{name:'消息历史'});await messageLog.evaluate(e=>e.scrollTop=0);await expect.poll(()=>messageLog.evaluate(e=>e.scrollTop)).toBe(0);await editTrigger.click();await expect(page.getByRole('dialog')).toBeVisible();await shot(page,'chat-edit.png');await page.getByLabel('消息内容').fill('新的旅程。');await page.getByRole('button',{name:'保存并删除后续',exact:true}).click();await expect(page.getByText('新的旅程。',{exact:true})).toBeVisible();
  const download=page.waitForEvent('download');await page.getByRole('button',{name:'导出对话'}).click();expect((await download).suggestedFilename()).toMatch(/\.jsonl$/);
 });
@@ -85,7 +90,7 @@ test('empty error and loading states',async({page})=>{
  await page.unroute('**/api/**');await fixture(page,{fail:true});await expect(page.getByRole('alert')).toContainText('服务暂时不可用');await shot(page,'library-error.png');await page.unroute('**/api/**');await fixture(page,{delay:true});await expect(page.getByRole('progressbar',{name:'加载进度'})).toBeVisible();await shot(page,'library-loading.png');
 });
 test('interrupted stream can be stopped and recovered',async({page})=>{
- await fixture(page,{streamDelay:true,stopDelay:true});await page.getByRole('button',{name:'开始对话',exact:true}).click();await page.getByLabel('发送消息',{exact:true}).fill('继续');await page.getByRole('button',{name:'发送',exact:true}).click();await expect(page.getByRole('alert')).toHaveText('连接中断，已保存的内容可刷新恢复');await expect(page.getByRole('alert')).toHaveCount(0);await expect(page.getByText('岚把热茶放在桌上。',{exact:false})).toBeVisible();await expect(page.getByRole('button',{name:'停止',exact:true})).toBeVisible();await shot(page,'chat-interrupted.png');await page.getByRole('button',{name:'停止',exact:true}).click();await expect(page.getByText('已停止生成',{exact:true})).toBeVisible();await expect(page.getByLabel('发送消息',{exact:true})).toBeEnabled();await expect(page.getByRole('button',{name:'停止',exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'会话设置'})).toBeEnabled();await shot(page,'chat-stopped.png');
+ await fixture(page,{streamDelay:true,stopDelay:true});await startConversation(page);await page.getByLabel('发送消息',{exact:true}).fill('继续');await page.getByRole('button',{name:'发送',exact:true}).click();await expect(page.getByRole('alert')).toHaveText('连接中断，已保存的内容可刷新恢复');await expect(page.getByRole('alert')).toHaveCount(0);await expect(page.getByText('岚把热茶放在桌上。',{exact:false})).toBeVisible();await expect(page.getByRole('button',{name:'停止',exact:true})).toBeVisible();await shot(page,'chat-interrupted.png');await page.getByRole('button',{name:'停止',exact:true}).click();await expect(page.getByText('已停止生成',{exact:true})).toBeVisible();await expect(page.getByLabel('发送消息',{exact:true})).toBeEnabled();await expect(page.getByRole('button',{name:'停止',exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'会话设置'})).toBeEnabled();await shot(page,'chat-stopped.png');
 });
 
 test('every page dark error loading and keyboard states',async({page})=>{
@@ -117,14 +122,14 @@ test('discovery ranking categories tags and source capabilities',async({page})=>
  await page.getByLabel('角色来源').selectOption('theatrelm');await expect(page.getByLabel('排序',{exact:true})).toHaveValue('catalog');await expect(page.getByLabel('分类',{exact:true})).toBeDisabled();await expect(page.getByLabel('标签',{exact:true})).toHaveValue('');
 });
 test('enter sends shift enter preserves newline and composition does not send',async({page})=>{
- await fixture(page);await page.getByRole('button',{name:'开始对话',exact:true}).click();const input=page.getByLabel('发送消息',{exact:true});await expect(input).toHaveAttribute('rows','1');const initialHeight=await input.evaluate(e=>e.getBoundingClientRect().height);await input.fill('长段落\n'.repeat(20));await expect.poll(()=>input.evaluate(e=>e.getBoundingClientRect().height)).toBe(200);await input.fill('');await expect.poll(()=>input.evaluate(e=>e.getBoundingClientRect().height)).toBe(initialHeight);await input.fill('来自北方。');
+ await fixture(page);await startConversation(page);const input=page.getByLabel('发送消息',{exact:true});await expect(input).toHaveAttribute('rows','1');const initialHeight=await input.evaluate(e=>e.getBoundingClientRect().height);await input.fill('长段落\n'.repeat(20));await expect.poll(()=>input.evaluate(e=>e.getBoundingClientRect().height)).toBe(200);await input.fill('');await expect.poll(()=>input.evaluate(e=>e.getBoundingClientRect().height)).toBe(initialHeight);await input.fill('来自北方。');
  let sent=0;page.on('request',r=>{if(r.url().endsWith('/generate'))sent++;});
  await input.dispatchEvent('compositionstart');await input.dispatchEvent('keydown',{key:'Enter',keyCode:229,isComposing:true});await input.dispatchEvent('compositionend');expect(sent).toBe(0);
  await input.press('Shift+Enter');await input.pressSequentially('愿意休息一下。');await expect(input).toHaveValue('来自北方。\n愿意休息一下。');expect(sent).toBe(0);await expect.poll(()=>input.evaluate(e=>e.getBoundingClientRect().height)).toBeGreaterThan(initialHeight);await shot(page,'chat-composer-expanded.png');
  const request=page.waitForRequest(r=>r.url().endsWith('/generate'));await input.press('Enter');expect((await request).postDataJSON().content).toBe('来自北方。\n愿意休息一下。');await expect(page.getByText('岚把热茶放在桌上。',{exact:false})).toBeVisible();expect(sent).toBe(1);await expect.poll(()=>input.evaluate(e=>e.getBoundingClientRect().height)).toBe(initialHeight);await expect(page.locator('.message-avatar,.message-heading')).toHaveCount(0);await expect(page.locator('.composer').getByRole('button',{name:'重新生成',exact:true})).toHaveCount(0);await expect(page.locator('.message').last().getByRole('button',{name:'重新生成',exact:true})).toBeVisible();expect(await page.getByRole('button',{name:'发送',exact:true}).textContent()).toBe('');
 });
 test('partial reply remains an explicit error with no continuation action',async({page})=>{
- await fixture(page,{partial:true});await page.getByRole('button',{name:'开始对话',exact:true}).click();await page.getByLabel('发送消息',{exact:true}).fill('你是谁');await page.getByLabel('发送消息',{exact:true}).press('Enter');await expect(page.getByText('回复达到长度上限，内容已保存',{exact:true})).toBeVisible();await shot(page,'chat-length.png');
+ await fixture(page,{partial:true});await startConversation(page);await page.getByLabel('发送消息',{exact:true}).fill('你是谁');await page.getByLabel('发送消息',{exact:true}).press('Enter');await expect(page.getByText('回复达到长度上限，内容已保存',{exact:true})).toBeVisible();await shot(page,'chat-length.png');
  await nav(page,'角色库');await nav(page,'对话');await page.getByRole('button',{name:/港城的雨夜/}).click();await expect(page.getByText('回复达到长度上限，内容已保存',{exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'继续回复'})).toHaveCount(0);await expect(page.getByRole('button',{name:'调整长度'})).toHaveCount(0);const regen=page.waitForRequest(r=>r.url().endsWith('/generate'));await page.getByRole('button',{name:'重新生成',exact:true}).click();expect((await regen).postDataJSON()).toMatchObject({regenerate:true});expect((await regen).postDataJSON()).not.toHaveProperty('continue');await expect(page.getByText('岚把热茶放在桌上。',{exact:false})).toBeVisible();await expect(page.getByText('岚轻轻抬起头，',{exact:false})).toHaveCount(0);await expect(page.getByText('回复达到长度上限，内容已保存',{exact:true})).toHaveCount(0);
 });
 test('long chat reading width and scroll position',async({page})=>{
@@ -153,7 +158,7 @@ test('model controls compact prompt defaults persistence and reset preserve pers
  await page.getByRole('button',{name:'保存设置'}).click();await nav(page,'对话');await page.getByRole('button',{name:/港城的雨夜/}).click();await page.getByRole('button',{name:'会话设置'}).click();await expect(page.getByRole('switch',{name:'启用思考'})).toHaveAttribute('aria-checked','false');await page.getByRole('switch',{name:'启用思考'}).click();await page.getByLabel('思考强度',{exact:true}).selectOption('medium');await shot(page,'chat-thinking-medium.png');const patch=page.waitForRequest(r=>r.url().endsWith('/sessions/s1')&&r.method()==='PATCH');await page.getByRole('button',{name:'保存',exact:true}).click();expect((await patch).postDataJSON().settings).toMatchObject({thinkingEnabled:true,reasoningEffort:'medium'});await page.getByRole('button',{name:'会话设置'}).click();await expect(page.getByRole('switch',{name:'启用思考'})).toHaveAttribute('aria-checked','true');await expect(page.getByLabel('思考强度',{exact:true})).toHaveValue('medium');
 });
 test('candidate click sends exact text once and preserves the free draft after reopening',async({page})=>{
- await fixture(page);await page.getByRole('button',{name:'开始对话',exact:true}).click();const input=page.getByLabel('发送消息',{exact:true});await input.fill('我想休息一下。');await input.press('Enter');await expect(page.getByRole('button',{name:'我接过热茶，问她港城今晚有什么消息。'})).toBeVisible();await expect(page.locator('.candidate-button')).toHaveCount(3);
+ await fixture(page);await startConversation(page);const input=page.getByLabel('发送消息',{exact:true});await input.fill('我想休息一下。');await input.press('Enter');await expect(page.getByRole('button',{name:'我接过热茶，问她港城今晚有什么消息。'})).toBeVisible();await expect(page.locator('.candidate-button')).toHaveCount(3);
  await nav(page,'角色库');await nav(page,'对话');await page.getByRole('button',{name:/港城的雨夜/}).click();await expect(page.locator('.candidate-button')).toHaveCount(3);await input.fill('这是一份尚未发送的草稿。');await shot(page,'chat-candidates.png');
  let sent=0;page.on('request',r=>{if(r.url().endsWith('/generate'))sent++;});const request=page.waitForRequest(r=>r.url().endsWith('/generate'));await page.getByRole('button',{name:'我走到窗边，看看雨中的港口。'}).focus();await page.keyboard.press('Enter');expect((await request).postDataJSON().content).toBe('我走到窗边，看看雨中的港口。');await expect(page.getByRole('button',{name:'会话设置'})).toBeEnabled();expect(sent).toBe(1);await expect(input).toHaveValue('这是一份尚未发送的草稿。');
  await nav(page,'设置');await page.getByRole('button',{name:'切换深色模式'}).last().click();await nav(page,'对话');await page.getByRole('button',{name:/港城的雨夜/}).click();await shot(page,'chat-candidates-dark.png');
@@ -161,7 +166,7 @@ test('candidate click sends exact text once and preserves the free draft after r
 test('candidate tail keeps draft editable until the same generation finishes',async({page})=>{
  await fixture(page);
  await page.evaluate(()=>{const original=window.fetch;window.fetch=async(...args)=>{const response=await original(...args);if(!String(args[0]).endsWith('/generate'))return response;const wire=await response.text();const at=wire.indexOf('data: {"type":"done"');const before=wire.slice(0,at),after=wire.slice(at);return new Response(new ReadableStream({start(controller){controller.enqueue(new TextEncoder().encode(before+'data: {"type":"candidates_pending","messageId":"pending-1"}\n\n'));Object.assign(window,{finishCandidateTest:()=>{controller.enqueue(new TextEncoder().encode(after));controller.close();}});}}),{headers:response.headers});};});
- await page.getByRole('button',{name:'开始对话',exact:true}).click();const input=page.getByLabel('发送消息',{exact:true});await input.fill('你好');await input.press('Enter');await expect(page.locator('.candidate-wait')).toBeVisible();await expect(input).toBeEnabled();await input.fill('等候时写下的下一句');await input.press('Enter');await expect(page.locator('.candidate-button')).toHaveCount(0);await shot(page,'chat-candidates-waiting.png');await page.evaluate(()=>{(window as typeof window & {finishCandidateTest:()=>void}).finishCandidateTest();});await expect(page.locator('.candidate-button')).toHaveCount(3);await expect(input).toHaveValue('等候时写下的下一句');
+ await startConversation(page);const input=page.getByLabel('发送消息',{exact:true});await input.fill('你好');await input.press('Enter');await expect(page.locator('.candidate-wait')).toBeVisible();await expect(input).toBeEnabled();await input.fill('等候时写下的下一句');await input.press('Enter');await expect(page.locator('.candidate-button')).toHaveCount(0);await shot(page,'chat-candidates-waiting.png');await page.evaluate(()=>{(window as typeof window & {finishCandidateTest:()=>void}).finishCandidateTest();});await expect(page.locator('.candidate-button')).toHaveCount(3);await expect(input).toHaveValue('等候时写下的下一句');
 });
 
 test('character creation generates from input then edits and saves with recoverable failures',async({page})=>{
@@ -221,7 +226,7 @@ test('about prompts are read only for ordinary users and preserve drafts after s
 
 
 test('agent commands context and expandable results preserve a linear history',async({page})=>{
- await fixture(page,{agent:true});await page.getByRole('button',{name:'开始对话',exact:true}).click();const input=page.getByLabel('发送消息',{exact:true});
+ await fixture(page,{agent:true});await startConversation(page);const input=page.getByLabel('发送消息',{exact:true});
  await input.click();await expect(page.getByRole('listbox',{name:'可用命令'})).toBeVisible();await shot(page,'chat-commands.png',true);
  await input.click();await page.getByRole('option',{name:'/ooc',exact:false}).click();await input.fill('/ooc 放慢节奏，不跳时。\n我把行囊放在桌边。');const sent=page.waitForRequest(r=>r.url().endsWith('/generate'));await input.press('Enter');expect((await sent).postDataJSON().content).toBe('/ooc 放慢节奏，不跳时。\n我把行囊放在桌边。');
  await expect(page.getByText('岚把热茶放在桌上。',{exact:false})).toBeVisible();await page.locator('.agent-activity summary').filter({hasText:'search_memory'}).click();await expect(page.getByText('灯塔每晚亮起。',{exact:false})).toBeVisible();await expect(page.locator('[data-kind="compression"]')).toHaveText('压缩上下文已完成');await expect(page.getByText('对话生成',{exact:true})).toHaveCount(0);await expect(page.getByText('covered',{exact:false})).toHaveCount(0);await shot(page,'chat-agent-results.png');
@@ -258,12 +263,12 @@ test('avatar generation can be closed without saving or leaking its result',asyn
 test('opening a character edits saves and starts with the selected greeting in one form',async({page})=>{
  await fixture(page);
  await page.getByRole('button',{name:/岚.*测试作者/}).click();await expect(page.getByRole('dialog')).toBeFocused();await page.getByLabel('角色名称',{exact:true}).fill('未保存的名称');await page.getByRole('button',{name:'取消',exact:true}).click();await page.getByRole('button',{name:/岚.*测试作者/}).click();await expect(page.getByLabel('角色名称',{exact:true})).toHaveValue('岚');
- await page.getByLabel('角色名称',{exact:true}).fill('岚 · 新设定');await page.getByLabel('角色描述',{exact:true}).fill('修改后的角色描述');await page.getByLabel('选择开场白',{exact:true}).selectOption('1');
+ await page.getByLabel('角色名称',{exact:true}).fill('岚 · 新设定');await page.getByLabel('角色描述',{exact:true}).fill('修改后的角色描述');
  let writes=0;await page.route('**/api/characters/c1',async route=>{if(route.request().method()!=='PATCH'){await route.fallback();return;}writes++;expect(route.request().postDataJSON().card.data).toMatchObject({name:'岚 · 新设定',description:'修改后的角色描述'});if(writes===1)await route.fulfill({status:503,json:{message:'保存失败，请重试'}});else await route.fallback();});
  await page.getByRole('dialog').getByRole('button',{name:'开始对话',exact:true}).click();await expect(page.getByRole('alert')).toContainText('保存失败');await expect(page.getByLabel('角色名称')).toHaveValue('岚 · 新设定');
  let sessions=0;await page.route('**/api/sessions',async route=>{if(route.request().method()!=='POST'){await route.fallback();return;}if(++sessions===1)await route.fulfill({status:503,json:{message:'会话服务暂时不可用'}});else await route.fallback();});
- await page.getByRole('dialog').getByRole('button',{name:'开始对话',exact:true}).click();await expect(page.getByRole('dialog').getByRole('alert')).toContainText('对话创建失败');await expect(page.getByLabel('角色名称')).toHaveValue('岚 · 新设定');await expect(page.getByLabel('选择开场白')).toHaveValue('1');
- const started=page.waitForRequest(r=>r.url().endsWith('/api/sessions')&&r.method()==='POST');await page.getByRole('dialog').getByRole('button',{name:'开始对话',exact:true}).click();expect((await started).postDataJSON()).toEqual({characterId:'c1',greeting:1});await expect(page.getByRole('dialog')).toHaveCount(0);expect(writes).toBe(3);expect(sessions).toBe(2);
+ await page.getByRole('dialog').getByRole('button',{name:'开始对话',exact:true}).click();await expect(page.getByRole('button',{name:/随机开场/})).toHaveAttribute('aria-pressed','true');await page.getByRole('button',{name:/开场白 2/}).click();await page.getByRole('dialog').getByRole('button',{name:'开始对话',exact:true}).click();await expect(page.getByRole('dialog').getByRole('alert')).toContainText('对话创建失败');await expect(page.getByRole('button',{name:/开场白 2/})).toHaveAttribute('aria-pressed','true');
+ const started=page.waitForRequest(r=>r.url().endsWith('/api/sessions')&&r.method()==='POST');await page.getByRole('dialog').getByRole('button',{name:'开始对话',exact:true}).click();expect((await started).postDataJSON()).toEqual({characterId:'c1',greeting:1});await expect(page.getByRole('dialog')).toHaveCount(0);expect(writes).toBe(2);expect(sessions).toBe(2);
 });
 
 test('character portrait has independent upload generation and shared image reference',async({page})=>{
@@ -277,7 +282,7 @@ test('character portrait has independent upload generation and shared image refe
 test('desktop navigation collapses both rails without losing the conversation',async({page})=>{
  test.skip(page.viewportSize()!.width<641,'Desktop navigation');
  await page.setViewportSize({width:2048,height:1100});
- await fixture(page);await page.getByRole('button',{name:'开始对话',exact:true}).click();
+ await fixture(page);await startConversation(page);
  await expect(page.getByRole('log',{name:'消息历史'})).toBeVisible();
  const draft=page.getByLabel('发送消息',{exact:true});await draft.fill('保留的草稿');
  const bounds=await page.locator('.shell').boundingBox();expect(bounds!.x).toBe(0);expect(bounds!.width).toBe(2048);
@@ -373,7 +378,7 @@ test('chat viewport keeps one reading scroll and composer above the keyboard',as
 test('mobile conversations hide navigation and restore it in the session list',async({page})=>{
  test.skip(page.viewportSize()!.width>=641,'Mobile conversation navigation');
  await fixture(page);const navigation=page.getByRole('navigation',{name:'主要导航'});
- await expect(navigation).toBeVisible();await page.getByRole('button',{name:'开始对话',exact:true}).click();
+ await expect(navigation).toBeVisible();await startConversation(page);
  await expect(navigation).toBeHidden();const input=page.getByLabel('发送消息',{exact:true});await input.fill('返回后保留的草稿');
  const composer=await page.locator('.composer').boundingBox();expect(Math.round(composer!.y+composer!.height)).toBe(page.viewportSize()!.height);
  await shot(page,'chat-mobile-immersive.png');
@@ -383,7 +388,7 @@ test('mobile conversations hide navigation and restore it in the session list',a
 });
 
 test('model phases share expandable streaming reasoning without a system loading bar',async({page})=>{
- await fixture(page);await page.getByRole('button',{name:'开始对话',exact:true}).click();
+ await fixture(page);await startConversation(page);
  await expect(page.getByRole('progressbar',{name:'加载进度'})).toHaveCount(0);
  await page.evaluate(()=>{const original=window.fetch;window.fetch=async(...args)=>{
   const response=await original(...args);if(!String(args[0]).endsWith('/generate'))return response;
@@ -407,4 +412,14 @@ test('model phases share expandable streaming reasoning without a system loading
  await page.evaluate(()=>document.documentElement.classList.add('dark'));await shot(page,'chat-reasoning-dark.png');
  if(page.viewportSize()!.width>639){await page.setViewportSize({width:1280,height:600});await expect(page.getByRole('button',{name:'停止',exact:true})).toBeInViewport();await shot(page,'chat-reasoning-short.png');}
  await advance('done');await expect(progress).toHaveCount(0);await expect(page.getByRole('button',{name:'会话设置'})).toBeEnabled();await expect(page.getByRole('progressbar')).toHaveCount(0);
+});
+
+test('greeting cards default to random and allow choosing before creation',async({page})=>{
+ await fixture(page);let creations=0;page.on('request',r=>{if(r.url().endsWith('/api/sessions')&&r.method()==='POST')creations++;});
+ await page.getByRole('button',{name:'开始对话',exact:true}).click();
+ await expect(page.getByRole('button',{name:/随机开场/})).toHaveAttribute('aria-pressed','true');await shot(page,'greeting-picker.png');
+ await page.getByRole('button',{name:'下一个开场白'}).click();await page.getByRole('button',{name:/开场白 2/}).click();await expect(page.getByRole('button',{name:/开场白 2/})).toHaveAttribute('aria-pressed','true');
+ await page.getByRole('button',{name:'取消',exact:true}).click();expect(creations).toBe(0);
+ await nav(page,'设置');await page.getByRole('button',{name:'切换深色模式'}).last().click();await nav(page,'角色库');await page.getByRole('button',{name:'开始对话',exact:true}).click();await expect(page.getByRole('button',{name:/随机开场/})).toHaveAttribute('aria-pressed','true');await shot(page,'greeting-picker-dark.png');
+ const started=page.waitForRequest(r=>r.url().endsWith('/api/sessions')&&r.method()==='POST');await page.getByRole('dialog').getByRole('button',{name:'开始对话',exact:true}).click();expect([0,1]).toContain((await started).postDataJSON().greeting);await expect(page.getByRole('dialog')).toHaveCount(0);
 });

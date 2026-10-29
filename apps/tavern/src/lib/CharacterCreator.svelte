@@ -12,15 +12,12 @@
  import Avatar from './Avatar.svelte';
  import type { Api, CharacterImageDrafts } from './api';
  import { imageUrl } from '@hasbai/images';
- let { api, character, onsave, oncancel, actions }: { api: Api; character?: Character; onsave: (card: JsonObject, images?: CharacterImageDrafts, greeting?: number) => Promise<void>; oncancel: () => void; actions?: Snippet } = $props();
+ let { api, character, onsave, oncancel, actions }: { api: Api; character?: Character; onsave: (card: JsonObject, images?: CharacterImageDrafts, startChat?: boolean) => Promise<void>; oncancel: () => void; actions?: Snippet } = $props();
  const original = untrack(() => $state.snapshot(character?.card));
  let draft = $state<CharacterDraft>(untrack(() => original ? characterDraft(original) : emptyCharacterDraft())), brief = $state(''), tagText = $state(untrack(() => draft.tags.join('，')));
  let images = $state<CharacterImageDrafts>({}), previews = $state<Record<string,string>>({}), imagePrompt = $state(''), generatingImage = $state<'avatar'|'portrait'>(), uploadingImage = $state(false);
  const imageKinds = [{kind:'avatar' as const,label:'头像'},{kind:'portrait' as const,label:'立绘'}];
  let generating = $state(false), saving = $state(false), error = $state(''), status = $state('');
- let greeting = $state(0);
- const greetings = $derived([draft.first_mes, ...draft.alternate_greetings]);
- $effect(() => { if (greeting >= greetings.length) greeting = 0; });
  let previous = $state<CharacterDraft>(), previousTags = $state('');
  let controller: AbortController | undefined;
  const locked = $derived(generating || !!generatingImage || uploadingImage || saving);
@@ -63,7 +60,7 @@
   try {
    const input = snapshot();
    if (!input.name.trim()) { error = '请填写角色名称'; return; }
-   saving = true; await onsave(characterCard(input, original), images, startChat ? greeting : undefined);
+   saving = true; await onsave(characterCard(input, original), images, startChat);
   } catch (e) { error = e instanceof Error ? e.message : '保存失败，请重试'; }
   finally { saving = false; }
  }
@@ -115,7 +112,7 @@
   {/each}
   <details class="creator-advanced"><summary>作者与高级设定</summary><div class="creator-section"><div class="creator-two-fields">{#each ['creator', 'character_version'] as key}<div class="field"><label for={`character-${key}`}>{CHARACTER_FIELDS[key as CharacterField].label}</label><Input id={`character-${key}`} bind:value={draft[key as CharacterField]}/></div>{/each}</div>{#each ['creator_notes', 'system_prompt', 'post_history_instructions'] as key}<div class="field"><label for={`character-${key}`}>{CHARACTER_FIELDS[key as CharacterField].label}</label><textarea id={`character-${key}`} bind:value={draft[key as CharacterField]} rows="3"></textarea></div>{/each}</div></details>
  </fieldset>
- {#if character && draft.alternate_greetings.length}<div class="field creator-greeting"><label for="greeting">选择开场白</label><select id="greeting" bind:value={greeting} disabled={locked}>{#each greetings as text,i}<option value={i}>{i+1} · {text.slice(0,40)||'空开场'}</option>{/each}</select></div>{/if}
+
  {#if actions}<fieldset disabled={locked} class="creator-tools">{@render actions()}</fieldset>{/if}
  {#if character?.sourceUrl}<a href={character.sourceUrl} target="_blank" rel="noopener noreferrer">角色来源</a>{/if}
  {#if character?.unsupported.length}<div class="tags"><span>扩展仅保留</span>{#each character.unsupported as item}<span>{item}</span>{/each}</div>{/if}

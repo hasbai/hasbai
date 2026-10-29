@@ -155,8 +155,6 @@ input:not([type=checkbox]),select,textarea{border:1px solid var(--border);border
 .creator-scroll textarea{scrollbar-width:none}
 .creator-tools{border:0;padding:0;margin:0;min-width:0}
 .creator-tools .actions{display:flex;gap:8px}
-.creator-greeting{width:100%;min-width:0}
-.creator-greeting select{width:100%;min-width:0}
 .creator-section .field{gap:6px}
 .creator-section textarea{line-height:1.7}
 .creator-section label span{margin-left:8px;font-weight:400}
@@ -239,3 +237,5 @@ html:has(.chat-shell),body:has(.chat-shell){overflow:hidden;overscroll-behavior:
 }
 
 @media(min-width:641px) and (max-width:900px){.navigation-heading{gap:4px}.navigation-heading .brand{gap:6px;font-size:16px}.navigation-heading .brand-mark{width:24px}}
+
+.greeting-dialog{width:min(94vw,640px);max-width:640px;overflow:hidden}
