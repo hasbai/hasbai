@@ -423,3 +423,20 @@ test('greeting cards default to random and allow choosing before creation',async
  await nav(page,'设置');await page.getByRole('button',{name:'切换深色模式'}).last().click();await nav(page,'角色库');await page.getByRole('button',{name:'开始对话',exact:true}).click();await expect(page.getByRole('button',{name:/随机开场/})).toHaveAttribute('aria-pressed','true');await shot(page,'greeting-picker-dark.png');
  const started=page.waitForRequest(r=>r.url().endsWith('/api/sessions')&&r.method()==='POST');await page.getByRole('dialog').getByRole('button',{name:'开始对话',exact:true}).click();expect([0,1]).toContain((await started).postDataJSON().greeting);await expect(page.getByRole('dialog')).toHaveCount(0);
 });
+
+test('greeting selection remains reachable on short screens and submits the chosen opening',async({page})=>{
+ await page.setViewportSize({width:page.viewportSize()!.width,height:500});
+ await fixture(page);
+ let creations=0;page.on('request',request=>{if(request.url().endsWith('/api/sessions')&&request.method()==='POST')creations++;});
+ await page.getByRole('button',{name:'开始对话',exact:true}).click();
+ const dialog=page.getByRole('dialog');
+ await expect(dialog.getByRole('button',{name:/随机开场/})).toHaveAttribute('aria-pressed','true');
+ await dialog.getByRole('button',{name:'下一个开场白'}).click();
+ const chosen=dialog.getByRole('button',{name:/开场白 2/});await chosen.click();
+ await expect(chosen).toHaveAttribute('aria-pressed','true');expect(creations).toBe(0);
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ const confirm=dialog.getByRole('button',{name:'开始对话',exact:true});await confirm.scrollIntoViewIfNeeded();await expect(confirm).toBeInViewport();
+ const started=page.waitForRequest(request=>request.url().endsWith('/api/sessions')&&request.method()==='POST');
+ await confirm.click();expect((await started).postDataJSON()).toEqual({characterId:'c1',greeting:1});
+ await expect(dialog).toHaveCount(0);await expect(page.getByLabel('发送消息',{exact:true})).toBeVisible();expect(creations).toBe(1);
+});
