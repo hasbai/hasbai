@@ -6,13 +6,22 @@ describe('request telemetry', () => {
  it('redacts credentials and preserves the original streaming response without reading it', async () => {
   const log=vi.spyOn(console,'info').mockImplementation(()=>{});
   const response=new Response(new ReadableStream({start(){}}));
-  const request=new Request('https://zboard.hasbai.xyz/sub/private-token?token=secret', {headers:{Authorization:'Bearer secret'}});
-  expect(await observeRequest(request,'zboard','version-id',async()=>response)).toBe(response);
+  const request=new Request('https://images.hasbai.xyz/api/images/private-id?token=secret', {headers:{Authorization:'Bearer secret'}});
+  expect(await observeRequest(request,'images','version-id',async()=>response)).toBe(response);
   expect(response.bodyUsed).toBe(false);
   expect(log).toHaveBeenCalledOnce();
-  expect(log.mock.calls[0][0]).toMatchObject({event:'http_request',route:'/sub/:token',status:200,service:'zboard',version:'version-id'});
-  expect(JSON.stringify(log.mock.calls)).not.toMatch(/private-token|secret|Authorization/);
+  expect(log.mock.calls[0][0]).toMatchObject({event:'http_request',route:'/api/images/*',status:200,service:'images',version:'version-id'});
+  expect(JSON.stringify(log.mock.calls)).not.toMatch(/private-id|secret|Authorization/);
   await response.body?.cancel();
+ });
+ it('does not emit console events on subscription paths, including failures',async()=>{
+  const logs=['info','warn','error'].map(level=>vi.spyOn(console,level as 'info'|'warn'|'error').mockImplementation(()=>{}));
+  const request=new Request('https://zboard.hasbai.xyz/sub/private-token?token=secret');
+  const response=await observeRequest(request,'zboard','v1',async()=>new Response(null,{status:500}));
+  expect(response.status).toBe(500);
+  const error=new Error('sensitive-failure');
+  await expect(observeRequest(request,'zboard','v1',async()=>{throw error;})).rejects.toBe(error);
+  for(const log of logs)expect(log).not.toHaveBeenCalled();
  });
  it('records handled server failures at error severity',async()=>{
   const log=vi.spyOn(console,'error').mockImplementation(()=>{});

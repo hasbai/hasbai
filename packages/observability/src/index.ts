@@ -2,7 +2,6 @@
 function routeLabel(request: Request): string {
   const path = new URL(request.url).pathname;
   if (path === '/health') return '/health';
-  if (path.startsWith('/sub/')) return '/sub/:token';
   if (path.startsWith('/images/')) return '/images/:id';
   if (path === '/api') return '/api';
   const groups = ['version', 'me', 'admin', 'v1', 'v2', 'images', 'generate', 'settings',
@@ -19,6 +18,9 @@ export async function observeRequest(
   version: string | undefined,
   run: () => Promise<Response>,
 ): Promise<Response> {
+  // Cloudflare enriches console events with the original URL even without invocation logs.
+  // A subscription token in the path cannot be removed by redact_query_string.
+  if (service === 'zboard' && new URL(request.url).pathname.startsWith('/sub/')) return run();
   const started = performance.now();
   let status = 500;
   try {

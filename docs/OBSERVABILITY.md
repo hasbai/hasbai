@@ -9,7 +9,7 @@
 | --- | --- | --- | --- |
 | Blog | 100% | 开启 | 1% |
 | Images | 100% | 开启 | 1% |
-| Zboard | 100% | 关闭 | 关闭 |
+| Zboard | 除订阅路径外 100% | 关闭 | 关闭 |
 | Tavern | 100% | 关闭 | 关闭 |
 | Financial | 静态托管，无应用 Worker 日志 | 不适用 | 不适用 |
 
@@ -27,9 +27,9 @@ Financial 的浏览器直连 Neon Data API。
 
 ## 自定义字段与隐私
 
-每次 HTTP 请求记录一条 `event=http_request`。
+除 Zboard `/sub/` 外，每次 HTTP 请求记录一条 `event=http_request`。
 字段为 `service`、`version`、`level`、`method`、`route`、`status` 和 `response_ready_ms`。
-`route` 使用固定分类；动态 ID、订阅令牌和未知路径不写入该字段。
+`route` 使用固定分类；动态 ID 和未知路径不写入该字段。
 不读取或记录请求正文、认证头、Cookie、查询参数和原始异常消息。
 
 4xx 使用 `console.warn`，5xx 使用 `console.error`，其他响应使用 `console.info`。
@@ -43,6 +43,9 @@ Tavern 的 `generation_outcome` 记录后台生成结果和模型用量。
 
 以上脱敏范围是自定义字段。
 Cloudflare 仍会自动附加运行时元数据，关闭 invocation 日志不等于移除全部请求元数据。
+实测表明，关闭 invocation 日志后，console 日志仍可能附加原始 URL。
+Zboard `/sub/` 成功及失败请求均不输出自定义日志，以免持久化订阅令牌。
+
 平台异常、Issues、实时 tail 或导出可能包含更多信息，不应当作匿名日志共享。
 未来启用路径含密钥的链路追踪前，先移除路径凭据或验证存储前脱敏方案。
 
@@ -80,6 +83,7 @@ pnpm exec wrangler tail --format json
 | 合计 | 30,269 | 129,724 | 165,505 |
 
 基础日志包括一条请求摘要，以及 Blog/Images 的一条 invocation 日志。
+Zboard 基础日志按全部请求估算上界；订阅请求实际不产生摘要。
 后台生成、DO、alarm 和其他自定义日志另计。
 初步预算为每月 17–20 万条日志、约 1,800 个 trace spans。
 span 数按 Blog/Images 每个采样请求约五个 span 估算，发布后需要实测。
