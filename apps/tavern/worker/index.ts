@@ -14,6 +14,7 @@ import { macros } from '../shared/prompt';
 import { generateCharacter } from './character-generation';
 import { characterForm, characterImages, generateCharacterImage } from './character-avatar';
 import { readPrompts, savePrompts } from './prompts';
+import { characterImageUrl } from '../shared/character-images';
 export default {
  async fetch(request:Request,env:Env,ctx:Pick<ExecutionContext,'waitUntil'>):Promise<Response> {
   return observeRequest(request,'tavern',env.VERSION?.id,async()=>{
@@ -71,9 +72,9 @@ export default {
      return jsonFile(JSON.parse(row.card_json),row.name+'.json');
     }
     if(method==='GET'&&(char[2]==='avatar'||char[2]==='portrait')){
-     const imageId=char[2]==='avatar'?row.avatar_image_id:row.portrait_image_id;if(imageId){const imageUrl=new URL(request.url);imageUrl.pathname='/images/'+imageId;const response=await env.IMAGE_SERVICE.fetch(new Request(imageUrl,{method:'GET'}));const headers=new Headers(response.headers);headers.set('Cache-Control','no-store');return new Response(response.body,{status:response.status,headers});}
-     if(char[2]==='portrait')throw new HttpError(404,'立绘不存在');
-     if(!row.avatar_key)throw new HttpError(404,'头像不存在');const file=await env.FILES.get(row.avatar_key);if(!file)throw new HttpError(404,'头像不存在');return new Response(file.body,{headers:{'Content-Type':row.avatar_type??'image/png','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
+     const kind=char[2] as 'avatar'|'portrait',imageId=kind==='avatar'?row.avatar_image_id:row.portrait_image_id;
+     if(imageId)return new Response(null,{status:302,headers:{Location:characterImageUrl(imageId,kind),'Cache-Control':'no-store'}});
+     throw new HttpError(404,kind==='portrait'?'立绘不存在':'头像不存在');
     }
     if(!char[2]&&method==='GET')return json(character(row,true));
     if(!char[2]&&method==='PATCH'){

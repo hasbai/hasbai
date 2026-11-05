@@ -2,4 +2,4 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://avatars.charhub.io https://*.gravatar.com https://*.auth0.com; connect-src 'self' https://auth.hasbai.xyz; frame-src https://auth.hasbai.xyz; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://media.hasbai.xyz https://avatars.charhub.io https://*.gravatar.com https://*.auth0.com; connect-src 'self' https://auth.hasbai.xyz; frame-src https://auth.hasbai.xyz; frame-ancestors 'none'; base-uri 'self'; form-action 'self'

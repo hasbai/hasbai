@@ -810,7 +810,9 @@ async function saveAvatar(path:string,method:string,raw:unknown,bytes:Uint8Array
 it('saves avatar and portrait references together without writing private image copies',async()=>{
  const form=new FormData();form.set('card',JSON.stringify(card));form.set('avatar',new File([avatarPng],'avatar.png'));form.set('portrait',new File([avatarPng],'portrait.png'));
  const response=await worker.fetch(new Request('https://tavern.test/api/characters',{method:'POST',body:form}),env,ctx);expect(response.status).toBe(201);const c=await response.json() as {id:string;avatarImageId:string;portraitImageId:string};expect(c.avatarImageId).toBeTruthy();expect(c.portraitImageId).toBeTruthy();expect(files.size).toBe(1);
- expect((await call('/api/characters/'+c.id+'/portrait')).headers.get('Content-Type')).toBe('image/png');
+ const imageCalls=vi.mocked(env.IMAGE_SERVICE.fetch).mock.calls.length;
+ for(const kind of ['avatar','portrait'] as const){const image=await call('/api/characters/'+c.id+'/'+kind);expect(image.status).toBe(302);expect(image.headers.get('Location')).toContain('https://media.hasbai.xyz/cdn-cgi/image/');expect(image.headers.get('Location')).toContain('format=webp/');expect(image.headers.get('Location')).toContain(kind==='avatar'?c.avatarImageId:c.portraitImageId);}
+ expect(vi.mocked(env.IMAGE_SERVICE.fetch).mock.calls.length).toBe(imageCalls);
  const original=await(await call('/api/characters/'+c.id+'/export?original=true')).json();expect(original).toEqual(card);
  const replacement=crypto.randomUUID();expect((await call('/api/characters/'+c.id,'PATCH',{card,portraitImageId:replacement})).status).toBe(200);const updated=await(await call('/api/characters/'+c.id)).json() as Record<string,unknown>;expect(updated.avatarImageId).toBe(c.avatarImageId);expect(updated.portraitImageId).toBe(replacement);
  vi.mocked(identity).mockResolvedValueOnce({sub:'auth0|other',email:'other',username:'其他用户',admin:false});expect((await call('/api/characters/'+c.id+'/portrait')).status).toBe(404);
