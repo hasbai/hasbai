@@ -11,7 +11,7 @@
  import { avatarImage, MAX_AVATAR_BYTES } from '../../shared/avatar';
  import Avatar from './Avatar.svelte';
  import type { Api, CharacterImageDrafts } from './api';
- import { imageUrl } from '@hasbai/images';
+ import { characterImageUrl } from '../../shared/character-images';
  let { api, character, onsave, oncancel, actions }: { api: Api; character?: Character; onsave: (card: JsonObject, images?: CharacterImageDrafts, startChat?: boolean) => Promise<void>; oncancel: () => void; actions?: Snippet } = $props();
  const original = untrack(() => $state.snapshot(character?.card));
  let draft = $state<CharacterDraft>(untrack(() => original ? characterDraft(original) : emptyCharacterDraft())), brief = $state(''), tagText = $state(untrack(() => draft.tags.join('，')));
@@ -23,7 +23,7 @@
  const locked = $derived(generating || !!generatingImage || uploadingImage || saving);
  const canGenerate = $derived([brief, draft.name, draft.description, draft.personality, draft.scenario, draft.first_mes, draft.mes_example].some(text => text.trim()));
  onDestroy(() => controller?.abort());
- $effect(() => {const current=$state.snapshot(images),urls:Record<string,string>={};for(const {kind} of imageKinds){const image=current[kind];if(image)urls[kind]=image instanceof File?URL.createObjectURL(image):image.url;}previews=urls;return()=>{for(const url of Object.values(urls))if(url.startsWith('blob:'))URL.revokeObjectURL(url);};});
+ $effect(() => {const current=$state.snapshot(images),urls:Record<string,string>={};for(const {kind} of imageKinds){const image=current[kind];if(image)urls[kind]=image instanceof File?URL.createObjectURL(image):characterImageUrl(image.id,kind);}previews=urls;return()=>{for(const url of Object.values(urls))if(url.startsWith('blob:'))URL.revokeObjectURL(url);};});
  async function uploadImage(event:Event,kind:'avatar'|'portrait') {
   const input=event.currentTarget as HTMLInputElement,file=input.files?.[0];if(!file||locked)return;
   error='';uploadingImage=true;const active=new AbortController();controller=active;
@@ -86,13 +86,13 @@
   <section class="creator-section">
    <div class="creator-section-heading"><UserRound size={18} aria-hidden="true"/><h2>基本信息</h2></div>
    <div class="creator-identity">
-    <div class="creator-avatar">{#if previews.avatar}<img src={previews.avatar} alt="角色头像" width="80" height="80"/>{:else if character}<Avatar {api} id={character.id} name={character.name} available={character.hasAvatar}/>{:else}<UserRound size={28} aria-hidden="true"/>{/if}</div>
+    <div class="creator-avatar">{#if previews.avatar}<img src={previews.avatar} alt="角色头像" width="80" height="80"/>{:else if character}<Avatar imageId={character.avatarImageId} name={character.name}/>{:else}<UserRound size={28} aria-hidden="true"/>{/if}</div>
     <div class="field"><label for="character-name">角色名称</label><Input id="character-name" bind:value={draft.name}/></div>
    </div>
    <div class="creator-images">
     {#each imageKinds as {kind,label}}
      <section class="creator-image"><h3>{label}</h3>
-      {#if kind==='portrait'}<div class="creator-portrait">{#if previews.portrait||character?.portraitImageId}<img src={previews.portrait||imageUrl(character!.portraitImageId!)} alt="角色立绘"/>{:else}<span>尚无立绘</span>{/if}</div>{/if}
+      {#if kind==='portrait'}<div class="creator-portrait">{#if previews.portrait||character?.portraitImageId}<img src={previews.portrait||characterImageUrl(character!.portraitImageId!,'portrait')} alt="角色立绘" decoding="async"/>{:else}<span>尚无立绘</span>{/if}</div>{/if}
       <div class="creator-avatar-actions"><label class="image-upload"><Upload size={16} aria-hidden="true"/>上传{label}<input type="file" accept="image/png,image/jpeg,image/webp" aria-label={`上传${label}`} onchange={event=>uploadImage(event,kind)}/></label><Button type="button" variant="outline" disabled={locked||![imagePrompt,draft.name,draft.description].some(text=>text.trim())} onclick={()=>generateImage(kind)}><span aria-hidden="true">{#if generatingImage===kind}<Spinner/>{:else}<Sparkles size={16}/>{/if}</span>AI 生成{label}</Button>{#if images[kind]}<Button type="button" variant="ghost" onclick={()=>images={...images,[kind]:undefined}}>撤销{label}</Button>{/if}</div>
      </section>
     {/each}

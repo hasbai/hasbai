@@ -8,6 +8,8 @@ Worker 为 `images`，域名为 `images.hasbai.xyz`。
 
 - 全部图片保存在 R2 `image`，对象 key 为 `public.image.id`。
 - 图片公开读取。酒馆只存头像和立绘的图片 ID，不再保存图片副本。
+- R2 `image` 的自定义域名为 `media.hasbai.xyz`，读取不经过应用 Worker。
+- 酒馆通过 Cloudflare 原生转换地址读取 WebP，尺寸与缓存见[酒馆架构](../tavern/ARCHITECTURE.md#角色卡与世界书)。
 - 旧博客 UUID、`/images/:id` 地址和封面外键保留。博客通过服务绑定转发图片请求。
 - 登录用户可上传、生成、查看、重命名和删除本人图片。`images.all:all` 可管理全部图片。
 - Worker 验证共享用户 JWT。数据库使用仅可访问图片表的 `images_service` 角色。
@@ -61,6 +63,9 @@ Gateway 记录 `app=images`、用途 `task` 和已验证账户的 `username`。
 变体固定尺寸且不放大原图，保留 GIF 动画。
 变体先检查数据库，再读取内部转换缓存；浏览器每次重新验证。
 旧原图 URL 的 immutable 缓存不能撤回已缓存内容。
+
+R2 直连缓存不读取数据库删除标记。
+删除后须清除源图片缓存，或等待缓存过期。
 
 `kind` 为 `image`、`avatar` 或 `portrait`，默认 `image`。
 头像使用 1024×1024，立绘使用 1024×1536。

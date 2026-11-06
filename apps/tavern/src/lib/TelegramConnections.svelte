@@ -24,15 +24,15 @@
  {#if error}<Notice variant="error">{error}</Notice>{/if}
  {#if loaded}
   <p>先将私聊绑定码发送给 @{bot}。群管理员再将群聊绑定码发送到目标群或话题。每次绑定新建独立会话。</p>
-  <label for="telegram-character">对话角色</label><select id="telegram-character" bind:value={characterId} disabled={busy}><option value="">Saki（祥子）</option>{#each characters as character}<option value={character.id}>{character.name}</option>{/each}</select>
+  <label for="telegram-character">对话角色</label><select id="telegram-character" bind:value={characterId} disabled={busy}><option value="" disabled>选择已安装角色</option>{#each characters as character}<option value={character.id}>{character.name}</option>{/each}</select>
   <form class="id-binding" onsubmit={bindId}>
    <h3>通过对话 ID 绑定</h3>
    <p id="telegram-id-hint">向机器人发送 /id 查看 ID。私聊须已关联本人；绑定群聊须是群管理员，且机器人已加入。</p>
    <div class="id-fields"><div><label for="telegram-chat-id">Telegram 对话 ID</label><Input id="telegram-chat-id" bind:value={chatId} placeholder="如 -1001234567890" required pattern="-?[1-9][0-9]*" aria-describedby="telegram-id-hint" disabled={busy}/></div><div><label for="telegram-thread-id">话题 ID（可选）</label><Input id="telegram-thread-id" bind:value={threadId} inputmode="numeric" pattern="[1-9][0-9]*" placeholder="仅话题群填写" disabled={busy}/></div></div>
-   <Button type="submit" disabled={busy||!configured}>{#if busy}<Spinner/>{:else if bound}<Check size={16} aria-hidden="true"/>{/if}绑定对话</Button>
+   <Button type="submit" disabled={busy||!configured||!characterId}>{#if busy}<Spinner/>{:else if bound}<Check size={16} aria-hidden="true"/>{/if}绑定对话</Button>
    {#if bound}<span class="sr-only" role="status">已绑定 Telegram 对话。</span>{/if}
   </form>
-  <div class="actions"><Button disabled={busy||!configured} onclick={()=>create('private')}>生成私聊绑定码</Button><Button variant="outline" disabled={busy||!configured} onclick={()=>create('group')}>生成群聊绑定码</Button><Button variant="ghost" disabled={busy} onclick={load}>刷新绑定</Button></div>
+  <div class="actions"><Button disabled={busy||!configured||!characterId} onclick={()=>create('private')}>生成私聊绑定码</Button><Button variant="outline" disabled={busy||!configured||!characterId} onclick={()=>create('group')}>生成群聊绑定码</Button><Button variant="ghost" disabled={busy} onclick={load}>刷新绑定</Button></div>
   {#if !configured}<Notice>Telegram 尚未配置。</Notice>{/if}
   {#if code}<div class="binding-code"><p>将以下命令发送到对应 Telegram 对话，十分钟内有效，使用一次后失效。</p><code>{code.command}</code></div>{/if}
   {#each routes as route}<div class="connection"><div class="actions"><span>会话 {route.chat_id}{route.thread_id?' · 话题 '+route.thread_id:''}</span><Button variant="ghost" onclick={()=>onopen(route.session_id)}>查看对话</Button><Button variant="outline" disabled={busy} onclick={()=>remove(route.id)}>解绑</Button></div>

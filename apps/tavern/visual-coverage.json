@@ -20,7 +20,10 @@
         "character-generation",
         "character-avatar",
         "character-portrait",
-        "greeting-picker"
+        "greeting-picker",
+        "character-image-delivery",
+        "focus-feedback",
+        "greeting-overflow"
       ]
     },
     {
@@ -597,7 +600,7 @@
       "evidence": [
         {
           "spec": "e2e/tavern.spec.ts",
-          "test": "greeting cards default to random and allow choosing before creation",
+          "test": "greeting picker defaults to random and allows choosing before creation",
           "projects": [
             "desktop",
             "iphone"
@@ -608,7 +611,56 @@
           ]
         }
       ],
-      "kind": "screenshot"
+      "kind": "screenshot",
+      "description": "紧凑开场选项与可滚动正文预览；单开场直接预览，多个开场可随机，取消不创建会话。"
+    },
+    {
+      "id": "character-image-delivery",
+      "kind": "interaction",
+      "description": "头像与立绘在生产 CSP 下通过 R2 原生 WebP 地址加载，不请求酒馆图片 API。",
+      "evidence": [
+        {
+          "spec": "e2e/tavern.spec.ts",
+          "test": "character images load directly under the production CSP without authenticated image requests",
+          "projects": [
+            "iphone",
+            "desktop"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "focus-feedback",
+      "kind": "interaction",
+      "description": "输入框和开场选项不绘制焦点边框，保留悬浮和键盘选择。",
+      "evidence": [
+        {
+          "spec": "e2e/tavern.spec.ts",
+          "test": "greeting options and form fields keep hover feedback without focus borders",
+          "projects": [
+            "iphone",
+            "desktop"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "greeting-overflow",
+      "kind": "screenshot",
+      "description": "单开场直接预览；短屏下多个长开场保持选项、正文滚动与操作按钮可达。",
+      "evidence": [
+        {
+          "spec": "e2e/tavern.spec.ts",
+          "test": "single and long greetings keep the preview and actions usable on short screens",
+          "projects": [
+            "iphone",
+            "desktop"
+          ],
+          "snapshots": [
+            "greeting-picker-short.png"
+          ]
+        }
+      ]
     }
   ]
 }

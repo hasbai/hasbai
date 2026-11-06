@@ -71,7 +71,7 @@ D1 公共 source_catalog/source_releases 保存固定版本目录，只有完整
 
 sessions 保存会话目录、可靠世界书引用与迁移占用哨兵。messages 只读保留迁移前原文，settings 保存用户 persona 和生成参数。
 
-会话角色快照、设置、有效线性消息、摘要与生成占用由每会话SQLite DO统一管理；旧 D1 原文按 AGENT 的惰性迁移契约保留。已安装角色删除不删除既有会话快照。R2 原文件私有，头像与立绘由图床统一管理并公开读取，不自动加载角色扩展资源；发现页只显示经过HTTPS/固定头像域校验的公开Chub缩略图。
+会话角色快照、设置、有效线性消息、摘要与生成占用由每会话SQLite DO统一管理；旧 D1 原文按 AGENT 的惰性迁移契约保留。已安装角色删除不删除既有会话快照。R2 原文件私有，头像与立绘由图床统一管理，通过 R2 自定义域名公开直连，不自动加载角色扩展资源；发现页只显示经过HTTPS/固定头像域校验的公开Chub缩略图。
 
 编辑角色库不会自动修改已有会话。
 `PATCH /api/sessions/:id` 可通过 `characterId` 显式更新角色快照。
@@ -84,7 +84,12 @@ sessions 保存会话目录、可靠世界书引用与迁移占用哨兵。messa
 
 创建与已有角色使用同一可编辑表单，点开即可修改。字段按基本信息、人物设定、开场与对白分组，作者与高级设定折叠。保留来源、导出、删除与开场选择。
 
-打开弹窗聚焦容器，不自动选中输入框。内容保留滚动操作并隐藏滚动条，分组与底部不使用分隔线。取消不保存；从表单开始对话时先保存当前角色和图片引用，再使用选定开场白创建会话。会话创建失败保留表单与开场选择。
+打开弹窗聚焦容器，不自动选中输入框。
+开场选择使用紧凑选项与独立正文预览，无横向轮播。
+单开场直接预览；多个开场默认随机，也可指定。
+取消不创建会话，失败保留选择。
+
+内容保留滚动操作并隐藏滚动条，分组与底部不使用分隔线。取消不保存；从表单开始对话时先保存当前角色和图片引用，再使用选定开场白创建会话。会话创建失败保留表单与开场选择。
 
 用户可手写，或填写角色构想后点击 AI 生成。生成结果可修改或撤销，保存失败保留草稿。编辑仅覆盖发生变化的字段，保留 V1/V2/V3、内嵌世界书、资源与未知扩展。
 
@@ -94,6 +99,16 @@ POST/PATCH multipart 接受 `card`、`avatar`、`portrait` 和对应的 `avatarI
 JSON 编辑请求也接受图片 ID，旧 JSON 请求保持兼容。
 
 图片统一存入[图床](../images/README.md)，酒馆 D1 仅保存引用。
+角色图片直连 `media.hasbai.xyz`，该域名绑定 R2 `image`。
+Cloudflare 原生 `/cdn-cgi/image/` 固定输出 WebP。
+头像使用 160×160，立绘限制在 1024×1536 内。
+
+读取不经过酒馆或图床 Worker，不携带 JWT。
+CSP 放行该图片域名，生成预览和保存后使用同一地址。
+旧图片 API 仅将已有图片引用重定向到直连地址。
+Cloudflare 边缘缓存一年，浏览器缓存一天；错误响应不缓存。
+替换图片使用新 ID，避免沿用旧缓存。
+
 原卡导出保留导入时内容。旧头像迁入图床后清理原图片副本。
 删除角色、保存失败或撤销编辑不删除图床资产。
 
@@ -161,7 +176,7 @@ KV 使用自身缓存，保存后逐步传播。
 
 ## 对话与发现 UI
 
-- 遵守[共享交互反馈](../DESIGN.md#组件与交互)。页面和前台操作共用顶部加载条，后台会话轮询不触发；等待内容使用骨架，保存和安装使用控件图标。
+- 遵守[共享交互反馈](../DESIGN.md#组件与交互)。酒馆禁止焦点边框和光圈，保留悬浮、按下、选中反馈及键盘操作。页面和前台操作共用顶部加载条，后台会话轮询不触发；等待内容使用骨架，保存和安装使用控件图标。
 - 桌面外壳填满视口。折叠按钮保留窄主导航，隐藏会话列表，动画遵守减少动态效果偏好；隐藏区域不可聚焦。折叠保留草稿、阅读位置和生成状态，移动端会话列表显示底栏，具体对话隐藏底栏。
 - 复用北极小站雪花 SVG，不生成另一套品牌标识。
 - Chub 默认来源，排序和 tags 传上游后再分页；TheatreLM 原始字段缺少热度/日期/分类，仅开放关键词与原目录顺序，不能伪造指标。公开目录损坏名称隔离，不改私人安装与历史。
@@ -175,7 +190,7 @@ KV 使用自身缓存，保存后逐步传播。
 - GET /health：service 与 Worker version，不含配置或密钥。
 - POST /api/characters/generate {brief,draft}：生成可编辑 CCv2 草稿；
 - POST /api/characters/{avatar|portrait}/generate {prompt}：调用图床生成并保存，返回图片引用。
-- GET/POST /api/characters；GET/PATCH/DELETE /api/characters/:id；GET /api/characters/:id/export；GET /api/characters/:id/avatar。
+- GET/POST /api/characters；GET/PATCH/DELETE /api/characters/:id；GET /api/characters/:id/export；GET /api/characters/:id/{avatar|portrait}。
 - GET /api/discover?q=&source=&page=&sort=&tags=；POST /api/install {source,id}；固定适配器，不提供任意 URL 代理。
 - GET/POST /api/worldbooks；PATCH/DELETE /api/worldbooks/:id；GET /api/worldbooks/:id/export。
 - GET/POST /api/sessions；GET/DELETE /api/sessions/:id；PATCH /api/sessions/:id 配置及可选 characterId。

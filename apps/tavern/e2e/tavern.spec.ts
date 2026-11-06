@@ -2,8 +2,9 @@ import { characterCard, emptyCharacterDraft } from '../shared/character-draft';
 import { GENERATION_DEFAULTS, DEFAULT_SYSTEM_PROMPT } from '../shared/types';
 import { DEFAULT_PROMPTS } from '../shared/prompts';
 import {test,expect,type Page} from '@playwright/test';
+import {readFileSync} from 'node:fs';
 const raw={spec:'chara_card_v2',spec_version:'2.0',data:{name:'岚',description:'港城旅店的主人。她守着一盏长明的灯，等待远行的旅人。',personality:'冷静、敏锐，善于倾听。',scenario:'雨夜，北方港城的一间旅店。',first_mes:'门外传来脚步声。岚放下手中的书，望向你。\n「雨很大，进来坐坐吧。」',mes_example:'',system_prompt:'',post_history_instructions:'',alternate_greetings:['清晨，窗外的海风带来潮声。'],tags:['奇幻','旅店'],creator:'测试作者',extensions:{}}};
-const character={id:'c1',name:'岚',description:raw.data.description,creator:'测试作者',tags:['奇幻','旅店'],format:'V2',hasAvatar:false,source:'',sourceUrl:'',unsupported:[],card:raw};
+const character:import('../shared/types').Character={id:'c1',name:'岚',description:raw.data.description,creator:'测试作者',tags:['奇幻','旅店'],format:'V2',hasAvatar:false,source:'',sourceUrl:'',unsupported:[],card:raw};
 const settings={userName:'旅人',persona:'一位从北方归来的旅人。',systemPrompt:'保持角色与故事连贯。',...GENERATION_DEFAULTS};
 const book={id:'b1',name:'北境港城',enabled:true,count:2,raw:{name:'北境港城',entries:[{keys:['港城'],content:'港城的灯塔每晚亮起。',enabled:true},{keys:[],content:'故事发生在初秋。',constant:true,enabled:true}]},unsupported:[]};
 const session={id:'s1',title:'港城的雨夜',characterName:'岚',updatedAt:1790990000000,settings,bookIds:['b1'],character:raw,generationId:null as string|null};
@@ -28,8 +29,8 @@ async function fixture(page:Page,{empty=false,fail=false,delay=false,streamDelay
   else if(p==='/api/settings'){if(method==='PUT')savedSettings=body;data=savedSettings;}
   else if(p==='/api/messaging/telegram')data={configured:true,botUsername:'saki_main_bot',routes:[]};
   else if(p==='/api/characters'&&method==='GET')data={characters:cards};
-  else if(p==='/api/characters'&&method==='POST'){const uploaded=multipart?body.card:req.headers()['x-filename']?raw:req.postDataJSON();expect(uploaded).not.toBeNull();cards.push({...character,id:'c2',name:uploaded.data.name,description:uploaded.data.description,card:uploaded,hasAvatar:!!(multipart?.get('avatar')||multipart?.get('avatarImageId'))});data=cards.at(-1);}
-  else if(p==='/api/characters/c1'&&method==='PATCH'){Object.assign(cards[0],{card:body.card,name:body.card.data.name,hasAvatar:!!(multipart?.get('avatar')||multipart?.get('avatarImageId'))||cards[0].hasAvatar});data=cards[0];}
+  else if(p==='/api/characters'&&method==='POST'){const uploaded=multipart?body.card:req.headers()['x-filename']?raw:req.postDataJSON();expect(uploaded).not.toBeNull();cards.push({...character,id:'c2',name:uploaded.data.name,description:uploaded.data.description,card:uploaded,hasAvatar:!!(multipart?.get('avatar')||multipart?.get('avatarImageId')),avatarImageId:String(multipart?.get('avatarImageId')||'')||undefined,portraitImageId:String(multipart?.get('portraitImageId')||'')||undefined});data=cards.at(-1);}
+  else if(p==='/api/characters/c1'&&method==='PATCH'){Object.assign(cards[0],{card:body.card,name:body.card.data.name,hasAvatar:!!(multipart?.get('avatar')||multipart?.get('avatarImageId'))||cards[0].hasAvatar,avatarImageId:String(multipart?.get('avatarImageId')||cards[0].avatarImageId||'')||undefined,portraitImageId:String(multipart?.get('portraitImageId')||cards[0].portraitImageId||'')||undefined});data=cards[0];}
   else if(p==='/api/characters/c1'&&method==='DELETE')cards.splice(0,1);
   else if(p==='/api/characters/c1')data=cards[0];
   else if(p==='/api/discover')data={total:13,sort:url.searchParams.get('sort'),source:url.searchParams.get('source'),page:Number(url.searchParams.get('page')),hasMore:Number(url.searchParams.get('page'))===1,results:url.searchParams.get('q')==='无结果'?[]:[{id:'source1',name:'伊莲',description:'一位守护山间书库的学者。',creator:'G-reen',tags:['奇幻'],popularity:1240,createdAt:'2026-10-01T00:00:00Z',source:url.searchParams.get('source'),sourceUrl:'https://chub.ai/characters/test/role'}]};
@@ -187,7 +188,7 @@ test('manual character creation and closing a generation preserve isolation',asy
 });
 
 test('telegram binds a character and resolves uncertain delivery without changing browser settings',async({page})=>{
- await fixture(page);await nav(page,'设置');await page.getByText('Telegram 接入',{exact:true}).click();await expect(page.getByLabel('对话角色',{exact:true})).toBeVisible();await shot(page,'telegram.png');
+ await fixture(page);await nav(page,'设置');await page.getByText('Telegram 接入',{exact:true}).click();await expect(page.getByLabel('对话角色',{exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'生成私聊绑定码'})).toBeDisabled();await shot(page,'telegram.png');
  await page.route('**/api/messaging/telegram/codes',route=>route.fulfill({json:{command:'/start 58cbca04-1b3a-493d-b0de-ccf38ac46a88',expiresAt:Date.now()+600000}}));
  await page.getByLabel('对话角色',{exact:true}).selectOption('c1');const created=page.waitForRequest(r=>r.url().endsWith('/messaging/telegram/codes'));await page.getByRole('button',{name:'生成私聊绑定码'}).click();expect((await created).postDataJSON()).toEqual({kind:'private',characterId:'c1'});await expect(page.getByText('/start 58cbca04-1b3a-493d-b0de-ccf38ac46a88',{exact:true})).toBeVisible();await shot(page,'telegram-code.png');
  await page.route('**/api/messaging/telegram',route=>route.fulfill({json:{configured:true,botUsername:'saki_main_bot',routes:[{id:'route',chat_id:-100123,thread_id:10,session_id:'s1',active:1}]}}));
@@ -245,7 +246,7 @@ test('agent commands context and expandable results preserve a linear history',a
 });
 
 test('character avatars upload generate retry and persist through the shared editor',async({page})=>{
- await fixture(page);await page.route('https://images.hasbai.xyz/images/**',route=>route.fulfill({contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGPoWDDzPwAGNgLBEfPgRwAAAABJRU5ErkJggg==','base64')}));const image=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGPoWDDzPwAGNgLBEfPgRwAAAABJRU5ErkJggg==','base64');let attempts=0;
+ await fixture(page);await page.route('https://media.hasbai.xyz/**',route=>route.fulfill({contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGPoWDDzPwAGNgLBEfPgRwAAAABJRU5ErkJggg==','base64')}));const image=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGPoWDDzPwAGNgLBEfPgRwAAAABJRU5ErkJggg==','base64');let attempts=0;
  await page.route('**/api/characters/c1/avatar',route=>route.fulfill({contentType:'image/png',body:image}));
  await page.route('**/api/characters/avatar/generate',async route=>{expect(route.request().postDataJSON().prompt).toBe('银发的旅店主人');if(++attempts===1)await route.fulfill({status:502,json:{message:'头像生成失败，请重试'}});else await route.fulfill({json:{id:'c51f7180-6795-4a3a-8ec6-060ebc3fe98b',name:'头像',url:'https://images.hasbai.xyz/images/avatar',content_type:'image/png',size:image.length}});});
  await page.getByRole('button',{name:/岚.*测试作者/}).click();await expect(page.getByLabel('角色名称')).not.toHaveAttribute('readonly','');await expect(page.getByText('上传头像',{exact:true})).toBeVisible();
@@ -273,7 +274,7 @@ test('opening a character edits saves and starts with the selected greeting in o
 
 test('character portrait has independent upload generation and shared image reference',async({page})=>{
  await fixture(page);const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGPoWDDzPwAGNgLBEfPgRwAAAABJRU5ErkJggg==','base64');
- await page.route('https://images.hasbai.xyz/images/**',route=>route.fulfill({contentType:'image/png',body:png}));await page.route('**/api/characters/portrait/generate',route=>route.fulfill({json:{id:'c51f7180-6795-4a3a-8ec6-060ebc3fe98b',name:'立绘',url:'https://images.hasbai.xyz/images/portrait',content_type:'image/png',size:png.length}}));
+ await page.route('https://media.hasbai.xyz/**',route=>route.fulfill({contentType:'image/png',body:png}));await page.route('**/api/characters/portrait/generate',route=>route.fulfill({json:{id:'c51f7180-6795-4a3a-8ec6-060ebc3fe98b',name:'立绘',url:'https://images.hasbai.xyz/images/portrait',content_type:'image/png',size:png.length}}));
  await page.getByRole('button',{name:'创建角色',exact:true}).click();await page.getByLabel('角色名称',{exact:true}).fill('测试角色');await page.getByLabel('上传头像',{exact:true}).setInputFiles({name:'avatar.png',mimeType:'image/png',buffer:png});await page.getByRole('button',{name:'AI 生成立绘',exact:true}).click();await expect(page.getByAltText('角色立绘',{exact:true})).toBeVisible();await expect(page.getByAltText('角色头像',{exact:true})).toBeVisible();await page.getByRole('dialog').focus();await shot(page,'character-portrait.png');
  const saved=page.waitForRequest(r=>r.url().endsWith('/api/characters')&&r.method()==='POST');await page.getByRole('button',{name:'保存角色',exact:true}).click();const wire=(await saved).postData()!;expect(wire).toContain('name="avatar"');expect(wire).toContain('name="portraitImageId"');await expect(page.getByRole('dialog')).toHaveCount(0);
 });
@@ -414,11 +415,11 @@ test('model phases share expandable streaming reasoning without a system loading
  await advance('done');await expect(progress).toHaveCount(0);await expect(page.getByRole('button',{name:'会话设置'})).toBeEnabled();await expect(page.getByRole('progressbar')).toHaveCount(0);
 });
 
-test('greeting cards default to random and allow choosing before creation',async({page})=>{
+test('greeting picker defaults to random and allows choosing before creation',async({page})=>{
  await fixture(page);let creations=0;page.on('request',r=>{if(r.url().endsWith('/api/sessions')&&r.method()==='POST')creations++;});
  await page.getByRole('button',{name:'开始对话',exact:true}).click();
  await expect(page.getByRole('button',{name:/随机开场/})).toHaveAttribute('aria-pressed','true');await shot(page,'greeting-picker.png');
- await page.getByRole('button',{name:'下一个开场白'}).click();await page.getByRole('button',{name:/开场白 2/}).click();await expect(page.getByRole('button',{name:/开场白 2/})).toHaveAttribute('aria-pressed','true');
+ await page.getByRole('button',{name:/开场白 2/}).click();await expect(page.getByRole('button',{name:/开场白 2/})).toHaveAttribute('aria-pressed','true');
  await page.getByRole('button',{name:'取消',exact:true}).click();expect(creations).toBe(0);
  await nav(page,'设置');await page.getByRole('button',{name:'切换深色模式'}).last().click();await nav(page,'角色库');await page.getByRole('button',{name:'开始对话',exact:true}).click();await expect(page.getByRole('button',{name:/随机开场/})).toHaveAttribute('aria-pressed','true');await shot(page,'greeting-picker-dark.png');
  const started=page.waitForRequest(r=>r.url().endsWith('/api/sessions')&&r.method()==='POST');await page.getByRole('dialog').getByRole('button',{name:'开始对话',exact:true}).click();expect([0,1]).toContain((await started).postDataJSON().greeting);await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -431,7 +432,6 @@ test('greeting selection remains reachable on short screens and submits the chos
  await page.getByRole('button',{name:'开始对话',exact:true}).click();
  const dialog=page.getByRole('dialog');
  await expect(dialog.getByRole('button',{name:/随机开场/})).toHaveAttribute('aria-pressed','true');
- await dialog.getByRole('button',{name:'下一个开场白'}).click();
  const chosen=dialog.getByRole('button',{name:/开场白 2/});await chosen.click();
  await expect(chosen).toHaveAttribute('aria-pressed','true');expect(creations).toBe(0);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
@@ -439,4 +439,65 @@ test('greeting selection remains reachable on short screens and submits the chos
  const started=page.waitForRequest(request=>request.url().endsWith('/api/sessions')&&request.method()==='POST');
  await confirm.click();expect((await started).postDataJSON()).toEqual({characterId:'c1',greeting:1});
  await expect(dialog).toHaveCount(0);await expect(page.getByLabel('发送消息',{exact:true})).toBeVisible();expect(creations).toBe(1);
+});
+
+
+test('character images load directly under the production CSP without authenticated image requests',async({page})=>{
+ const csp=readFileSync(new URL('../public/_headers',import.meta.url),'utf8').split('Content-Security-Policy: ')[1].trim();
+ await page.route('**/e2e/index.html',async route=>{const response=await route.fetch();await route.fulfill({response,headers:{...response.headers(),'Content-Security-Policy':csp}});});
+ const avatarId='c51f7180-6795-4a3a-8ec6-060ebc3fe98b',portraitId='a51f7180-6795-4a3a-8ec6-060ebc3fe98b';
+ const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGPoWDDzPwAGNgLBEfPgRwAAAABJRU5ErkJggg==','base64');
+ const images:string[]=[],proxy:string[]=[];
+ page.on('request',request=>{if(/\/api\/characters\/[^/]+\/(avatar|portrait)$/.test(new URL(request.url()).pathname))proxy.push(request.url());});
+ await page.route('https://media.hasbai.xyz/**',async route=>{images.push(route.request().url());expect(route.request().headers().authorization).toBeUndefined();await route.fulfill({contentType:'image/png',body:png});});
+ await fixture(page);
+ const asset={...character,hasAvatar:true,hasPortrait:true,avatarImageId:avatarId,portraitImageId:portraitId};
+ await page.route('**/api/characters',route=>route.fulfill({json:{characters:[asset]}}));
+ await page.route('**/api/characters/c1',route=>route.fulfill({json:asset}));
+ await page.reload();
+ await expect.poll(()=>page.locator('.avatar img').evaluate((el:HTMLImageElement)=>el.naturalWidth)).toBe(1);
+ await page.getByRole('button',{name:/岚.*测试作者/}).click();
+ await expect.poll(()=>page.getByAltText('角色立绘',{exact:true}).evaluate((el:HTMLImageElement)=>el.naturalWidth)).toBe(1);
+ expect(images.some(url=>url.includes('format=webp/'+avatarId))).toBe(true);
+ expect(images.some(url=>url.includes('format=webp/'+portraitId))).toBe(true);
+ expect(proxy).toEqual([]);
+});
+
+test('greeting options and form fields keep hover feedback without focus borders',async({page})=>{
+ await fixture(page);
+ const search=page.getByLabel('搜索角色',{exact:true});
+ const before=await search.evaluate(el=>({border:getComputedStyle(el).borderColor,shadow:getComputedStyle(el).boxShadow}));
+ await search.focus();
+ expect(await search.evaluate(el=>({border:getComputedStyle(el).borderColor,shadow:getComputedStyle(el).boxShadow}))).toEqual(before);
+ expect(await search.evaluate(el=>getComputedStyle(el).outlineStyle)).toBe('none');
+ await page.getByRole('button',{name:'开始对话',exact:true}).click();
+ const option=page.getByRole('button',{name:'开场白 2',exact:true});
+ await option.focus();expect(await option.evaluate(el=>getComputedStyle(el).outlineStyle)).toBe('none');
+ await page.keyboard.press('Enter');await expect(option).toHaveAttribute('aria-pressed','true');
+ await expect(page.getByLabel('开场白预览',{exact:true})).toContainText(raw.data.alternate_greetings[0]);
+ if(page.viewportSize()!.width>640){const background=await option.evaluate(el=>getComputedStyle(el).backgroundColor);await option.hover();await expect.poll(()=>option.evaluate(el=>getComputedStyle(el).backgroundColor)).not.toBe(background);}
+});
+
+test('single and long greetings keep the preview and actions usable on short screens',async({page})=>{
+ await fixture(page);
+ const single=structuredClone(raw);single.data.alternate_greetings=[];
+ await page.route('**/api/characters/c1',route=>route.fulfill({json:{...character,card:single}}));
+ await page.getByRole('button',{name:'开始对话',exact:true}).click();
+ await expect(page.getByRole('button',{name:/随机开场/})).toHaveCount(0);
+ await expect(page.getByLabel('开场白预览',{exact:true})).toContainText(raw.data.first_mes);
+ await page.getByRole('button',{name:'取消',exact:true}).click();
+ const many=structuredClone(raw);many.data.first_mes='长篇开场白。'.repeat(600);many.data.alternate_greetings=Array.from({length:20},(_,i)=>'第 '+(i+2)+' 个开场。'.repeat(400));
+ await page.route('**/api/characters/c1',route=>route.fulfill({json:{...character,card:many}}));
+ await page.setViewportSize({width:page.viewportSize()!.width,height:500});
+ await page.getByRole('button',{name:'开始对话',exact:true}).click();
+ const dialog=page.getByRole('dialog');
+ await expect(dialog.getByRole('button',{name:'开始对话',exact:true})).toBeInViewport();
+ const last=dialog.getByRole('button',{name:'开场白 21',exact:true});await last.focus();await page.keyboard.press('Enter');
+ await expect(last).toHaveAttribute('aria-pressed','true');
+ await expect(page.getByLabel('开场白预览',{exact:true})).toContainText('第 21 个开场。');
+ await expect(dialog.getByRole('button',{name:'开始对话',exact:true})).toBeInViewport();
+ const copy=page.locator('.greeting-copy');expect(await copy.evaluate(el=>el.scrollHeight>el.clientHeight)).toBe(true);
+ await copy.evaluate(el=>el.scrollTop=el.scrollHeight);expect(await copy.evaluate(el=>el.scrollTop)).toBeGreaterThan(0);
+ await shot(page,'greeting-picker-short.png');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });

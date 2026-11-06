@@ -1,9 +1,8 @@
 import { telegramApi, telegramThread, TelegramError, type TelegramMessage } from '@hasbai/messaging';
 import { authenticatedUsername, type identity } from './auth';
 import { HttpError, json } from './http';
-import { installCard, settings, userSettings, type CharacterRow } from './store';
+import { settings, userSettings, type CharacterRow } from './store';
 import { DEFAULT_SETTINGS } from '../shared/types';
-import saki from '../characters/saki.json';
 import { syncTelegramCommands } from './telegram-commands';
 
 type User=Awaited<ReturnType<typeof identity>>;
@@ -14,14 +13,14 @@ export async function codeHash(value:string){return Array.from(new Uint8Array(aw
 async function channelConfiguration(env:Env,user:User,data:Record<string,unknown>){
  if(!env.TELEGRAM_BOT_TOKEN||!env.TELEGRAM_WEBHOOK_SECRET)throw new HttpError(503,'Telegram 尚未配置');
  const username=authenticatedUsername(user);
- const card=data.characterId?await env.DB.prepare('SELECT * FROM characters WHERE owner=? AND id=?').bind(user.sub,data.characterId).first<CharacterRow>():null;
- if(data.characterId&&!card)throw new HttpError(404,'角色不存在');
- const installed=card??await installCard(env,user.sub,new TextEncoder().encode(JSON.stringify(saki)),'saki.json');
- const raw=card?JSON.parse(card.card_json):'card' in installed?installed.card:saki;
+ if(typeof data.characterId!=='string'||!data.characterId)throw new HttpError(400,'请选择已安装的角色');
+ const card=await env.DB.prepare('SELECT * FROM characters WHERE owner=? AND id=?').bind(user.sub,data.characterId).first<CharacterRow>();
+ if(!card)throw new HttpError(404,'角色不存在');
+ const raw=JSON.parse(card.card_json);
  const base=await userSettings(env,user.sub);
  // A group never inherits a browser persona or a private system prompt.
  const opts=settings({...DEFAULT_SETTINGS,modelId:base.modelId,thinkingEnabled:base.thinkingEnabled,reasoningEffort:base.reasoningEffort,temperature:base.temperature,topP:base.topP,topK:base.topK,frequencyPenalty:base.frequencyPenalty,presencePenalty:base.presencePenalty,userName:'Telegram 成员',persona:'',systemPrompt:'以角色身份参与 Telegram 对话。每条消息按“发言人: 正文”呈现，缩进内容是续行或回复引用。只回复当前交流，不代写其他成员。直接写回复正文，不添加发言人标签或为定位回复对象而 @成员。'});
- return {owner:user.sub,username,character_json:JSON.stringify(raw),character_name:installed.name,settings_json:JSON.stringify(opts)};
+ return {owner:user.sub,username,character_json:JSON.stringify(raw),character_name:card.name,settings_json:JSON.stringify(opts)};
 }
 export async function channelCode(env:Env,user:User,data:Record<string,unknown>){
  if(data.kind!=='private'&&data.kind!=='group')throw new HttpError(400,'请选择私聊或群聊');

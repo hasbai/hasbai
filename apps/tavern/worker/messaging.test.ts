@@ -240,3 +240,18 @@ it('drops unsent long preview chunks after generation fails and preserves an unk
  local.prepare("DELETE FROM test_meta WHERE key='notBefore'").run();Object.assign(views.get(key)!.messages[0],{status:'error',finishReason:'upstream'});fetcher.mockClear();await object.alarm();expect(fetcher).toHaveBeenCalledTimes(1);expect(String(fetcher.mock.calls[0][0])).toContain('/editMessageText');expect(local.prepare('SELECT count(*) n FROM inbox_chunks').get()?.n).toBe(1);
  local.prepare("UPDATE inbox_chunks SET telegram_id=NULL,state='sending'").run();local.prepare("UPDATE inbox_jobs SET phase='generating'").run();fetcher.mockClear();await object.alarm();expect(fetcher).not.toHaveBeenCalled();expect((await object.status(b.id)).jobs[0].error).toContain('结果不明');
 });
+
+it('requires an installed character and never recreates bundled Saki after editing or deletion',async()=>{
+ const edited={name:'我的 Saki',description:'保留用户修改'};
+ db.prepare('UPDATE characters SET name=?,card_json=?,original_filename=? WHERE id=?').run(edited.name,JSON.stringify(edited),'saki.json','card');
+ const count=()=>db.prepare('SELECT count(*) n FROM characters').get()!.n;
+ const before=count();
+ for(const characterId of [undefined,'',42])await expect(channelCode(env,user,{kind:'private',characterId})).rejects.toThrow('请选择已安装的角色');
+ const c=await channelCode(env,user,{kind:'private',characterId:'card'});
+ await bindChannel(env,update().message,c.code,'private');
+ expect(JSON.parse(String(db.prepare('SELECT character_json FROM sessions').get()!.character_json))).toEqual(edited);
+ expect(count()).toBe(before);
+ db.prepare('DELETE FROM characters WHERE id=?').run('card');
+ await expect(channelCode(env,user,{kind:'private',characterId:'card'})).rejects.toThrow('角色不存在');
+ expect(count()).toBe(Number(before)-1);
+});
