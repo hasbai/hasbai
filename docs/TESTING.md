@@ -41,8 +41,10 @@ git diff --check
 云环境的 x86_64 本地开发使用 [amd64 开发镜像](../README.md#codex-本地环境)，避免 ARM 模拟开销。
 该镜像复用 CI 的安装步骤与版本，适用于本地检查和服务启动。
 需要局部预览时，可通过 `cloud-dev.mjs run` 执行 `node scripts/visual-capture.mjs <应用> <场景ID>`。
+
 2026-11-08 用户明确要求云环境本地检查和截图使用 AMD64，不运行 ARM 模拟。
 云环境可用固定版本 Playwright 的官方 AMD64 浏览器生成并审阅基线。
+浏览器在容器外运行时，须同时复用固定镜像的字体和 fontconfig，保留字体回退与抗锯齿设置。
 CI 保持既有 ARM64 镜像与严格截图比较，不以本地结果替代 PR 验收。
 
 共享组件、样式、夹具或 `packages/` 改动须指定可重复的 `--page <源页面>` 或 `--all`。首次生成 Linux 基线运行 `--all`。审阅图在各应用忽略的 `.local-visual/<时间>/review/`；审阅后从仓库根运行 `pnpm visual:baseline:import-local <该次运行目录> --reviewed`，校验源码和 PNG 后导入本次截图。旧 macOS PNG 已清理；日常只维护 `linux-ci` 基线。
