@@ -53,6 +53,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: pnpm install --frozen-lockfile
+      - run: pnpm build
       - run: pnpm exec vite build --mode e2e
       - run: node ../financial/scripts/prepare-browser-build.mjs
       - run: pnpm test:e2e
