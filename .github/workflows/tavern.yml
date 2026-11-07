@@ -62,9 +62,9 @@ jobs:
   visual:
     name: tavern-visual
     needs: changes
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.04
     container:
-      image: ghcr.io/hasbai/financial-visual-ci@sha256:7c8b030fa654dfd7acb74db9fbca0fe413ca81024536f6d361712d0920fd6444
+      image: ghcr.io/hasbai/financial-visual-ci@sha256:4aca1416fa6743042754ec8aaac4a68239f25e89e4535c5f152c2b4a6c03ce4b
       options: --ipc=host
     timeout-minutes: 20
     defaults:
