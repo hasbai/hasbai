@@ -5,7 +5,7 @@ import { inferRoleplay, InferenceError, type InferenceEvent } from './inference'
 import { modelInput } from './models';
 import { DEFAULT_SETTINGS } from '../shared/types';
 
-const env = { AIG_RP_RUN_TOKEN: 'fixture-only' } as Env;
+const env = { AI_SERVICE: {fetch: (...args:Parameters<typeof globalThis.fetch>)=>globalThis.fetch(...args)} } as Env;
 const messages = [{ role: 'system' as const, content: '设定' }, { role: 'user' as const, content: '你好' }];
 const signal = () => new AbortController().signal;
 const response = (events: unknown[]) => new Response(events.map(e => 'data: ' + JSON.stringify(e) + '\n\n').join('') + 'data: [DONE]\n\n', { headers: { 'Content-Type': 'text/event-stream', 'cf-aig-log-id': 'sdk-log' } });
@@ -22,10 +22,10 @@ it('uses the SDK provider with the complete fixed-route wire and retains raw obs
  expect(events).toContainEqual({ type: 'observation', value: observation, logId: 'sdk-log' });
  expect(events.at(-1)).toEqual({ type: 'finish', reason: 'stop', calls: [] });
  expect(fetch).toHaveBeenCalledOnce();
- const [url, options] = fetch.mock.calls[0]; expect(url).toBe(ROLEPLAY_GATEWAY_URL);
+ const [url, options] = fetch.mock.calls[0]; expect(url).toBe('https://ai.hasbai.xyz/internal/roleplay');
  expect(JSON.parse(options.body)).toEqual({ ...input, model: 'dynamic/rp', stream: true });
- expect(JSON.parse(new Headers(options.headers).get('cf-aig-metadata')!)).toEqual({ app: 'tavern', task: 'roleplay', username: '用户😀' });
- expect(new Headers(options.headers).get('cf-aig-event-id')).toBe('request-id');
+ expect(JSON.parse(new Headers(options.headers).get('X-AI-Attribution')!)).toEqual({ app: 'tavern', username: '用户😀', requestId: 'request-id' });
+
  expect(options.redirect).toBe('manual');
 });
 

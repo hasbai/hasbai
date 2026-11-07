@@ -33,7 +33,8 @@
     "tw-animate-css": "catalog:",
     "zod": "catalog:",
     "@hasbai/images": "workspace:*",
-    "@hasbai/observability": "workspace:*"
+    "@hasbai/observability": "workspace:*",
+    "@hasbai/ai": "workspace:*"
   },
   "devDependencies": {
     "@playwright/test": "catalog:",

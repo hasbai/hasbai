@@ -1,6 +1,6 @@
 # Tavern 模型参数与独立 Director
 
-服务端仅提供白名单逻辑模型，当前 `rp` 对应 Gateway `default` / `dynamic/rp`，实际 provider/model 由 Gateway 配置决定。本文是参数、候选协议及 UI 的维护入口；运行实现见 `apps/tavern/shared/settings.ts`、`worker/director.ts`、`worker/inference.ts`、`worker/gateway.ts`。不靠 route version/schema/管理 API 探测作为聊天准入，推理凭据只在 Worker Secret 中使用；不依赖管理 Token。
+服务端仅提供白名单逻辑模型，当前 `rp` 对应 Gateway `default` / `dynamic/rp`，实际 provider/model 由 Gateway 配置决定。本文是参数、候选协议及 UI 的维护入口；运行实现见 `apps/tavern/shared/settings.ts`、`worker/director.ts`、`worker/inference.ts`、`worker/gateway.ts`。不靠 route version/schema/管理 API 探测作为聊天准入，调用经 `AI_SERVICE` 服务绑定进入[统一 AI Worker](../ai/README.md)。推理凭据仅保存在 AI Worker。推理不依赖管理 Token。
 
 当前实现和最新真实验收缺口见[PROGRESS](PROGRESS.md)。
 

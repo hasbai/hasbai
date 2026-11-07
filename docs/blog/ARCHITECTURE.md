@@ -30,7 +30,7 @@ Worker 的 BLOG_SETTINGS 绑定保存 KV 键 `blog:supported-locales`。默认�
 
 `save_translation` RPC 核对来源及目标译文的 updated_at。自动补译补齐缺失行和空正文；手动翻译拒绝覆盖调用期间被编辑的目标行。两种写入都会更新 content.updated_at，删除内容会级联删除译文。
 
-AI 调用使用 custom Gateway 的 `dynamic/translate` 动态路由（`custom/translate`），其 provider 为 custom-codex。请求使用 compat/chat/completions，模型由网关配置决定。推理 Secret `AIG_TRANSLATE_RUN_TOKEN` 只在 Worker 中使用。服务端要求 JSON 输出，拒绝截断、无效和空正文响应；提示词要求保留 Markdown、代码、公式和链接。[Cloudflare 动态路由](https://developers.cloudflare.com/ai-gateway/features/dynamic-routing/usage/)
+AI 翻译经 `AI_SERVICE` 服务绑定调用[统一 AI Worker](../ai/README.md)。上游为 `default` Gateway 的 `dynamic/translate`。推理凭据仅保存在 AI Worker。服务端要求 JSON 输出，拒绝截断、无效和空正文响应。提示词要求保留 Markdown、代码、公式和链接。
 
 Neon 网关要求 JWT，包括匿名访问。Worker 仅在重建公开快照时获取短期匿名 JWT，并经匿名 RLS 读取已发布内容。SSR 和浏览器导航通过同源 `/api/public` 读取快照，不再由浏览器直连 Neon。公开页继续使用通用 `+page.ts` load，SSR 传入 SvelteKit 的请求级 fetch；导航期间显示原有骨架，关闭 hover 预取。列表只返回摘要，不序列化整篇 Markdown。
 

@@ -4,7 +4,7 @@ import {query,type ImageRow} from './database';
 import worker from './index';
 vi.mock('@hasbai/auth/server',()=>({verifyUserToken:vi.fn()}));vi.mock('./database',()=>({query:vi.fn()}));
 const id='c51f7180-6795-4a3a-8ec6-060ebc3fe98b',png=new Uint8Array([137,80,78,71,13,10,26,10]);
-let row:ImageRow;const put=vi.fn(),get=vi.fn(),remove=vi.fn();const env={IMAGES:{put,get,delete:remove},VERSION:{id:'test'},ASSETS:{fetch:vi.fn()},DATABASE_URL:'fixture',AIG_IMAGE_RUN_TOKEN:'fixture'} as unknown as Env;
+let row:ImageRow;const put=vi.fn(),get=vi.fn(),remove=vi.fn();const env={IMAGES:{put,get,delete:remove},VERSION:{id:'test'},ASSETS:{fetch:vi.fn()},DATABASE_URL:'fixture',AI_SERVICE:{fetch:(...args:Parameters<typeof globalThis.fetch>)=>globalThis.fetch(...args)}} as unknown as Env;
 const call=(path:string,method='GET',body?:BodyInit,headers:Record<string,string>={})=>worker.fetch(new Request('https://images.test'+path,{method,body,headers:{Authorization:'Bearer fixture',...headers}}),env);
 beforeEach(()=>{vi.clearAllMocks();row={id,name:'图片',sha256:'0'.repeat(64),content_type:'image/png',size:8,ready:true,owner:'other',source:'upload',model:null,created_at:'2026-10-20T00:00:00Z',deleted_at:null};vi.mocked(verifyUserToken).mockResolvedValue({sub:'user',username:'月石',permissions:[]});vi.mocked(query).mockImplementation(async()=>[row]);put.mockResolvedValue(undefined);remove.mockResolvedValue(undefined);get.mockImplementation(async()=>({body:new Blob([png]).stream(),httpEtag:'"etag"'}));});
 it('requires verified users for uploads and rejects cross-origin writes and unsafe files before storage',async()=>{

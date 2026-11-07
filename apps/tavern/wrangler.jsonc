@@ -24,7 +24,6 @@
   },
   "secrets": {
     "required": [
-      "AIG_RP_RUN_TOKEN",
       "TELEGRAM_BOT_TOKEN",
       "TELEGRAM_WEBHOOK_SECRET"
     ]
@@ -32,12 +31,7 @@
   "vars": {
     "AUTH0_DOMAIN": "auth.hasbai.xyz",
     "AUTH0_AUDIENCE": "https://financial.hasbai.xyz/api",
-    "AIG_GATEWAY_ID": "default",
     "TELEGRAM_BOT_USERNAME": "saki_main_bot"
-  },
-  "ai": {
-    "binding": "AI",
-    "remote": true
   },
   "kv_namespaces": [
     {
@@ -105,6 +99,11 @@
     {
       "binding": "IMAGE_SERVICE",
       "service": "images"
+    },
+    {
+      "binding": "AI_SERVICE",
+      "service": "ai",
+      "entrypoint": "InferenceService"
     }
   ]
 }

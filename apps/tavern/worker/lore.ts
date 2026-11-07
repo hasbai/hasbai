@@ -1,7 +1,7 @@
 import { splitOoc } from '../shared/commands';
 import type {Book,Message} from '../shared/types';
 import {contentHash,memoryPage,searchMemory,storyMessages,type MemoryHit,type MemoryPage} from './agent';
-import {roleplayGatewayOptions} from './gateway';
+import {runAI} from '@hasbai/ai';
 
 export type LoreSource={id:string;book:Book};
 export type LoreChunk={id:string;bookId:string;revision:string;entryId:string;text:string;vector?:number[];message?:Pick<Message,'id'|'ordinal'|'role'>};
@@ -26,11 +26,10 @@ export async function historyChunks(history:Message[]):Promise<LoreChunk[]>{
 }
 export function cosine(a:number[],b:number[]){if(a.length!==b.length||!a.length)return 0;let dot=0,aa=0,bb=0;for(let i=0;i<a.length;i++){dot+=a[i]*b[i];aa+=a[i]*a[i];bb+=b[i]*b[i];}return aa&&bb?dot/Math.sqrt(aa*bb):0;}
 export async function embeddings(env:Env,text:string[],username:string,requestId:string,signal:AbortSignal):Promise<number[][]>{
- const opts=roleplayGatewayOptions(env,username,requestId);
  if(signal.aborted)throw Error('检索已停止');
  const timeout=new AbortController(),timer=setTimeout(()=>timeout.abort(),10000),cancel=AbortSignal.any([signal,timeout.signal]);
  let onAbort!:()=>void;
- const response=await Promise.race([env.AI.run('@cf/baai/bge-m3',{text},{...opts,signal:cancel}),new Promise<never>((_,reject)=>{onAbort=()=>reject(Error('向量检索已停止'));cancel.addEventListener('abort',onAbort,{once:true});if(cancel.aborted)onAbort();})]).finally(()=>{clearTimeout(timer);cancel.removeEventListener('abort',onAbort);});
+ const response=await Promise.race([runAI(env.AI_SERVICE,'embedding',{text},{app:'tavern',username,requestId},cancel).then(async response=>{if(!response.ok)throw Error('向量响应失败');return response.json();}),new Promise<never>((_,reject)=>{onAbort=()=>reject(Error('向量检索已停止'));cancel.addEventListener('abort',onAbort,{once:true});if(cancel.aborted)onAbort();})]).finally(()=>{clearTimeout(timer);cancel.removeEventListener('abort',onAbort);});
  if(signal.aborted)throw Error('检索已停止');
  const raw=response as {data?:number[][];result?:{data?:number[][]}};const vectors=raw.data??raw.result?.data;
  if(!Array.isArray(vectors)||vectors.length!==text.length||vectors.some(v=>!Array.isArray(v)||v.length!==1024||v.some(n=>typeof n!=='number'||!Number.isFinite(n))))throw Error('向量响应无效');return vectors;

@@ -5,7 +5,7 @@
 ## 业务边界
 
 - 登录、公共 JWT claims、username 与 audience 复用[共享 AUTHORIZATION](../AUTHORIZATION.md)，不增加 Tavern audience 限定或专属用户名签发条件。业务接口以签名 sub 隔离本人资源；全站管理权限与本人功能的区别按该文档执行。
-- 模型仅接受服务端白名单逻辑 ID，当前 RP 映射固定 AI Gateway `default` 的 `dynamic/rp`；不开放任意模型、路由、URL 或密钥。模型参数及候选见[MODELS](MODELS.md)。
+- 模型仅接受服务端白名单逻辑 ID，当前 RP 经[统一 AI Worker](../ai/README.md)映射到 `default/dynamic/rp`；不开放任意模型、路由、URL 或密钥。模型参数及候选见[MODELS](MODELS.md)。
 - 全部会话由服务端持久化，角色扩展脚本不执行；不虚构推荐、评分、历史或候选，不把候选当已发生剧情。
 - 公开角色目录固定 revision、完整校验、原子切换；上游失败明确报错，不能伪装搜索成功。
 - Gateway 保存完整请求与回复，统一 `app`、`task`、`username` 三项 metadata。当前 eventId 的期望与线上证据缺口见[PROGRESS](PROGRESS.md)。

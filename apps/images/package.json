@@ -23,7 +23,8 @@
     "svelte": "catalog:",
     "tailwindcss": "catalog:",
     "tw-animate-css": "catalog:",
-    "@hasbai/observability": "workspace:*"
+    "@hasbai/observability": "workspace:*",
+    "@hasbai/ai": "workspace:*"
   },
   "devDependencies": {
     "@playwright/test": "catalog:",

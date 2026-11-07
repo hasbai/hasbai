@@ -2,7 +2,7 @@
 
 财务及历史命令在 `apps/financial` 运行。根 `pnpm` 脚本代理财务命令。根 `scripts/wait-ci.mjs` 位置不变。
 
-五个应用各有独立 workflow，由 changes job 判断影响范围；无关应用的 job 合法跳过，失败不得跳过。受影响范围以 `scripts/affected.mjs` 为准，当前 `packages/`、根 workspace 配置及 lockfile 变更验证五个应用。各应用的 `visual-coverage.json` 复用同一 manifest/execution gate。
+各应用有独立 workflow，由 changes job 判断影响范围；无关应用的 job 合法跳过，失败不得跳过。受影响范围以 `scripts/affected.mjs` 为准，当前 `packages/`、根 workspace 配置及 lockfile 变更验证所有应用。各应用的 `visual-coverage.json` 复用同一 manifest/execution gate。
 
 ## 运行
 
@@ -15,6 +15,7 @@
 | `apps/financial` | `pnpm test:ci-tools`、`pnpm check:visual-coverage`、`pnpm typecheck`、`pnpm test:coverage`、`pnpm build` |
 | `apps/blog` | `node ../financial/scripts/check-visual-coverage.mjs`、`pnpm typecheck`、`pnpm test`、`pnpm build`（包含真实 workerd Worker 启动检查） |
 | `apps/zboard` | `pnpm check:visual-coverage`、`pnpm typecheck`、隔离本地 D1 迁移、带 `MIHOMO_BIN` 的 `pnpm test`、`pnpm build` |
+| `apps/ai` | `pnpm check:visual-coverage`、`pnpm typecheck`、`pnpm test`、`pnpm test:runtime`、`pnpm build` |
 | `apps/images` | `pnpm check:visual-coverage`、`pnpm typecheck`、`pnpm test`、`pnpm build` |
 | `apps/tavern` | `pnpm check:visual-coverage`、`pnpm typecheck`、隔离本地 D1 迁移、`pnpm test`、`pnpm test:session-runtime`、`pnpm build` |
 
@@ -40,7 +41,9 @@ git diff --check
 云环境的 x86_64 本地开发使用 [amd64 开发镜像](../README.md#codex-本地环境)，避免 ARM 模拟开销。
 该镜像复用 CI 的安装步骤与版本，适用于本地检查和服务启动。
 需要局部预览时，可通过 `cloud-dev.mjs run` 执行 `node scripts/visual-capture.mjs <应用> <场景ID>`。
-这些截图仅作本地预览；导入 CI 基线仍须使用上述 ARM64 截图流程。
+2026-11-08 用户明确要求云环境本地检查和截图使用 AMD64，不运行 ARM 模拟。
+云环境可用固定版本 Playwright 的官方 AMD64 浏览器生成并审阅基线。
+CI 保持既有 ARM64 镜像与严格截图比较，不以本地结果替代 PR 验收。
 
 共享组件、样式、夹具或 `packages/` 改动须指定可重复的 `--page <源页面>` 或 `--all`。首次生成 Linux 基线运行 `--all`。审阅图在各应用忽略的 `.local-visual/<时间>/review/`；审阅后从仓库根运行 `pnpm visual:baseline:import-local <该次运行目录> --reviewed`，校验源码和 PNG 后导入本次截图。旧 macOS PNG 已清理；日常只维护 `linux-ci` 基线。
 

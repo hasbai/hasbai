@@ -10,20 +10,24 @@ Hasbai 使用 pnpm workspace；`apps/*` 是独立应用，`packages/*` 提供共
 | [Blog](blog/ARCHITECTURE.md) | SvelteKit SSR；Worker `blog`，`hasbai.xyz` / `blog.hasbai.xyz` | 公开内容由 SSR/浏览器直读 Neon Data API，业务表在 `public`；服务绑定调用统一图床 |
 | [Zboard](zboard/ARCHITECTURE.md) | Svelte 5 / Vite SPA；Worker `zboard` | Worker 验签、D1 用户/节点/模板/报告、订阅与 Node API |
 | [Images](images/README.md) | Svelte 5 / Vite SPA；Worker `images` | 统一 R2 image、Neon public.image、Codex 图片生成 |
+| [AI](ai/README.md) | Svelte 5 / Vite SPA；Worker `ai` | AI Gateway、Workers AI、自定义 Provider 与 BYOK |
 | [Tavern](tavern/ARCHITECTURE.md) | Svelte 5 / Vite SPA；Worker `tavern` | D1 目录/角色/世界书/设置；每会话 SQLite DO 保存正文与状态；私有 R2；AI Gateway `dynamic/rp` |
 
 ```mermaid
 flowchart LR
-  Apps[五个应用] --> Auth[共享 Auth0 Universal Login]
+  Apps[各应用] --> Auth[共享 Auth0 Universal Login]
   Financial[Financial SPA] --> Neon[Neon Data API]
   Blog[Blog SSR / 浏览器] --> Neon
+  Blog --> AI
   Blog --> Images[Images Worker]
+  Images --> AI
   Images --> Image[R2 image]
   TWorker --> Images
   Zboard[Zboard SPA] --> ZWorker[Zboard Worker / D1]
   Tavern[Tavern SPA] --> TWorker[Tavern Worker / D1 / 私有 R2]
   TWorker --> DO[每会话 SQLite DO]
-  DO --> Gateway[AI Gateway dynamic/rp]
+  DO --> AI[统一 AI Worker]
+  AI --> Gateway[AI Gateway dynamic/rp]
 ```
 
 签名、有效期、audience 和授权执行点见[AUTHORIZATION](AUTHORIZATION.md)；Neon 数据库角色权限与 Worker owner 隔离各自承担业务授权。
@@ -32,6 +36,7 @@ flowchart LR
 
 | 包 | 职责 | 不包含 |
 | --- | --- | --- |
+| `packages/ai` | 统一 AI 服务绑定客户端、调用归属和取消 | 上游凭据和管理权限 |
 | `packages/ui` | Luma primitives、通知、可复用交互组件 | 应用报表或业务权限 |
 | `packages/auth` | SDK 工厂、公开配置、公共 claims 与 permission helper | 密码、管理凭据、逐轮用户资料查询 |
 | `packages/data` | Neon PostgREST 客户端工厂 | 应用 repository 和业务读取包装视图 |
@@ -56,3 +61,5 @@ Cloudflare Workers Builds 监听 `main` 自动构建发布。当前 Git remote �
 2026-10-10 回读的构建过滤：财务 `apps/financial/*`、博客 `apps/blog/*`，均包含 `packages/*` 和根 workspace/lockfile；Tavern 为 `apps/tavern/**`、`packages/**` 和根 workspace/lockfile；Zboard 当前为 `*`（全仓库），并非只监控应用路径。此次仅记录现状，不修改后台触发器。
 
 自动 Build SHA 与线上版本在交付时核对。Tavern/Zboard 本地前端通过 Vite 代理独立 Worker API；细节见应用架构。发布、数据库兼容步骤和回滚验证的执行要求统一见[TESTING](TESTING.md)。
+
+AI 调用与管理统一见 [AI 服务](ai/README.md)。

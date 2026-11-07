@@ -1,0 +1,38 @@
+{
+  "name": "ai-service",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5178",
+    "typecheck": "wrangler types worker-env.d.ts && svelte-check --tsconfig tsconfig.json",
+    "test": "vitest run",
+    "build": "vite build && wrangler deploy --dry-run --outdir .wrangler/dry-run",
+    "deploy": "wrangler deploy",
+    "test:runtime": "node scripts/check-runtime.mjs",
+    "test:e2e": "playwright test",
+    "check:visual-coverage": "node ../financial/scripts/check-visual-coverage.mjs"
+  },
+  "dependencies": {
+    "@hasbai/ai": "workspace:*",
+    "@hasbai/auth": "workspace:*",
+    "@hasbai/ui": "workspace:*",
+    "@lucide/svelte": "catalog:",
+    "svelte": "catalog:",
+    "tailwindcss": "catalog:",
+    "tw-animate-css": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "catalog:",
+    "@tailwindcss/vite": "catalog:",
+    "@types/node": "catalog:",
+    "svelte-check": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:",
+    "wrangler": "catalog:",
+    "jose": "catalog:",
+    "@playwright/test": "catalog:"
+  }
+}

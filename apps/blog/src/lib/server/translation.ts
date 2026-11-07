@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { runAI } from "@hasbai/ai";
 import { repository } from "$lib/api";
 import { neonPublicRepository } from "./neon-public";
 import { PublicCacheError, refreshPublicSnapshot } from "./public-snapshot";
@@ -16,18 +17,7 @@ export async function translate(
   source: Translation,
   target: string,
 ) {
-  if (!env.AIG_TRANSLATE_RUN_TOKEN) throw new Error("翻译服务未配置");
-  const response = await fetch(
-    "https://gateway.ai.cloudflare.com/v1/5cecc63c78acf8f5473f8745f4244448/custom/compat/chat/completions",
-    {
-      method: "POST",
-      signal: AbortSignal.timeout(120_000),
-      headers: {
-        "Content-Type": "application/json",
-        "cf-aig-authorization": `Bearer ${env.AIG_TRANSLATE_RUN_TOKEN}`,
-        "cf-aig-skip-cache": "true",
-      },
-      body: JSON.stringify({
+  const response = await runAI(env.AI_SERVICE, 'translate', {
         model: "dynamic/translate",
         stream: false,
         messages: [
@@ -45,9 +35,7 @@ export async function translate(
           },
         ],
         response_format: { type: "json_object" },
-      }),
-    },
-  );
+      }, {app:'blog', username:'blog-translation'}, AbortSignal.timeout(120_000));
   if (!response.ok) throw new Error("AI 翻译失败，请重试");
   const result = (await response.json()) as {
     choices?: { message?: { content?: string }; finish_reason?: string }[];

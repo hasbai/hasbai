@@ -11,7 +11,7 @@ it('retrieves Chinese keyword sources when vector service fails and removes old/
  }finally{db.close();}
 });
 it('bounds hung embedding requests and immediately respects outer cancellation',async()=>{
- vi.useFakeTimers();try{const env={AIG_GATEWAY_ID:'default',AI:{run:vi.fn(()=>new Promise(()=>{}))}} as unknown as Env;const pending=embeddings(env,['灯塔'],'test','r',new AbortController().signal);const rejected=expect(pending).rejects.toThrow('停止');await vi.advanceTimersByTimeAsync(10000);await rejected;
+ vi.useFakeTimers();try{const env={AI_SERVICE:{fetch:vi.fn(()=>new Promise(()=>{}))}} as unknown as Env;const pending=embeddings(env,['灯塔'],'test','r',new AbortController().signal);const rejected=expect(pending).rejects.toThrow('停止');await vi.advanceTimersByTimeAsync(10000);await rejected;
  const abort=new AbortController();const cancelled=embeddings(env,['灯塔'],'test','r',abort.signal);const checked=expect(cancelled).rejects.toThrow('停止');abort.abort();await checked;
  }finally{vi.useRealTimers();}
 });

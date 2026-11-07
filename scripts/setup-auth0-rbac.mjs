@@ -13,6 +13,7 @@ function api(method, path, data) {
 }
 const additions = new Map([
   [authConfig.audience, [
+    { value: permissions.ai, description: 'AI：Provider 与 BYOK 管理，仅 Super Admin' },
     { value: permissions.financial, description: '北极账本：访问全部财务功能，仅 Super Admin' },
     { value: permissions.images, description: '图床：管理全部图片，仅 Super Admin' },
     { value: permissions.blog, description: '北极小站：编辑、发布、删除内容和上传图片，仅 Super Admin' },
