@@ -50,9 +50,15 @@
   },
   "secrets": {
     "required": [
-      "DATABASE_URL",
-      "AIG_IMAGE_RUN_TOKEN"
+      "DATABASE_URL"
     ]
   },
-  "send_metrics": false
+  "send_metrics": false,
+  "services": [
+    {
+      "binding": "AI_SERVICE",
+      "service": "ai",
+      "entrypoint": "InferenceService"
+    }
+  ]
 }

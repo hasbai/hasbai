@@ -33,7 +33,8 @@ Worker 为 `images`，域名为 `images.hasbai.xyz`。
 
 ## AI 生成与 API
 
-固定通过 AI Gateway `default` 的 `custom-codex/images/generations` 调用 Codex。
+通过 `AI_SERVICE` 服务绑定调用[统一 AI Worker](../ai/README.md)。
+上游仍为 `default/custom-codex/images/generations`。
 服务端只接受以下模型：
 
 | 模型 ID | UI 名称 | 酒馆用途 |

@@ -11,21 +11,15 @@ import {scenario} from './agent-evaluation-cases.mjs';
 const root=resolve(import.meta.dirname,'..'),require=createRequire(import.meta.url),runtimeRequire=createRequire(require.resolve('wrangler'));
 const {Miniflare,convertV4MiniflareOptions,Log,LogLevel}=runtimeRequire('miniflare'),{build}=runtimeRequire('esbuild');
 const args=process.argv.slice(2),option=name=>{const at=args.indexOf(name);return at<0?undefined:args[at+1];};
-if(!args.includes('--live')||!process.env.AIG_RP_RUN_TOKEN)throw Error('Use --live with AIG_RP_RUN_TOKEN in the environment.');
+if(!args.includes('--live')||!process.env.AI_ACCESS_TOKEN)throw Error('Use --live with an Auth0 AI_ACCESS_TOKEN in the environment.');
 const out=resolve(option('--out-dir')??join(root,'.local-visual','agent-evaluation',new Date().toISOString().replaceAll(':','-')));
 mkdirSync(out,{recursive:true});
 const persist=mkdtempSync(join(tmpdir(),'tavern-agent-evaluation-')),snapshot=option('--ref');let appRoot=root;
-const useEmbeddings=args.includes('--embeddings'),accountId=option('--account-id')??process.env.CLOUDFLARE_ACCOUNT_ID;
-let embeddingToken=process.env.CLOUDFLARE_API_TOKEN;
-if(useEmbeddings){
- if(!accountId)throw Error('--embeddings requires --account-id or CLOUDFLARE_ACCOUNT_ID');
- if(!embeddingToken){const raw=execFileSync('pnpm',['exec','wrangler','auth','token','--json'],{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']});embeddingToken=JSON.parse(raw.slice(raw.indexOf('{'))).token;}
- if(!embeddingToken)throw Error('Workers AI authentication unavailable');
-}
+const useEmbeddings=args.includes('--embeddings');
 if(snapshot){const archive=join(persist,'source.tar');execFileSync('git',['archive',snapshot,'apps/tavern','--output='+archive],{cwd:resolve(root,'../..')});execFileSync('tar',['-xf',archive,'-C',persist]);appRoot=join(persist,'apps/tavern');}
 const source=`console.info=()=>{};import {TavernSession} from './worker/session-object';import {LoreIndex,embeddings} from './worker/lore';
 export class EvaluationSession extends TavernSession {
- constructor(ctx,env){super(ctx,{...env,AI:{run:async(model,input,options)=>{const r=await fetch('https://evaluation-embedding',{method:'POST',body:JSON.stringify({model,input,metadata:options.gateway.metadata,eventId:options.gateway.eventId}),signal:options.signal});if(!r.ok)throw Error('evaluation embedding unavailable');return (await r.json()).result;}}});}
+ constructor(ctx,env){super(ctx,{...env,AI_SERVICE:{fetch:(url,options)=>fetch(url,options)}});}
  async probe(id,query){await this.invoke('evaluation',id,'read',{});const index=new LoreIndex(this.ctx.storage.sql,[],(texts,signal)=>embeddings(this.env,texts,'agent-evaluation','semantic-probe',signal),new AbortController().signal,this.store.messages());return index.search(query);}
 }
 export default {async fetch(request,env){const d=await request.json(),stub=env.SESSIONS.getByName(JSON.stringify(['evaluation',d.id]));
@@ -36,17 +30,16 @@ const bundled=await build({stdin:{contents:source,resolveDir:appRoot,sourcefile:
 const requests=[],rounds=[],embeddingRequests=[],resources=new Set(['main','cache-other']);let active={id:'setup',session:'main'},runtime;
 const metadata={scenario:scenario.name,fixture:scenario,bundleSHA256:createHash('sha256').update(bundled.outputFiles[0].text).digest('hex'),ref:snapshot??execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim(),workingTree:!snapshot,startedAt:new Date().toISOString(),settings:scenario.settings};
 const save=()=>{writeFileSync(join(out,'results.json'),JSON.stringify({metadata,rounds,requests,embeddingRequests},null,2)+'\n');};
-runtime=new Miniflare(convertV4MiniflareOptions({modules:true,script:bundled.outputFiles[0].text,compatibilityDate:'2026-10-03',compatibilityFlags:['nodejs_compat','enable_request_signal'],durableObjects:{SESSIONS:{className:'EvaluationSession',useSQLite:true}},resourcePersistencePath:join(persist,'storage'),kvNamespaces:{PROMPTS:'evaluation-prompts'},d1Databases:{DB:'evaluation'},bindings:{AIG_GATEWAY_ID:'default',AIG_RP_RUN_TOKEN:process.env.AIG_RP_RUN_TOKEN},log:new Log(LogLevel.ERROR),outboundService:async request=>{
- if(new URL(request.url).hostname==='evaluation-embedding'){
-  const data=await request.json();if(data.model!=='@cf/baai/bge-m3')throw Error('Unexpected embedding model');
-  if(!useEmbeddings)return new Response(null,{status:503});
-  const started=Date.now(),response=await fetch('https://api.cloudflare.com/client/v4/accounts/'+accountId+'/ai/run/@cf/baai/bge-m3',{method:'POST',headers:{Authorization:'Bearer '+embeddingToken,'Content-Type':'application/json'},body:JSON.stringify(data.input),signal:request.signal});
-  const value=await response.json();embeddingRequests.push({round:active.id,items:data.input.text.length,status:response.status,dimensions:value.result?.data?.map(v=>v.length)??[],elapsedMs:Date.now()-started});save();return Response.json({result:value.result},{status:response.status});
+runtime=new Miniflare(convertV4MiniflareOptions({modules:true,script:bundled.outputFiles[0].text,compatibilityDate:'2026-10-03',compatibilityFlags:['nodejs_compat','enable_request_signal'],durableObjects:{SESSIONS:{className:'EvaluationSession',useSQLite:true}},resourcePersistencePath:join(persist,'storage'),kvNamespaces:{PROMPTS:'evaluation-prompts'},d1Databases:{DB:'evaluation'},log:new Log(LogLevel.ERROR),outboundService:async request=>{
+ if(new URL(request.url).pathname==='/internal/embedding'){
+  const data=await request.json();if(!useEmbeddings)return new Response(null,{status:503});
+  const started=Date.now(),response=await fetch('https://ai.hasbai.xyz/v1/embeddings',{method:'POST',headers:{Authorization:'Bearer '+process.env.AI_ACCESS_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({model:'@cf/baai/bge-m3',input:data.text}),signal:request.signal});
+  const value=await response.json();const vectors=value.data?.map(item=>item.embedding);embeddingRequests.push({round:active.id,items:data.text.length,status:response.status,dimensions:vectors?.map(v=>v.length)??[],elapsedMs:Date.now()-started});save();return Response.json({data:vectors},{status:response.status});
  }
- if(!request.url.includes('/compat/chat/completions'))throw Error('Unexpected evaluation endpoint');
+ if(new URL(request.url).pathname!=='/internal/roleplay')throw Error('Unexpected evaluation endpoint');
  const input=await request.json(),start=Date.now(),record={round:active.id,session:active.session,sequence:requests.length+1,phase:input.response_format?'director':input.tools?'body':'summary',input,toolDeltas:[],firstTextMs:null,elapsedMs:null,promptTokens:null,cachedTokens:null,prefillTokens:null,prefillMs:null,decodeMs:null,finishReason:null,model:null};
  record.phaseIndex=requests.filter(r=>r.round===record.round&&r.session===record.session&&r.phase===record.phase).length+1;requests.push(record);
- const response=await fetch(request.url,{method:'POST',headers:request.headers,body:JSON.stringify(input),signal:AbortSignal.any([request.signal,AbortSignal.timeout(180000)]),redirect:'manual'});
+ const response=await fetch('https://ai.hasbai.xyz/v1/chat/completions',{method:'POST',headers:{Authorization:'Bearer '+process.env.AI_ACCESS_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({...input,model:'rp'}),signal:AbortSignal.any([request.signal,AbortSignal.timeout(180000)]),redirect:'manual'});
  record.httpStatus=response.status;record.logId=response.headers.get('cf-aig-log-id');let wire='',decoder=new TextDecoder();
  return new Response(response.body?.pipeThrough(new TransformStream({transform(chunk,controller){
   wire+=decoder.decode(chunk,{stream:true});const lines=wire.split('\n');wire=lines.pop();

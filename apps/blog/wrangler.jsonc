@@ -46,6 +46,11 @@
     {
       "binding": "IMAGE_SERVICE",
       "service": "images"
+    },
+    {
+      "binding": "AI_SERVICE",
+      "service": "ai",
+      "entrypoint": "InferenceService"
     }
   ],
   "r2_buckets": [

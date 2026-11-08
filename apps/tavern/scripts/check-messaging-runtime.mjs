@@ -10,7 +10,7 @@ const root=resolve(import.meta.dirname,'..'),persist=mkdtempSync(join(tmpdir(),'
 const source=`
 import {TavernSession} from './worker/session-object';
 import {MessageInbox} from './worker/message-inbox';
-export class RuntimeSession extends TavernSession {constructor(ctx,env){super(ctx,{...env,AIG_RP_RUN_TOKEN:'fixture-only'});}}
+export class RuntimeSession extends TavernSession {constructor(ctx,env){super(ctx,{...env,AI_SERVICE:{fetch:(url,options)=>fetch(url,options)}});}}
 export class RuntimeInbox extends MessageInbox {
  async step(){await this.alarm();return this.status('route');}
  inspect(){return {jobs:this.ctx.storage.sql.exec('SELECT update_id,request_id,phase FROM inbox_jobs ORDER BY update_id').toArray(),chunks:this.ctx.storage.sql.exec('SELECT text,state,telegram_id FROM inbox_chunks ORDER BY update_id,ordinal').toArray()};}
@@ -18,12 +18,12 @@ export class RuntimeInbox extends MessageInbox {
 const telegramEvents=[];
 globalThis.fetch=async(url,options)=>{
  if(String(url).includes('api.telegram.org/')){telegramEvents.push({method:String(url).split('/').at(-1),body:JSON.parse(options.body)});return Response.json({ok:true,result:{message_id:123}});}
- if(!String(url).includes('/compat/chat/completions'))throw Error('unexpected external request');
+ if(!String(url).includes('/internal/roleplay'))throw Error('unexpected external request');
  const input=JSON.parse(options.body);if(input.model!=='dynamic/rp')throw Error('unexpected model');
  if(input.messages.some(m=>m.role==='user'&&m.content.includes('"speaker":')))throw Error('Telegram envelope leaked into model prompt');
  if(!input.messages.some(m=>m.role==='user'&&m.content.includes('@untrusted-telegram-name: 你好')))throw Error('Telegram dialogue projection missing');
  if(input.messages.some(m=>m.content.includes('口吻更自然'))&&!input.messages.some(m=>m.content.includes('[OOC：')))throw Error('OOC instruction lost');
- const metadata=JSON.parse(options.headers['cf-aig-metadata']);if(metadata.username!=='verified-profile')throw Error('unverified profile');
+ const metadata=JSON.parse(options.headers['X-AI-Attribution']);if(metadata.username!=='verified-profile')throw Error('unverified profile');
  const text=input.response_format?JSON.stringify({choices:['继续。','等一会。','看向窗外。']}):'收到你的消息。';
  if(input.response_format)return new Response('data: '+JSON.stringify({choices:[{delta:{content:text},finish_reason:'stop'}]})+'\\n\\ndata: [DONE]\\n\\n',{headers:{'Content-Type':'text/event-stream'}});
  return new Response(new ReadableStream({start(c){const frame=(content,finish_reason=null)=>new TextEncoder().encode('data: '+JSON.stringify({choices:[{delta:{content},finish_reason}]})+'\\n\\n');c.enqueue(frame(text.slice(0,2)));setTimeout(()=>{c.enqueue(frame(text.slice(2),'stop'));c.enqueue(new TextEncoder().encode('data: [DONE]\\n\\n'));c.close();},1800);}}),{headers:{'Content-Type':'text/event-stream'}});

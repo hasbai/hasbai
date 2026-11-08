@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-const apps = ['financial', 'blog', 'zboard', 'tavern', 'images'];
+const apps = ['financial', 'blog', 'zboard', 'tavern', 'images', 'ai'];
 const pnpm = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
 const expectedPnpm = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).packageManager.split('@')[1];
 
@@ -28,7 +28,7 @@ function info() {
   }
   console.log('Rules: AGENTS.md; checks/delivery: docs/TESTING.md; navigation: docs/README.md');
   console.log('Root dev/test/build/typecheck target financial. Other apps: pnpm --filter <app> <script>.');
-  console.log('Zboard/Tavern API: node scripts/local-environment.mjs api <zboard|tavern> (build first; port 8787, one at a time).');
+  console.log('Zboard/Tavern/AI API: node scripts/local-environment.mjs api <zboard|tavern|ai> (build first; port 8787, one at a time).');
   console.log('Zboard native tests require the pinned, SHA-256-verified MIHOMO_BIN; see docs/TESTING.md.');
   console.log('Full Playwright: CI. Page screenshots: existing visual:* actions with the pinned Linux image.');
 }
@@ -48,8 +48,8 @@ try {
       break;
     case 'api': {
       const app = process.argv[3];
-      if (!['zboard', 'tavern'].includes(app)) throw new Error('API app must be zboard or tavern.');
-      run(pnpm, ['--filter', app, 'build']);
+      if (!['zboard', 'tavern', 'ai'].includes(app)) throw new Error('API app must be zboard, tavern or ai.');
+      run(pnpm, ['--filter', app === 'ai' ? 'ai-service' : app, 'build']);
       run(pnpm, ['--dir', `apps/${app}`, 'exec', 'wrangler', 'dev', '--port', '8787', '--local']);
       break;
     }
@@ -73,7 +73,7 @@ try {
       break;
     }
     default:
-      throw new Error('Usage: node scripts/local-environment.mjs <setup|info|cleanup|api zboard|api tavern>');
+      throw new Error('Usage: node scripts/local-environment.mjs <setup|info|cleanup|api zboard|api tavern|api ai>');
   }
 } catch (error) {
   console.error(error.message);

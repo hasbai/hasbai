@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "project": "ai",
+  "inventory": {
+    "root": "src",
+    "suffix": ".svelte"
+  },
+  "baselineDirectories": [
+    "e2e/__screenshots__/linux-ci/desktop",
+    "e2e/__screenshots__/linux-ci/mobile",
+    "e2e/__screenshots__/linux-ci/dark",
+    "e2e/__screenshots__/linux-ci/short"
+  ],
+  "baselineTemplate": "e2e/__screenshots__/linux-ci/{project}/{snapshot}",
+  "pages": [
+    {
+      "source": "src/App.svelte",
+      "exemption": "Auth0 callback requires the real provider, PKCE and registered origin; verify at release."
+    },
+    {
+      "source": "src/Console.svelte",
+      "scenarios": [
+        "use"
+      ]
+    },
+    {
+      "source": "src/Manager.svelte",
+      "scenarios": [
+        "manage"
+      ]
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "use",
+      "kind": "screenshot",
+      "evidence": [
+        {
+          "spec": "e2e/ai.spec.ts",
+          "test": "ordinary user streams a reply and retains the prompt after cancellation",
+          "projects": [
+            "desktop",
+            "mobile",
+            "dark",
+            "short"
+          ],
+          "snapshots": [
+            "workbench.png"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manage",
+      "kind": "screenshot",
+      "evidence": [
+        {
+          "spec": "e2e/ai.spec.ts",
+          "test": "admin manages providers and write-only BYOK keys",
+          "projects": [
+            "desktop",
+            "mobile",
+            "dark",
+            "short"
+          ],
+          "snapshots": [
+            "management.png",
+            "key-form.png"
+          ]
+        }
+      ]
+    }
+  ]
+}

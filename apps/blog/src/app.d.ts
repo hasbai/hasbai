@@ -1,7 +1,7 @@
 declare global {
   namespace App {
     interface Platform {
-      env: Env & { AIG_TRANSLATE_RUN_TOKEN?: string };
+      env: Env;
       context: ExecutionContext;
       caches: CacheStorage;
     }

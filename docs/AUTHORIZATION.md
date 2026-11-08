@@ -77,3 +77,10 @@ Portal 使用独立 Regular Web Auth0 应用及同一北极组织。Cloudflare A
 按既有授权，本地忽略的 `.env` 可保存 `AUTH0_TEST_EMAIL` / `AUTH0_TEST_PASSWORD`，权限 600，不使用 `VITE_` 前缀、不进入构建。脚本严格校验 callback state，凭据仅提交同一 Auth0 origin，不需要管理 CLI 登录、client secret、临时 grant 或改写 `.env`；遇 MFA/CAPTCHA 等额外验证明确停止。凭据读取/输出约束见根 [AGENTS](../AGENTS.md#全局约束)。
 
 独立验证财务/博客 Data API 的真实读取、草稿或零行 PATCH 权限。还须验证无 token/错误签名/audience 拒绝。公开内容 HTTP 200 不能证明管理员写权限。合成夹具、真实 JWT/API、第三方完整账号登录和生产部署分别记录，通用流程见[TESTING](TESTING.md#浏览器与真实链路)。
+
+## AI 服务
+
+`ai.hasbai.xyz` 复用共享 audience 与登录客户端。
+普通登录用户可调用 AI，无需角色。
+Provider 和 BYOK 管理要求 `ai.all:all`，仅授予既有 `superadmin`。
+接口不按角色 claims 回退，配置入口见 [AI 服务](ai/README.md)。

@@ -2,7 +2,7 @@
 
 财务及历史命令在 `apps/financial` 运行。根 `pnpm` 脚本代理财务命令。根 `scripts/wait-ci.mjs` 位置不变。
 
-五个应用各有独立 workflow，由 changes job 判断影响范围；无关应用的 job 合法跳过，失败不得跳过。受影响范围以 `scripts/affected.mjs` 为准，当前 `packages/`、根 workspace 配置及 lockfile 变更验证五个应用。各应用的 `visual-coverage.json` 复用同一 manifest/execution gate。
+各应用有独立 workflow，由 changes job 判断影响范围；无关应用的 job 合法跳过，失败不得跳过。受影响范围以 `scripts/affected.mjs` 为准，当前 `packages/`、根 workspace 配置及 lockfile 变更验证所有应用。各应用的 `visual-coverage.json` 复用同一 manifest/execution gate。
 
 ## 运行
 
@@ -15,6 +15,7 @@
 | `apps/financial` | `pnpm test:ci-tools`、`pnpm check:visual-coverage`、`pnpm typecheck`、`pnpm test:coverage`、`pnpm build` |
 | `apps/blog` | `node ../financial/scripts/check-visual-coverage.mjs`、`pnpm typecheck`、`pnpm test`、`pnpm build`（包含真实 workerd Worker 启动检查） |
 | `apps/zboard` | `pnpm check:visual-coverage`、`pnpm typecheck`、隔离本地 D1 迁移、带 `MIHOMO_BIN` 的 `pnpm test`、`pnpm build` |
+| `apps/ai` | `pnpm check:visual-coverage`、`pnpm typecheck`、`pnpm test`、`pnpm test:runtime`、`pnpm build` |
 | `apps/images` | `pnpm check:visual-coverage`、`pnpm typecheck`、`pnpm test`、`pnpm build` |
 | `apps/tavern` | `pnpm check:visual-coverage`、`pnpm typecheck`、隔离本地 D1 迁移、`pnpm test`、`pnpm test:session-runtime`、`pnpm build` |
 
@@ -36,7 +37,7 @@ git diff --check
 页面改动还须在本地固定 Linux 镜像生成并审阅受影响截图；`pnpm visual:local` 构建生产包和 e2e 包，仅运行所选 Financial 场景。完整 Playwright 套件与全部基线严格比较仍在 CI 执行。
 
 视觉 CI 与本地截图统一使用 `docker/visual-ci/Dockerfile` 构建的 Linux AMD64 镜像。
-镜像按 digest 固定 Chromium headless、Playwright 1.63.0、Node 24.20.0、pnpm 10.33.2 和 CJK 字体。镜像发布工作流是 `.github/workflows/visual-image.yml`；五个应用的视觉 job 使用同一个 digest，单元任务仍运行在 Ubuntu。日常 `pnpm visual:local` 从相对 `origin/main` 的 Financial 页面改动选择清单场景；Blog、Zboard、Tavern 分别用 `pnpm visual:blog`、`pnpm visual:zboard`、`pnpm visual:tavern`，图床用 `pnpm visual:images`。
+镜像按 digest 固定 Chromium headless、Playwright 1.63.0、Node 24.20.0、pnpm 10.33.2 和 CJK 字体。镜像发布工作流是 `.github/workflows/visual-image.yml`；各应用的视觉 job 使用同一个 digest，单元任务仍运行在 Ubuntu。日常 `pnpm visual:local` 从相对 `origin/main` 的 Financial 页面改动选择清单场景；Blog、Zboard、Tavern 分别用 `pnpm visual:blog`、`pnpm visual:zboard`、`pnpm visual:tavern`，图床用 `pnpm visual:images`。
 
 云环境与视觉 CI 统一使用 [AMD64 开发镜像](../README.md#codex-本地环境)，不使用 ARM 或 QEMU 模拟。
 该镜像复用 CI 的 Dockerfile 与版本，适用于本地检查和服务启动。
@@ -52,7 +53,7 @@ git diff --check
 
 额外稳定性复跑只用于已复现抖动或明确排障，并记录原因。报告保留 expected/actual/diff 和失败 trace。有意设计变更须核对差异，不为消除差异提高容差或盲目更新。
 
-五个应用均沿用 Cloudflare Workers Builds 的 main 自动构建和路径过滤；GitHub Actions 只负责 PR 验收，不部署。应用构建入口见[ARCHITECTURE](ARCHITECTURE.md#自动构建与运行入口)，交付时回读 Build SHA、部署结果和线上版本。
+各应用均沿用 Cloudflare Workers Builds 的 main 自动构建和路径过滤；GitHub Actions 只负责 PR 验收，不部署。应用构建入口见[ARCHITECTURE](ARCHITECTURE.md#自动构建与运行入口)，交付时回读 Build SHA、部署结果和线上版本。
 
 ## 轻量任务与本地迭代
 

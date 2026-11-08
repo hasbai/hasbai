@@ -1,6 +1,6 @@
 # Tavern 模型参数与独立 Director
 
-服务端仅提供白名单逻辑模型，当前 `rp` 对应 Gateway `default` / `dynamic/rp`，实际 provider/model 由 Gateway 配置决定。本文是参数、候选协议及 UI 的维护入口；运行实现见 `apps/tavern/shared/settings.ts`、`worker/director.ts`、`worker/inference.ts`、`worker/gateway.ts`。不靠 route version/schema/管理 API 探测作为聊天准入，推理凭据只在 Worker Secret 中使用；不依赖管理 Token。
+服务端仅提供白名单逻辑模型，当前 `rp` 对应 Gateway `default` / `dynamic/rp`，实际 provider/model 由 Gateway 配置决定。本文是参数、候选协议及 UI 的维护入口；运行实现见 `apps/tavern/shared/settings.ts`、`worker/director.ts`、`worker/inference.ts`、`worker/gateway.ts`。不靠 route version/schema/管理 API 探测作为聊天准入，调用经 `AI_SERVICE` 服务绑定进入[统一 AI Worker](../ai/README.md)。推理凭据仅保存在 AI Worker。推理不依赖管理 Token。
 
 当前实现和最新真实验收缺口见[PROGRESS](PROGRESS.md)。
 
@@ -181,8 +181,8 @@ Director 末尾任务包含目标边界，实际 messages 与 tools 前缀仍原
 已保存的系统提示保持原文，包括旧默认字符串；用户提示始终进入system，角色卡提示附加，含 `{{original}}` 时替换且不重复插入。正文用户消息只包含用户原文；Director使用JSON Schema，缓存以实际计数验收。
 
 正文、Director、按需压缩与角色生成共用 `worker/inference.ts` 的 AI SDK 适配器。
-SDK provider 通过 `worker/gateway.ts` 发送固定 compat/chat/completions HTTP 请求。
-专用运行 Secret `AIG_RP_RUN_TOKEN` 仅用于该传输层。
+SDK provider 通过 `worker/gateway.ts` 的 `AI_SERVICE` 绑定调用统一 AI Worker。
+固定 compat/chat/completions 上游请求与运行 Secret 由 AI Worker 管理。
 原始请求、取消信号及每次响应内日志 ID 保留。
 
 工具执行和存储契约见[AGENT](AGENT.md#prompt-与模型投影)。

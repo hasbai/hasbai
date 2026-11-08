@@ -58,7 +58,7 @@ DO 成功消息版本与状态事务是权威剧情；摘要、旧 Director 梗�
 历史分块绑定成功消息 ID 与内容 hash，世界书绑定 book、entry 与 revision。
 索引保存在当前会话 DO，移除未绑定或旧版本。
 每次最多新增八块向量，十秒内渐进补齐。
-固定 `@cf/baai/bge-m3` 仅用于嵌入，沿用已有 AI/Gateway 日志。
+固定 `@cf/baai/bge-m3` 仅用于嵌入，经统一 AI Worker 使用 AI binding 与 Gateway 日志。
 不可用则返回真实关键词结果，停止立即退出。
 
 不新增索引服务或浏览器模型入口。
@@ -280,7 +280,8 @@ Gateway 完整 payload、eventId、三项 metadata 和 `skipCache:true` 契约�
 额外检查切会话、用户消息编辑截断、重生成与停止。
 不得重生成筛选成功样本，失败回合保留。
 
-在应用目录运行 `pnpm eval:agent --account-id <账户 ID>`。
+在应用目录设置 Auth0 用户访问令牌 `AI_ACCESS_TOKEN`，运行 `pnpm eval:agent`。
+评测经 `ai.hasbai.xyz`，不再直接使用 Cloudflare 凭据。
 推理凭据通过环境传入；嵌入使用 API Token 或本机 Wrangler 登录。
 `--ref <commit>` 可在隔离源码上运行相同场景。
 输出保存在忽略的 `.local-visual/agent-evaluation/`。

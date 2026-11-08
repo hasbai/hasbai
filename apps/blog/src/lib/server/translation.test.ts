@@ -11,7 +11,7 @@ const source: Translation = {
   updated_at: "2026-10-13T00:00:00Z",
 };
 vi.mock("./public-snapshot", async importOriginal => ({...await importOriginal<typeof import("./public-snapshot")>(), refreshPublicSnapshot: vi.fn()}));
-const env = { AIG_TRANSLATE_RUN_TOKEN: "test" } as App.Platform["env"];
+const env = { AI_SERVICE: {fetch: (...args: Parameters<typeof globalThis.fetch>) => globalThis.fetch(...args)} } as App.Platform["env"];
 const text = {
   title: "Title",
   excerpt: "Summary",
@@ -29,7 +29,7 @@ it("uses the deployed custom provider translation route with JSON output", async
   vi.stubGlobal("fetch", fetcher);
   expect(await translate(env, source, "en-US")).toEqual(text);
   const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
-  expect(url).toContain("/custom/compat/chat/completions");
+  expect(url).toContain("/internal/translate");
   expect(JSON.parse(String(init.body))).toMatchObject({
     model: "dynamic/translate",
     stream: false,
@@ -58,7 +58,7 @@ it("automatic translation skips existing languages and reports failed targets wi
       const url = String(input);
       if (url.includes("/translation"))
         return Response.json([source, { ...source, locale: "en-US" }]);
-      if (url.includes("gateway.ai"))
+      if (url.includes("ai.hasbai.xyz"))
         return Response.json({
           choices: [
             {
@@ -95,7 +95,7 @@ it("manual overwrite carries source and target versions and surfaces a conflict"
       const url = String(input);
       if (url.includes("/translation"))
         return Response.json([source, { ...source, locale: "en-US" }]);
-      if (url.includes("gateway.ai"))
+      if (url.includes("ai.hasbai.xyz"))
         return Response.json({
           choices: [
             {
@@ -122,7 +122,7 @@ it("manual overwrite carries source and target versions and surfaces a conflict"
 it('completes an existing empty translation instead of treating it as finished',async()=>{
  let target='';vi.stubGlobal('fetch',vi.fn(async(input:RequestInfo|URL,init?:RequestInit)=>{
   const url=String(input);if(url.includes('/translation'))return Response.json([source,{...source,locale:'en-US',markdown:'',is_complete:false}]);
-  if(url.includes('gateway.ai'))return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(text)}}]});
+  if(url.includes('ai.hasbai.xyz'))return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(text)}}]});
   target=JSON.parse(String(init?.body)).p_locale;return Response.json(null);
  }));expect(await translateContent(repository(async()=>'test'),env,source.content_id,'zh-CN',['en-US'],true)).toEqual([]);expect(target).toBe('en-US');
 });
@@ -134,7 +134,7 @@ it("refreshes each committed translation even when a later target fails", async 
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.includes("/translation")) return Response.json([source]);
-    if (url.includes("gateway.ai")) {
+    if (url.includes("ai.hasbai.xyz")) {
       generated++;
       if (generated === 2) return Response.json({}, { status: 503 });
       return Response.json({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify(text) } }] });

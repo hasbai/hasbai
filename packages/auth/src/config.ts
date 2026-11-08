@@ -7,6 +7,7 @@ export const authConfig = {
 export const authClaims = { role: "role", roles: "_roles", username: "username", email: "email" } as const;
 
 export const permissions = {
+  ai: "ai.all:all",
   financial: "financial.all:all",
   blog: "blog.all:all",
   images: "images.all:all",

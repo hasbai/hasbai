@@ -4,7 +4,7 @@ import { DEFAULT_SETTINGS, type Message } from '../shared/types';
 import type {PromptMessage} from '../shared/prompt';
 const card={name:'岚',description:'旅店主人'};
 const message=(id:string,role:Message['role'],content:string):Message=>({id,role,content,status:'completed',ordinal:0,requestId:null,createdAt:0});
-vi.mock('./gateway',async(original)=>({...await original<typeof import('./gateway')>(),runRoleplay:async(env:Env,username:string,requestId:string,input:Record<string,unknown>,signal:AbortSignal)=>env.AI.gateway('default').run({provider:'compat',endpoint:'chat/completions',headers:{},query:input},{gateway:{id:'default',skipCache:true,collectLog:true,eventId:requestId,retries:{maxAttempts:1},metadata:{app:'tavern',task:'roleplay',username}},signal})}));
+
 const options={protocol:'',inputRatio:1.2};
 it('projects Telegram history and current input for body and summary while preserving original checkpoint sources',async()=>{
  const raw=JSON.stringify({speaker:{id:12,name:'@alice'},text:'今天的事情。'.repeat(20)}),history=[message('old','user',raw)];
@@ -50,7 +50,7 @@ it('requires every summary to be nonempty and shorter than its source',async()=>
  await expect(summarizeStory('',history,{contextTokens:null,inputRatio:1.2,infer:async()=>''})).rejects.toThrow('有效摘要');
 });
 it('does not reissue a summary when its output finishes with length',async()=>{
- const run=vi.fn(async()=>new Response('data: {"choices":[{"delta":{"content":"半个摘要"},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n',{headers:{'Content-Type':'text/event-stream'}})),env={AI:{gateway:()=>({run})},AIG_GATEWAY_ID:'default'} as unknown as Env;
+ const run=vi.fn(async()=>new Response('data: {"choices":[{"delta":{"content":"半个摘要"},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n',{headers:{'Content-Type':'text/event-stream'}})),env={AI_SERVICE:{fetch:run}} as unknown as Env;
  await expect(summarizeStory('',[message('a','assistant','源剧情'.repeat(100))],{contextTokens:null,inputRatio:1.2,infer:messages=>summarizeWithModel(env,'用户','request',DEFAULT_SETTINGS,messages,new AbortController().signal)})).rejects.toThrow('长度上限');expect(run).toHaveBeenCalledTimes(1);
 });
 it('keeps Unicode whole when recursively splitting summary sources',async()=>{
@@ -78,7 +78,7 @@ it('keeps a previous checkpoint intact when summarization fails',async()=>{
  const c=new ConversationContext([message('u','user','中'.repeat(2000)),message('a','assistant','答'.repeat(2000)),message('n','user','后来')],card,[],DEFAULT_SETTINGS,4096,options,async()=>{throw new Error('failed');});const original=JSON.stringify(c.history);await expect(c.fit()).rejects.toThrow('failed');expect(c.summary).toBeNull();expect(JSON.stringify(c.history)).toBe(original);
 });
 it('propagates capacity errors and ends truncated summaries and cancels on stop',async()=>{
- const run=vi.fn();const env={AI:{gateway:()=>({run})},AIG_GATEWAY_ID:'default'} as unknown as Env;const signal=new AbortController(),source:PromptMessage[]=[{role:'user',content:'已经发生的旧事。'}];
+ const run=vi.fn();const env={AI_SERVICE:{fetch:run}} as unknown as Env;const signal=new AbortController(),source:PromptMessage[]=[{role:'user',content:'已经发生的旧事。'}];
  run.mockResolvedValueOnce(Response.json({error:{message:'maximum context length is 2048 tokens'}},{status:400}));await expect(summarizeWithModel(env,'用户名','request',DEFAULT_SETTINGS,source,signal.signal)).rejects.toMatchObject({contextTokens:2048});
  run.mockResolvedValueOnce(new Response('data: {"choices":[{"delta":{"content":"摘要"},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n',{headers:{'Content-Type':'text/event-stream'}}));await expect(summarizeWithModel(env,'用户名','request',DEFAULT_SETTINGS,source,signal.signal)).rejects.toThrow('会话压缩达到长度上限');expect(run).toHaveBeenCalledTimes(2);
  const cancel=vi.fn();run.mockResolvedValueOnce(new Response(new ReadableStream({cancel}),{headers:{'Content-Type':'text/event-stream'}}));const pending=summarizeWithModel(env,'用户名','request',DEFAULT_SETTINGS,source,signal.signal);await vi.waitFor(()=>expect(run).toHaveBeenCalledTimes(3));signal.abort();await expect(pending).rejects.toThrow();expect(cancel).toHaveBeenCalled();
