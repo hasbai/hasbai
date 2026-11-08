@@ -39,20 +39,23 @@ Zboard 与酒馆的 API 操作先构建，再启动本地 Worker。
 API 命令为 `node scripts/local-environment.mjs api <zboard|tavern>`。
 类型检查不替代[提交前检查](docs/TESTING.md#运行)。
 
-云环境的 Linux x86_64 开发使用本地 amd64 镜像：
+云环境的 Linux x86_64 开发使用 Chromium 单浏览器镜像：
 
 ```sh
-node scripts/cloud-dev.mjs build
 node scripts/cloud-dev.mjs run env CI=true pnpm install --frozen-lockfile
 node scripts/cloud-dev.mjs run pnpm --filter blog typecheck
 node scripts/cloud-dev.mjs run --publish 127.0.0.1:5174:5174 -- pnpm dev:blog --host 0.0.0.0
 ```
 
-不传命令时进入 Bash。`run` 自动构建缺失或配置已变的镜像。
-镜像名为 `hasbai-cloud-dev:pw1.63.0-node24-pnpm10.33.2-amd64-v1`，仅存于本地 Docker。
+不传命令时进入 Bash。`run` 优先使用匹配当前 Dockerfile 的本地镜像，否则拉取固定 digest 的发布镜像。
+修改镜像配方后，显式运行 `node scripts/cloud-dev.mjs build`。
+本地构建镜像名为 `hasbai-cloud-dev:chromium-pw1.63.0-node24-pnpm10.33.2-amd64-v2`。
 
-构建复用 CI Dockerfile 的安装步骤，只替换同一官方发布的架构 digest。
-Node、pnpm、浏览器、字体和环境配置沿用 CI；代理证书临时挂载。
+CI 与云环境共用 `docker/visual-ci/Dockerfile`，统一使用 AMD64，不运行 ARM 模拟。
+镜像固定 Ubuntu Noble、Node 24.20.0、pnpm 10.33.2、Playwright 1.63.0 和 CJK 字体。
+只安装 Chromium headless，最终文件系统合并为一层，以减少 `vfs` 的父层复制。
+代理证书仅在构建及运行时挂载。
+
 容器使用当前用户挂载仓库，文件修改会保留。
 pnpm 缓存保存在忽略的 `.local-visual/cloud-dev-pnpm-store`。
 完整 Playwright 与截图基线仍按[测试规范](docs/TESTING.md#运行)验收。

@@ -5,23 +5,9 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
-const image = 'hasbai-cloud-dev:pw1.63.0-node24-pnpm10.33.2-amd64-v1';
-// Both manifests belong to the same official Playwright v1.63.0-noble release.
-const armBase = 'FROM --platform=linux/arm64 mcr.microsoft.com/playwright@sha256:a0f4498920a5dbac63196d9140ed738ef00470f27e2e74029abd8850b7bd5717';
-const amdBase = 'FROM --platform=linux/amd64 mcr.microsoft.com/playwright@sha256:bc6ab0d6d44ff4826e4cb8c1e6d801e185bfc42bb0753f8e2a30efc70db054c7';
-const source = readFileSync(new URL('../docker/visual-ci/Dockerfile', import.meta.url), 'utf8');
-if (!source.startsWith(armBase + '\n')) throw new Error('CI base changed; pin the matching amd64 manifest in scripts/cloud-dev.mjs.');
-// Reuse every CI installation step. The session CA exists only during this RUN.
-const dockerfile = '# syntax=docker/dockerfile:1\n' + source.replace(armBase, amdBase)
-  .replace('/ ARM64.', '/ AMD64.')
-  .replace('RUN apt-get update', `RUN --mount=type=secret,id=proxy_ca,mode=0444 \\
-    if [ -f /run/secrets/proxy_ca ]; then \\
-        export NODE_EXTRA_CA_CERTS=/run/secrets/proxy_ca; \\
-        printf 'Acquire::https::CaInfo "/run/secrets/proxy_ca";\\n' > /tmp/cloud-dev-apt.conf; \\
-        export APT_CONFIG=/tmp/cloud-dev-apt.conf; \\
-    fi \\
-    && apt-get update`)
-  .trimEnd() + ' \\\n    && rm -f /tmp/cloud-dev-apt.conf\n';
+const image = 'hasbai-cloud-dev:chromium-pw1.63.0-node24-pnpm10.33.2-amd64-v2';
+const publishedImage = 'ghcr.io/hasbai/financial-visual-ci@sha256:4aca1416fa6743042754ec8aaac4a68239f25e89e4535c5f152c2b4a6c03ce4b';
+const dockerfile = readFileSync(new URL('../docker/visual-ci/Dockerfile', import.meta.url), 'utf8');
 const fingerprint = createHash('sha256').update(dockerfile).digest('hex');
 const label = 'xyz.hasbai.cloud-dev.source';
 const ca = process.env.CODEX_PROXY_CERT
@@ -50,11 +36,21 @@ try {
     if (args[0] === '--') args.shift();
     const installed = invoke(['image', 'inspect', '--format', `{{.Architecture}} {{index .Config.Labels "${label}"}}`, image],
       { encoding: 'utf8', stdio: 'pipe' });
-    if (installed.status !== 0 || installed.stdout.trim() !== `amd64 ${fingerprint}`) build();
+    let runtimeImage = image;
+    if (installed.status !== 0 || installed.stdout.trim() !== `amd64 ${fingerprint}`) {
+      runtimeImage = publishedImage;
+      const cached = invoke(['image', 'inspect', '--format', '{{.Architecture}}', runtimeImage],
+        { encoding: 'utf8', stdio: 'pipe' });
+      if (cached.status !== 0 || cached.stdout.trim() !== 'amd64') {
+        const pulled = invoke(['pull', '--platform', 'linux/amd64', runtimeImage]);
+        if (pulled.error || pulled.status !== 0) throw new Error('Cloud development image pull failed.');
+      }
+    }
     const store = join(repo, '.local-visual', 'cloud-dev-pnpm-store');
     mkdirSync(store, { recursive: true });
     const result = invoke(['run', '--rm', '--init', '--ipc=host', '--platform', 'linux/amd64',
       '--user', `${process.getuid()}:${process.getgid()}`,
+      '--env', 'HOME=/tmp',
       ...(process.stdin.isTTY ? ['--interactive'] : []), ...(process.stdout.isTTY ? ['--tty'] : []),
       ...ports, '--mount', `type=bind,source=${repo},target=/work`,
       '--mount', `type=bind,source=${store},target=/pnpm-store`,
@@ -63,7 +59,7 @@ try {
       ...(ca ? ['--mount', `type=bind,source=${ca},target=/run/proxy-ca.pem,readonly`,
         '--env', 'NODE_EXTRA_CA_CERTS=/run/proxy-ca.pem', '--env', 'SSL_CERT_FILE=/run/proxy-ca.pem',
         '--env', 'REQUESTS_CA_BUNDLE=/run/proxy-ca.pem', '--env', 'GIT_SSL_CAINFO=/run/proxy-ca.pem'] : []),
-      '--workdir', '/work', image, ...(args.length ? args : ['bash'])]);
+      '--workdir', '/work', runtimeImage, ...(args.length ? args : ['bash'])]);
     if (result.error) throw result.error;
     process.exitCode = result.status ?? 1;
   } else throw new Error('Usage: node scripts/cloud-dev.mjs build | run [--publish <host:container>] [--] [command ...]');

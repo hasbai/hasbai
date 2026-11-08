@@ -30,7 +30,15 @@ export default defineConfig({
     },
   },
   projects: [
-    { name: "iphone", use: { ...devices["iPhone 13"], browserName: "webkit" } },
+    {
+      name: "iphone",
+      use: {
+        ...devices["iPhone 13"],
+        browserName: "chromium",
+        defaultBrowserType: "chromium",
+        userAgent: devices["Pixel 7"].userAgent,
+      },
+    },
     {
       name: "desktop",
       use: {
