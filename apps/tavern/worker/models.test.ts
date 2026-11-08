@@ -1,18 +1,18 @@
 import { beforeEach, afterEach, it, expect, vi } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
-import { capabilities, modelInput, recordFeedback, modelOptions } from './models';
+import { capabilities, modelInput, recordFeedback, modelOptions, validateModel } from './models';
 import { DEFAULT_SETTINGS, SAMPLING_TEMPLATES } from '../shared/types';
 import { explicitContextLimit, errorFeedback } from './generation';
 let db: DatabaseSync, env: Env, work: Promise<unknown>[];
 const ctx = { waitUntil: (p: Promise<unknown>) => { work.push(p); } };
 function stmt(sql: string, values: unknown[] = []): D1PreparedStatement { return { bind: (...v: unknown[]) => stmt(sql, v), first: async () => db.prepare(sql).get(...values as never[]) ?? null, run: async () => { db.prepare(sql).run(...values as never[]); return { meta: { changes: 1 } }; } } as D1PreparedStatement; }
-beforeEach(() => { db = new DatabaseSync(':memory:'); db.exec('CREATE TABLE model_capabilities(id TEXT PRIMARY KEY,value_json TEXT,expires_at INTEGER)'); work = []; env = { DB: { prepare: stmt } } as Env; vi.stubGlobal('fetch', vi.fn(async () => Response.json({ default_generation_settings: { n_ctx: 32768 } }))); });
+beforeEach(() => { db = new DatabaseSync(':memory:'); db.exec('CREATE TABLE model_capabilities(id TEXT PRIMARY KEY,value_json TEXT,expires_at INTEGER)'); work = []; env = { DB: { prepare: stmt }, AI_SERVICE: {fetch: vi.fn(async () => Response.json({data:[{id:'rp',name:'RP 动态路由',type:'chat'},{id:'translate',name:'Translate · 翻译',type:'chat'},{id:'image',name:'Image',type:'image'}]}))} } as unknown as Env; vi.stubGlobal('fetch', vi.fn(async () => Response.json({ default_generation_settings: { n_ctx: 32768 } }))); });
 afterEach(async () => { await Promise.all(work); db.close(); vi.unstubAllGlobals(); });
 it('always exposes RP and forwards sampling and thinking without route or schema checks', async () => {
- expect(await modelOptions(env,ctx)).toMatchObject([{id:'rp',available:true,contextTokens:null,parameters:{topK:true,thinking:true}}]);
+ expect(await modelOptions(env,ctx)).toMatchObject([{id:'rp',available:true,contextTokens:null,parameters:{topK:true,thinking:true}},{id:'translate',available:true,contextTokens:null}]);
  expect(modelInput({...DEFAULT_SETTINGS,topK:20,thinkingEnabled:false})).toMatchObject({top_k:20,top_p:0.8,chat_template_kwargs:{enable_thinking:false},presence_penalty:1.5,frequency_penalty:0});
  expect(modelInput({...DEFAULT_SETTINGS,thinkingEnabled:true})).toMatchObject({chat_template_kwargs:{enable_thinking:true},reasoning_effort:'low',reasoning_format:'deepseek'});expect(modelInput(DEFAULT_SETTINGS)).toHaveProperty('reasoning_effort','none');expect(modelInput({...DEFAULT_SETTINGS,topK:0})).not.toHaveProperty('top_k');
- expect(()=>modelInput({...DEFAULT_SETTINGS,modelId:'other'})).toThrow('模型不可用');
+ expect(modelInput({...DEFAULT_SETTINGS,modelId:'translate'})).toHaveProperty('model','translate');
 });
 it.each(['low','medium','high'] as const)('forwards selected %s effort only when thinking is enabled',effort=>{
  expect(modelInput({...DEFAULT_SETTINGS,thinkingEnabled:true,reasoningEffort:effort})).toMatchObject({chat_template_kwargs:{enable_thinking:true},reasoning_effort:effort});
@@ -26,7 +26,7 @@ it('discovers actual 32K then 16K runtime capacity in the background, without cr
 });
 it('failed or unknown discovery does not block RP or parameter forwarding', async () => {
  vi.mocked(fetch).mockRejectedValue(new Error('unavailable'));expect((await capabilities(env,ctx)).contextTokens).toBeNull();await Promise.all(work);
- expect(await modelOptions(env,ctx)).toMatchObject([{available:true,contextTokens:null}]);expect(modelInput(DEFAULT_SETTINGS)).toHaveProperty('chat_template_kwargs.enable_thinking',false);
+ expect(await modelOptions(env,ctx)).toMatchObject([{available:true,contextTokens:null},{id:'translate',available:true,contextTokens:null}]);expect(modelInput(DEFAULT_SETTINGS)).toHaveProperty('chat_template_kwargs.enable_thinking',false);
 });
 it('uses explicit upstream limits without automatically retrying inference', async () => {
  expect(explicitContextLimit('maximum context length is 8192 tokens')).toBe(8192);expect(explicitContextLimit('you used 8192 prompt tokens')).toBeUndefined();
@@ -44,4 +44,21 @@ it('keeps a smaller explicit limit whether props finishes before or after the er
 it.each(['thinking','instruct'] as const)('forwards all six %s template values without changes',mode=>{
  const t=SAMPLING_TEMPLATES[mode];
  expect(modelInput({...DEFAULT_SETTINGS,...t,thinkingEnabled:mode==='thinking'})).toMatchObject({temperature:t.temperature,top_p:t.topP,top_k:t.topK,min_p:t.minP,presence_penalty:t.presencePenalty,repetition_penalty:t.repetitionPenalty});
+});
+
+it('validates selections against the platform catalog and never falls back on discovery failure', async () => {
+ await expect(validateModel(env,ctx,'translate')).resolves.toBeUndefined();
+ await expect(validateModel(env,ctx,'unknown')).rejects.toThrow('模型不可用');
+ vi.mocked(env.AI_SERVICE.fetch).mockResolvedValue(new Response('unavailable',{status:503}));
+ await expect(modelOptions(env,ctx)).rejects.toThrow('模型列表暂时不可用');
+ vi.mocked(env.AI_SERVICE.fetch).mockResolvedValue(Response.json({data:'invalid'}));
+ await expect(modelOptions(env,ctx)).rejects.toThrow('模型列表无效');
+});
+it('keeps context feedback isolated by the selected model and never applies RP props to another model', async () => {
+ await capabilities(env,ctx);await Promise.all(work);
+ const selected=await capabilities(env,ctx,'translate');expect(selected.contextTokens).toBeNull();
+ await recordFeedback(env,selected,{contextLimit:4096});
+ expect((await capabilities(env,ctx,'translate')).contextTokens).toBe(4096);
+ expect((await capabilities(env,ctx)).contextTokens).toBe(32768);
+ expect(fetch).toHaveBeenCalledOnce();
 });

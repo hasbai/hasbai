@@ -8,7 +8,7 @@ import { storyMessages } from './agent';
 import { body, HttpError, json } from './http';
 import { currentMessages, getSession, message, ownedBooks, session, settings, type CharacterRow, type MessageRow, type SessionRow } from './store';
 import { generate } from './generation';
-import { modelInput } from './models';
+import { validateModel, modelInput } from './models';
 import { parseCard, string } from '../shared/cards';
 
 export const sessionName=(owner:string,id:string)=>JSON.stringify([owner,id]);
@@ -108,7 +108,7 @@ export class TavernSession extends DurableObject<Env> {
    if(!card)throw new HttpError(404,'角色不存在');
    const parsed=parseCard(JSON.parse(card.card_json));character={json:JSON.stringify(parsed.raw),name:parsed.data.name};
   }
-  const ids=data.bookIds??JSON.parse(row.book_ids_json);await ownedBooks(this.env,owner,ids);if(data.settings)modelInput(opts);
+  const ids=data.bookIds??JSON.parse(row.book_ids_json);await ownedBooks(this.env,owner,ids);if(data.settings){modelInput(opts);await validateModel(this.env,this.ctx,opts.modelId);}
   const title=data.title===undefined?row.title:string(data.title).trim();if(!title||title.length>120)throw new HttpError(400,'会话名称无效');
   // Reserve old and new bindings before the DO commits; a failed sync never releases a live reference.
   const union=[...new Set([...JSON.parse(row.book_ids_json),...(ids as string[])])];

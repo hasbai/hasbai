@@ -69,7 +69,8 @@
         "page-states",
         "model-controls",
         "telegram",
-        "progress-lifecycle"
+        "progress-lifecycle",
+        "model-selection"
       ]
     },
     {
@@ -307,7 +308,8 @@
             "chat-thinking-medium.png"
           ]
         }
-      ]
+      ],
+      "description": "AI 平台模型在全局设置与会话设置中独立保存，保留思考参数与角色设定。"
     },
     {
       "id": "candidates",
@@ -658,6 +660,26 @@
           ],
           "snapshots": [
             "greeting-picker-short.png"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "model-selection",
+      "kind": "screenshot",
+      "description": "平台模型选择的浅色、深色、短屏，以及已下架模型和目录失败重试。",
+      "evidence": [
+        {
+          "spec": "e2e/tavern.spec.ts",
+          "test": "platform model selection remains usable in light dark and short settings",
+          "projects": [
+            "iphone",
+            "desktop"
+          ],
+          "snapshots": [
+            "model-selection.png",
+            "model-selection-dark.png",
+            "model-selection-short.png"
           ]
         }
       ]

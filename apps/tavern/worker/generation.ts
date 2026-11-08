@@ -29,7 +29,8 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
  const promptDocument=await readPrompts(env),texts=promptDocument.texts,tools=agentTools(texts);
  const contextOptions={protocol:texts.tools,summaryTask:texts.summaryTask,telegram:await telegramSession(env,owner,id)};
  const directorRule=texts.director;
- const capability=await capabilities(env,ctx);beforeClaim();if(request.signal.aborted||store.cancelled(requestId))throw new HttpError(409,'生成已停止');const now=Date.now();
+ const selectedModel=settings(JSON.parse(initial.settings_json)).modelId;
+ const capability=await capabilities(env,ctx,selectedModel);beforeClaim();if(settings(JSON.parse(store.get().settings_json)).modelId!==selectedModel)throw new HttpError(409,'模型设置已改变，请重试');if(request.signal.aborted||store.cancelled(requestId))throw new HttpError(409,'生成已停止');const now=Date.now();
  if(data.continue===true)throw new HttpError(400,'续写已移除');
  const regenerate=data.regenerate===true;const text=typeof data.content==='string'?data.content.trim():'';
  if(!regenerate && (!text || text.length>24000))throw new HttpError(400,'消息需为 1–24000 字符');

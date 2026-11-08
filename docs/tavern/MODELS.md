@@ -1,6 +1,8 @@
 # Tavern 模型参数与独立 Director
 
-服务端仅提供白名单逻辑模型，当前 `rp` 对应 Gateway `default` / `dynamic/rp`，实际 provider/model 由 Gateway 配置决定。本文是参数、候选协议及 UI 的维护入口；运行实现见 `apps/tavern/shared/settings.ts`、`worker/director.ts`、`worker/inference.ts`、`worker/gateway.ts`。不靠 route version/schema/管理 API 探测作为聊天准入，调用经 `AI_SERVICE` 服务绑定进入[统一 AI Worker](../ai/README.md)。推理凭据仅保存在 AI Worker。推理不依赖管理 Token。
+对话模型目录由项目 AI 平台维护。酒馆通过 `AI_SERVICE` 读取目录并保存所选逻辑 ID。默认 `rp` 对应 Gateway `default` / `dynamic/rp`；实际 provider/model 由平台配置决定。
+
+本文是参数、候选协议及 UI 的维护入口；运行实现见 `apps/tavern/shared/settings.ts`、`worker/director.ts`、`worker/inference.ts`、`worker/gateway.ts`。不靠 route version/schema/管理 API 探测作为聊天准入，调用经 `AI_SERVICE` 服务绑定进入[统一 AI Worker](../ai/README.md)。推理凭据仅保存在 AI Worker。推理不依赖管理 Token。
 
 当前实现和最新真实验收缺口见[PROGRESS](PROGRESS.md)。
 
@@ -14,7 +16,7 @@
 
 | 设置 | 应用默认值 | 校验 / 请求行为 |
 | --- | --- | --- |
-| 模型 `modelId` | `rp`，显示“RP 动态路由” | 服务端白名单映射到 `dynamic/rp`，首期只提供这一个真实选项 |
+| 模型 `modelId` | `rp`，显示“RP 动态路由” | 从 AI 平台对话模型目录选择，默认映射到 `dynamic/rp` |
 | 启用思考 `thinkingEnabled` | **false，关闭** | 必须是布尔值；通过真实上游支持的参数关闭，不靠隐藏输出或提示词实现 |
 | 思考强度 `reasoningEffort` | `low`，低 | 低 / 中 / 高对应 low / medium / high；关闭时保留选档 |
 | 温度 `temperature` | 0.7 | 0–2，步长 0.05 |
@@ -39,7 +41,11 @@
 摘要和角色生成使用 Instruct 模板。
 参数实际效果以所选上游的支持为准。
 
-`GET /api/models` 返回 RP 选项及已获取的上下文容量。RP 始终可选，客户端仅提交逻辑 ID，不接受任意上游模型、路由、URL 或密钥。未知 ID 返回字段错误。
+`GET /api/models` 经服务绑定读取 AI 平台的 `/internal/models`，仅返回对话模型。当前选项为 `rp` 和 `translate`，图片与向量模型不进入下拉框。平台列表加载失败时显示错误并允许重试，不伪造可用选项。
+
+全局和会话设置共用平台选项。保存时校验目录；已下架的模型保留原 ID 并显示不可用，用户须重新选择。正文、Director 和按需摘要使用当前会话所选模型，平台拒绝未知 ID，不静默切回 RP。
+
+上下文容量和上游反馈按逻辑 ID 隔离；仅 RP 使用现有 llama.cpp 容量探测。角色卡生成继续使用 RP。
 
 标准参数随请求直接发送，默认 `chat_template_kwargs.enable_thinking:false`，同时 `reasoning_effort:none`；开启时传 true 和保存的 low / medium / high。缺少强度字段的旧设置补 low。
 
@@ -121,7 +127,7 @@ Director 不替换正文的首条 system、不改动用户输入，也不重建�
 当前用户输入、完整新正文继续作为未摘要尾部保留。
 Director 任务和候选不写入 checkpoint；无法容纳时保留正常正文并返回空候选。
 
-通过同一 Gateway `dynamic/rp` 发送 `response_format: {type:"json_schema",json_schema:{name:"director_choices",strict:true,schema:...}}`。Schema 限制唯一对象字段 choices，数组恰三条，字符串非空且最多120个Unicode字符。Director 保留与正文相同的 tools schema，tool_choice 为 none。Director保持正文的思考模板参数，预算行为以本页设置说明为准。消息与工具前缀稳定为上游 KV 复用提供条件；实际命中仍以 cached tokens/prefill 计数认定，开启思考及模型模板差异单列核验。
+通过 AI 平台使用正文所选模型发送 `response_format: {type:"json_schema",json_schema:{name:"director_choices",strict:true,schema:...}}`。Schema 限制唯一对象字段 choices，数组恰三条，字符串非空且最多120个Unicode字符。Director 保留与正文相同的 tools schema，tool_choice 为 none。Director保持正文的思考模板参数，预算行为以本页设置说明为准。消息与工具前缀稳定为上游 KV 复用提供条件；实际命中仍以 cached tokens/prefill 计数认定，开启思考及模型模板差异单列核验。
 
 零预算在当前llama.cpp生效，Gemma备用后端未生效，但两者均返回有效候选。此参数是尽力限制，不保证所有后端关闭思考。试验记录见[PROGRESS](PROGRESS.md)；不按计时字段猜能力，不删参数重试。
 
@@ -167,7 +173,7 @@ Director 末尾任务包含目标边界，实际 messages 与 tools 前缀仍原
 
 ## 官方契约依据
 
-- [Cloudflare动态路由](https://developers.cloudflare.com/ai-gateway/features/dynamic-routing/usage/)：当前代码通过固定 default Gateway 的 `/compat/chat/completions` HTTP 入口调用，model 为 `dynamic/rp`。RP白名单和完整输入保持，HTTP错误与日志头由每次Response读取，不依赖绑定实例的可变日志ID。当前调用入口的真实验收限制见[PROGRESS](PROGRESS.md)；专用推理 Secret 不进入浏览器，不直连@cf模型、不删参数重试。
+- [Cloudflare动态路由](https://developers.cloudflare.com/ai-gateway/features/dynamic-routing/usage/)：当前代码通过固定 default Gateway 的 `/compat/chat/completions` HTTP 入口调用，model 为当前会话所选逻辑 ID，由平台映射上游路由。平台模型校验和完整输入保持，HTTP错误与日志头由每次Response读取，不依赖绑定实例的可变日志ID。当前调用入口的真实验收限制见[PROGRESS](PROGRESS.md)；专用推理 Secret 不进入浏览器，不直连@cf模型、不删参数重试。
 - [llama.cpp服务契约](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md)：`/props`运行容量及`chat_template_kwargs`；当前模板实际使用enable_thinking，关闭时预填充空think，开启时等待思考内容。reasoning_format:none不是关闭思考。
 
 正文原 system 保留；Director 的本次任务另作为末尾 user 追加；本地 Qwen 模板只允许 system 位于开头，避免触发模板错误和 Gateway 备用节点。此任务不写入用户剧情或正文投影。通知复用共享`@hasbai/ui/notice`；项目原则见[AGENTS](../../AGENTS.md#全局约束)，证据见[PROGRESS](PROGRESS.md)。
