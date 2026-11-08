@@ -12,7 +12,11 @@ export default defineConfig({
   snapshotPathTemplate: process.env.LOCAL_VISUAL_CAPTURE_DIR
     ? `${process.env.LOCAL_VISUAL_CAPTURE_DIR}/{projectName}/{testFilePath}/{arg}{ext}`
     : `{testDir}/__screenshots__/${process.platform === "linux" ? "linux-ci" : `{platform}${process.env.GITHUB_ACTIONS ? "-ci" : ""}`}-{projectName}/{testFilePath}/{arg}{ext}`,
-  reporter: [["list"], ["html", { open: "never" }], ["./scripts/visual-coverage-reporter.mjs"]],
+  reporter: [
+    ["list"],
+    ["html", { open: "never" }],
+    ["./scripts/visual-coverage-reporter.mjs"],
+  ],
   expect: {
     timeout: 5_000,
     toHaveScreenshot: {
@@ -36,12 +40,22 @@ export default defineConfig({
     {
       name: "iphone",
       testMatch: /(mobile|states)\.spec\.ts/,
-      use: { ...devices["iPhone 13"], browserName: "webkit" },
+      use: {
+        ...devices["iPhone 13"],
+        browserName: "chromium",
+        defaultBrowserType: "chromium",
+        userAgent: devices["Pixel 7"].userAgent,
+      },
     },
     {
       name: "iphone-se",
       testMatch: /mobile\.spec\.ts/,
-      use: { ...devices["iPhone SE"], browserName: "webkit" },
+      use: {
+        ...devices["iPhone SE"],
+        browserName: "chromium",
+        defaultBrowserType: "chromium",
+        userAgent: devices["Pixel 7"].userAgent,
+      },
     },
     {
       name: "android",

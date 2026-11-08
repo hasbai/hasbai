@@ -4,7 +4,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, write
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const image = 'ghcr.io/hasbai/financial-visual-ci@sha256:7c8b030fa654dfd7acb74db9fbca0fe413ca81024536f6d361712d0920fd6444';
+const image = 'ghcr.io/hasbai/financial-visual-ci@sha256:4aca1416fa6743042754ec8aaac4a68239f25e89e4535c5f152c2b4a6c03ce4b';
 const repo = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const app = process.argv[2];
 if (!['financial', 'blog', 'zboard', 'tavern', 'images', 'ai'].includes(app)) throw new Error('Usage: node scripts/visual-linux.mjs <financial|blog|zboard|tavern> [--all|--page <source-or-scenario>]');
@@ -53,9 +53,13 @@ for (const value of selected) {
 if (!ids.size) { console.log('No changed page with a visual scenario.'); process.exit(0); }
 
 const files = tracked();
-const pnpmStore = execFileSync('pnpm', ['store', 'path'], { cwd: repo, encoding: 'utf8' }).trim();
+const pnpmStore = join(repo, '.local-visual', 'cloud-dev-pnpm-store');
+mkdirSync(pnpmStore, { recursive: true });
+const ca = process.env.CODEX_PROXY_CERT
+  ? (existsSync('/etc/ssl/certs/ca-certificates.crt') ? '/etc/ssl/certs/ca-certificates.crt' : process.env.CODEX_PROXY_CERT)
+  : null;
 const proxy = process.env.HTTPS_PROXY ? new URL(process.env.HTTPS_PROXY) : null;
-const proxyArgs = proxy && ['localhost', '127.0.0.1'].includes(proxy.hostname) && !proxy.username && !proxy.password
+const proxyArgs = !ca && proxy && ['localhost', '127.0.0.1'].includes(proxy.hostname) && !proxy.username && !proxy.password
   ? (proxy.hostname = 'host.docker.internal', ['-e', 'HTTP_PROXY=' + proxy, '-e', 'HTTPS_PROXY=' + proxy,
     '-e', 'NO_PROXY=localhost,127.0.0.1,::1']) : [];
 const stage = join(repo, '.local-visual', 'linux-workspace');
@@ -72,11 +76,15 @@ const localRoot = join(stage, 'apps', app, '.local-visual');
 const before = new Set(existsSync(localRoot) ? readdirSync(localRoot) : []);
 const command = 'pnpm install --frozen-lockfile --store-dir=/pnpm-store --prefer-offline && node scripts/visual-capture.mjs "$@"';
 const result = spawnSync('docker', [
-  'run', '--rm', '--init', '--ipc=host', '--platform', 'linux/arm64',
+  'run', '--rm', '--init', '--ipc=host', '--platform', 'linux/amd64',
+  '--user', `${process.getuid()}:${process.getgid()}`, '-e', 'HOME=/tmp',
   '-e', 'CI=true', '-e', 'GITHUB_ACTIONS=true',
   ...proxyArgs,
+  ...(ca ? ['--mount', `type=bind,source=${ca},target=/run/proxy-ca.pem,readonly`,
+    '-e', 'NODE_EXTRA_CA_CERTS=/run/proxy-ca.pem', '-e', 'SSL_CERT_FILE=/run/proxy-ca.pem',
+    '-e', 'CURL_CA_BUNDLE=/run/proxy-ca.pem', '-e', 'NODE_USE_ENV_PROXY=1'] : []),
   '--mount', 'type=bind,source=' + stage + ',target=/work',
-  '--mount', 'type=bind,source=' + dirname(pnpmStore) + ',target=/pnpm-store',
+  '--mount', 'type=bind,source=' + pnpmStore + ',target=/pnpm-store',
   '--workdir', '/work', image, 'sh', '-lc', command, 'visual-linux', app, ...(all ? ['--all'] : [...ids]),
 ], { cwd: repo, stdio: 'inherit' });
 if (result.status !== 0) throw new Error('Pinned Linux visual run failed: ' + (result.status ?? result.error));

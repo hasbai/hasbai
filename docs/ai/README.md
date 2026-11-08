@@ -90,8 +90,7 @@ PUT 仅轮换 `secret`，不改变 alias。
 Auth0 配置脚本要求现有管理 CLI 登录，不创建凭据文件。
 
 本地检查为 `pnpm --filter ai-service typecheck`、`test`、`test:runtime` 和 `build`。
-工作台在云环境使用固定 Playwright 的 AMD64 Chromium 生成并审阅基线。
-PR 继续使用现有固定镜像执行严格比较。
+工作台与 CI 使用固定 AMD64 Chromium 镜像生成、审阅和严格比较基线。
 
 运行时测试使用仓库固定 workerd 支持的兼容日期 `2026-10-16`。
 生产配置日期为 `2026-11-07`，须另行核验生产运行时。

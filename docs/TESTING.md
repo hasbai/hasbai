@@ -36,16 +36,16 @@ git diff --check
 
 页面改动还须在本地固定 Linux 镜像生成并审阅受影响截图；`pnpm visual:local` 构建生产包和 e2e 包，仅运行所选 Financial 场景。完整 Playwright 套件与全部基线严格比较仍在 CI 执行。
 
-视觉 CI 与本地截图统一使用 `docker/visual-ci/Dockerfile` 构建的 Linux ARM64 镜像，并按镜像 digest 固定 Playwright 1.63.0、Node 24、pnpm 10.33.2 和 CJK 字体。镜像发布工作流是 `.github/workflows/visual-image.yml`；五个应用的视觉 job 使用同一个 digest，单元任务仍运行在 Ubuntu。日常 `pnpm visual:local` 从相对 `origin/main` 的 Financial 页面改动选择清单场景；Blog、Zboard、Tavern 分别用 `pnpm visual:blog`、`pnpm visual:zboard`、`pnpm visual:tavern`，图床用 `pnpm visual:images`。
+视觉 CI 与本地截图统一使用 `docker/visual-ci/Dockerfile` 构建的 Linux AMD64 镜像。
+镜像按 digest 固定 Chromium headless、Playwright 1.63.0、Node 24.20.0、pnpm 10.33.2 和 CJK 字体。镜像发布工作流是 `.github/workflows/visual-image.yml`；各应用的视觉 job 使用同一个 digest，单元任务仍运行在 Ubuntu。日常 `pnpm visual:local` 从相对 `origin/main` 的 Financial 页面改动选择清单场景；Blog、Zboard、Tavern 分别用 `pnpm visual:blog`、`pnpm visual:zboard`、`pnpm visual:tavern`，图床用 `pnpm visual:images`。
 
-云环境的 x86_64 本地开发使用 [amd64 开发镜像](../README.md#codex-本地环境)，避免 ARM 模拟开销。
-该镜像复用 CI 的安装步骤与版本，适用于本地检查和服务启动。
+云环境与视觉 CI 统一使用 [AMD64 开发镜像](../README.md#codex-本地环境)，不使用 ARM 或 QEMU 模拟。
+该镜像复用 CI 的 Dockerfile 与版本，适用于本地检查和服务启动。
+镜像只安装 Chromium headless，并合并最终文件系统为一层。
+日常 `run` 拉取固定发布镜像；修改配方后才显式 `build`。
+
 需要局部预览时，可通过 `cloud-dev.mjs run` 执行 `node scripts/visual-capture.mjs <应用> <场景ID>`。
-
-2026-11-08 用户明确要求云环境本地检查和截图使用 AMD64，不运行 ARM 模拟。
-云环境可用固定版本 Playwright 的官方 AMD64 浏览器生成并审阅基线。
-浏览器在容器外运行时，须同时复用固定镜像的字体和 fontconfig，保留字体回退与抗锯齿设置。
-CI 保持既有 ARM64 镜像与严格截图比较，不以本地结果替代 PR 验收。
+导入 CI 基线使用同一 AMD64 镜像，并遵循上述截图审阅与导入流程。
 
 共享组件、样式、夹具或 `packages/` 改动须指定可重复的 `--page <源页面>` 或 `--all`。首次生成 Linux 基线运行 `--all`。审阅图在各应用忽略的 `.local-visual/<时间>/review/`；审阅后从仓库根运行 `pnpm visual:baseline:import-local <该次运行目录> --reviewed`，校验源码和 PNG 后导入本次截图。旧 macOS PNG 已清理；日常只维护 `linux-ci` 基线。
 
@@ -53,7 +53,7 @@ CI 保持既有 ARM64 镜像与严格截图比较，不以本地结果替代 PR 
 
 额外稳定性复跑只用于已复现抖动或明确排障，并记录原因。报告保留 expected/actual/diff 和失败 trace。有意设计变更须核对差异，不为消除差异提高容差或盲目更新。
 
-五个应用均沿用 Cloudflare Workers Builds 的 main 自动构建和路径过滤；GitHub Actions 只负责 PR 验收，不部署。应用构建入口见[ARCHITECTURE](ARCHITECTURE.md#自动构建与运行入口)，交付时回读 Build SHA、部署结果和线上版本。
+各应用均沿用 Cloudflare Workers Builds 的 main 自动构建和路径过滤；GitHub Actions 只负责 PR 验收，不部署。应用构建入口见[ARCHITECTURE](ARCHITECTURE.md#自动构建与运行入口)，交付时回读 Build SHA、部署结果和线上版本。
 
 ## 轻量任务与本地迭代
 
@@ -137,9 +137,11 @@ pnpm visual:baseline:import-local apps/financial/.local-visual/<时间> --review
 
 ## 浏览器与真实链路
 
-各应用用真实组件与生产 CSS、独立合成数据入口执行 WebKit/Chromium 回归，夹具与认证替身不进入生产构建。应用具体页面、状态和设备以 `visual-coverage.json` 及 Playwright 配置为准；财务的设备矩阵、覆盖率和 harness 见[财务测试契约](financial/TESTING.md)。
+各应用用真实组件与生产 CSS、独立合成数据入口执行 Chromium 回归，夹具与认证替身不进入生产构建。应用具体页面、状态和设备以 `visual-coverage.json` 及 Playwright 配置为准；财务的设备矩阵、覆盖率和 harness 见[财务测试契约](financial/TESTING.md)。
 
-设备模拟不代表 iOS Safari 真机。实际软键盘、PWA 安装、系统返回、安全区和真实代理/模型链路须单独验收；不能用截图、HTTP 200 或构建成功替代真实 JWT、数据库权限及上游响应核验。
+所有项目仅使用 Chromium，不再覆盖 WebKit、Firefox 或 Safari。
+`iphone`、`iphone-se` 项目名保留原屏幕尺寸标签，使用 Chrome 移动端 UA。
+这些项目只验证 Chromium 的视口、触控和布局，不代表 iOS Safari。实际软键盘、PWA 安装、系统返回、安全区和真实代理/模型链路须单独验收；不能用截图、HTTP 200 或构建成功替代真实 JWT、数据库权限及上游响应核验。
 
 ## 数据迁移与发布核验
 
