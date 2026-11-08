@@ -1,5 +1,17 @@
 import {test,expect,type Page,type TestInfo} from '@playwright/test';
-async function shot(page:Page,info:TestInfo,name:string){await expect(page).toHaveScreenshot(name+'.png',{fullPage:true});const path=info.outputPath(name+'.png');await page.screenshot({path,fullPage:true});await info.attach(name,{path,contentType:'image/png'});}
+async function shot(page:Page,info:TestInfo,name:string){
+ const fullPage=name!=='key-form';
+ if(!fullPage){
+  // A fixed dialog belongs to the viewport; the page behind it can be taller.
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.evaluate(()=>window.scrollTo({top:0,left:0,behavior:'instant'}));
+  await expect.poll(()=>page.evaluate(()=>window.scrollY)).toBe(0);
+ }
+ await expect(page).toHaveScreenshot(name+'.png',{fullPage});
+ const path=info.outputPath(name+'.png');
+ await page.screenshot({path,fullPage});
+ await info.attach(name,{path,contentType:'image/png'});
+}
 async function fixture(page:Page,admin=false){
  await page.addInitScript(()=>{document.documentElement.classList.toggle('dark',matchMedia('(prefers-color-scheme:dark)').matches);});
  await page.route('**/api/me',route=>route.fulfill({json:{username:'测试用户',admin}}));
