@@ -1,5 +1,6 @@
 import type { AITask } from '@hasbai/ai';
 import { HttpError } from './http';
+import { chatModel } from './models';
 
 export type Attribution = {app: 'tavern' | 'blog' | 'images' | 'ai'; username: string; requestId: string};
 const tasks: Record<Attribution['app'], readonly string[]> = {
@@ -28,7 +29,7 @@ export async function inference(env: Env, task: AITask, input: Record<string, un
   if (task.startsWith('image-') || task.startsWith('character-avatar') || task.startsWith('character-portrait')) {
     if (!['gpt-image-2.5-flare', 'gpt-image-2.5-sunburst'].includes(String(input.model))) throw new HttpError(400, '未知图片模型');
     model = String(input.model); path = 'custom-codex/images/generations';
-  } else model = task === 'translate' ? 'dynamic/translate' : 'dynamic/rp';
+  } else model = task === 'translate' ? 'dynamic/translate' : chatModel(input.model ?? 'rp');
   const headers: Record<string, string> = {
     'Content-Type': 'application/json', 'cf-aig-authorization': `Bearer ${env.AIG_RUN_TOKEN}`,
     'cf-aig-skip-cache': 'true', 'cf-aig-collect-log': 'true', 'cf-aig-collect-log-payload': 'true',

@@ -3,12 +3,14 @@ import { identity } from './auth';
 import { failure, HttpError } from './http';
 import { inference, validateTask, type Attribution } from './inference';
 import { manage } from './management';
+import { chatModel, modelList } from './models';
 
 /** Only explicitly configured service bindings can reach this entrypoint. */
 export class InferenceService extends WorkerEntrypoint<Env> {
   async fetch(request: Request) {
     try {
       const path = new URL(request.url).pathname;
+      if (path === '/internal/models' && request.method === 'GET') return modelList();
       if (request.method !== 'POST' || !path.startsWith('/internal/')) throw new HttpError(404, '接口不存在');
       const who = JSON.parse(request.headers.get('X-AI-Attribution') || 'null');
       if (!who || !['tavern', 'blog', 'images'].includes(who.app) || typeof who.username !== 'string' || !who.username.trim()) throw new HttpError(400, '缺少调用归属');
@@ -35,12 +37,12 @@ export default {
         if (!user.admin) throw new HttpError(403, '仅 Super Admin 可管理 AI 服务');
         return await manage(request, env);
       }
-      if (path === '/v1/models' && request.method === 'GET') return Response.json({object: 'list', data: ['rp', 'translate', 'gpt-image-2.5-flare', 'gpt-image-2.5-sunburst', '@cf/baai/bge-m3'].map(id => ({id, object: 'model', owned_by: 'hasbai'}))});
+      if (path === '/v1/models' && request.method === 'GET') return modelList();
       if (request.method !== 'POST') throw new HttpError(404, '接口不存在');
       const input = await body(request);
       let task: string;
       if (path === '/v1/chat/completions') {
-        if (!['rp', 'translate'].includes(String(input.model))) throw new HttpError(400, '未知对话模型');
+        chatModel(input.model);
         task = input.model === 'translate' ? 'translate' : 'roleplay';
         if (!Array.isArray(input.messages) || !input.messages.length) throw new HttpError(400, '缺少对话消息');
       } else if (path === '/v1/images/generations') task = 'image-generation';

@@ -35,3 +35,11 @@ it('makes named service calls without user tokens while enforcing app/task mappi
  const req=(app:string)=>new Request('https://ai.hasbai.xyz/internal/roleplay',{method:'POST',headers:{'X-AI-Attribution':JSON.stringify({app,username:'verified-profile',requestId:'round'})},body:'{}'});
  expect((await service.fetch(req('tavern'))).status).toBe(200);expect((await service.fetch(req('blog'))).status).toBe(400);expect(fetch).toHaveBeenCalledOnce();
 });
+
+it('shares one typed model catalog between authenticated public callers and service bindings', async () => {
+ const publicResponse=await call('/v1/models');expect(publicResponse.status).toBe(200);
+ const service=new InferenceService({} as ExecutionContext,env);
+ const internal=await service.fetch(new Request('https://ai.hasbai.xyz/internal/models'));
+ expect(await internal.json()).toEqual(await publicResponse.json());
+ expect((await call('/internal/models')).status).toBe(404);
+});
