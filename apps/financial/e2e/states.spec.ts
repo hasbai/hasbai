@@ -301,6 +301,10 @@ test("account sheet keeps actions visible in a short dark viewport", async ({
   await expect(
     dialog.getByRole("heading", { name: "新增科目" }),
   ).toBeInViewport();
+  // Focus scrolling can stop before the form's bottom padding. Capture its end.
+  await dialog.locator(".form-sheet-body").evaluate((element) => {
+    element.scrollTop = element.scrollHeight - element.clientHeight;
+  });
   await expect(page).toHaveScreenshot("account-short-dark.png");
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
