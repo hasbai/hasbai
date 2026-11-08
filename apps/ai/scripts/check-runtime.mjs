@@ -24,12 +24,12 @@ const runtime=new Miniflare(convertV4MiniflareOptions({handleUncaughtError(error
  {name:'ai',modules:true,script:service.outputFiles[0].text,compatibilityDate:'2026-10-16',compatibilityFlags:['nodejs_compat','enable_request_signal'],bindings:{CLOUDFLARE_ACCOUNT_ID:'fixture',AIG_GATEWAY_ID:'default',AIG_RUN_TOKEN:'fixture'},outboundService:{node:upstream}},
 ]}));
 try {
- const abort=new AbortController();const response=await runtime.dispatchFetch('https://client.test',{method:'POST',signal:abort.signal,body:JSON.stringify({model:'evil',messages:[{role:'user',content:'hi'}],stream:true})});
+ const abort=new AbortController();const response=await runtime.dispatchFetch('https://client.test',{method:'POST',signal:abort.signal,body:JSON.stringify({model:'translate',messages:[{role:'user',content:'hi'}],stream:true})});
  assert.equal(response.status,200);assert.equal(response.headers.get('cf-aig-log-id'),'stream-log');
  const reader=response.body.getReader();const first=await reader.read();assert.equal(new TextDecoder().decode(first.value),'data: first\n\n');abort.abort();await reader.cancel().catch(()=>{});
  for(let n=0;n<50&&!last.cancelled;n++)await new Promise(resolve=>setTimeout(resolve,20));
  assert.equal(last.cancelled,true,'response cancellation must close the HTTP upstream before it finishes');
- assert.equal(last.input.model,'dynamic/rp');assert.equal(JSON.parse(last.headers['cf-aig-metadata']).username,'verified');assert.equal(last.headers['cf-aig-event-id'],'round');
+ assert.equal(last.input.model,'dynamic/translate');assert.equal(JSON.parse(last.headers['cf-aig-metadata']).username,'verified');assert.equal(last.headers['cf-aig-event-id'],'round');
  const ai=await runtime.getWorker('ai');assert.equal((await ai.fetch('https://ai.test/internal/roleplay',{method:'POST',body:'{}'})).status,404);
  const failed=await runtime.dispatchFetch('https://client.test',{method:'POST',body:JSON.stringify({fail:true})});assert.equal(failed.status,429);assert.equal(failed.headers.get('cf-aig-log-id'),'failure-log');assert.equal(await failed.text(),'upstream failure');
  console.log('workerd: named service binding, first SSE chunk, HTTP upstream cancellation, fixed route, attribution, public/internal separation and raw upstream failures passed');

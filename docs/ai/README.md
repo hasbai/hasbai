@@ -19,13 +19,14 @@
 
 | 调用方 | 用途 | 上游 |
 | --- | --- | --- |
-| Tavern | 正文、Director、摘要、角色生成 | `default/compat/chat/completions`，`dynamic/rp` |
+| Tavern | 正文、Director、摘要 | `default/compat/chat/completions`，使用会话所选对话模型 |
+| Tavern | 角色生成 | 同一入口，默认 `dynamic/rp` |
 | Tavern | 向量检索 | Workers AI `@cf/baai/bge-m3`，同一 Gateway |
 | Blog | 翻译 | `default/compat/chat/completions`，`dynamic/translate` |
 | Images | 图片、头像、立绘 | `default/custom-codex/images/generations` |
 
 图片模型仍限制为 Flare 和 Sunburst。
-Worker 固定上游路由，调用方不能覆盖 URL、Gateway 或运行凭据。
+Worker 根据平台目录映射对话模型，调用方不能覆盖 URL、Gateway 或运行凭据。
 直连图片接口使用 `cf-aig-byok-alias: default`。
 动态路由的密钥选择由 Cloudflare 路由配置决定。
 流式响应不缓冲，保留状态、Gateway log ID 和取消信号。
@@ -38,7 +39,7 @@ Worker 固定上游路由，调用方不能覆盖 URL、Gateway 或运行凭据�
 
 | 接口 | 请求 |
 | --- | --- |
-| `GET /v1/models` | 查询可调用的模型 ID |
+| `GET /v1/models` | 查询模型 ID、显示名称和类型（chat / image / embedding） |
 | `POST /v1/chat/completions` | OpenAI 格式；`model` 为 `rp` 或 `translate`，支持 SSE |
 | `POST /v1/images/generations` | `model` 为完整图片模型 ID |
 | `POST /v1/embeddings` | `model=@cf/baai/bge-m3`，`input` 为字符串或字符串数组 |
@@ -46,6 +47,8 @@ Worker 固定上游路由，调用方不能覆盖 URL、Gateway 或运行凭据�
 
 工作台提供流式对话。API 提供图片和向量调用。
 真实模型输出仍由各业务应用按原契约校验。
+
+`worker/models.ts` 统一维护模型目录与对话路由校验。服务绑定的 `GET /internal/models` 和公共 `/v1/models` 返回相同目录。公共 HTTP 仍拒绝 `/internal/*`。Tavern 仅展示 `chat` 类型；所选模型传至平台，平台拒绝未知 ID。兼容旧应用提交的 `dynamic/rp` 与 `dynamic/translate`，不会把未知模型替换为默认模型。
 
 ## Provider 与 BYOK
 
