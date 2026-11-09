@@ -78,6 +78,12 @@ Portal 使用独立 Regular Web Auth0 应用及同一北极组织。Cloudflare A
 
 独立验证财务/博客 Data API 的真实读取、草稿或零行 PATCH 权限。还须验证无 token/错误签名/audience 拒绝。公开内容 HTTP 200 不能证明管理员写权限。合成夹具、真实 JWT/API、第三方完整账号登录和生产部署分别记录，通用流程见[TESTING](TESTING.md#浏览器与真实链路)。
 
+## WeChat 服务
+
+`wechat.hasbai.xyz/mcp` 验证共享 audience 的用户 JWT，要求 `wechat.all:all`，仅授予既有 `superadmin`，不按角色 claims 回退。
+数据按 `sub` 隔离，工具不接受 owner 参数。
+新增权限须运行 `node scripts/setup-auth0-rbac.mjs --apply`；已签发令牌需重新登录。入口见 [WeChat](wechat/README.md)。
+
 ## AI 服务
 
 `ai.hasbai.xyz` 复用共享 audience 与登录客户端。

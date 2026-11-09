@@ -1,0 +1,22 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "wechat",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-11-07",
+  "compatibility_flags": ["nodejs_compat", "enable_request_signal"],
+  "routes": [{"pattern": "wechat.hasbai.xyz", "custom_domain": true}],
+  "vars": {
+    "ILINK_BASE_URL": "https://ilinkai.weixin.qq.com",
+    "ILINK_CLIENT_VERSION": "2.4.8",
+    "ILINK_BOT_AGENT": "Hasbai"
+  },
+  "durable_objects": {"bindings": [{"name": "OWNERS", "class_name": "WechatOwner"}]},
+  "migrations": [{"tag": "wechat-v1", "new_sqlite_classes": ["WechatOwner"]}],
+  "version_metadata": {"binding": "VERSION"},
+  "observability": {
+    "enabled": true,
+    "redact_query_string": true,
+    "logs": {"enabled": true, "head_sampling_rate": 1, "invocation_logs": false},
+    "traces": {"enabled": false, "head_sampling_rate": 0}
+  }
+}

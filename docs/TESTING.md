@@ -16,6 +16,7 @@
 | `apps/blog` | `node ../financial/scripts/check-visual-coverage.mjs`、`pnpm typecheck`、`pnpm test`、`pnpm build`（包含真实 workerd Worker 启动检查） |
 | `apps/zboard` | `pnpm check:visual-coverage`、`pnpm typecheck`、隔离本地 D1 迁移、带 `MIHOMO_BIN` 的 `pnpm test`、`pnpm build` |
 | `apps/ai` | `pnpm check:visual-coverage`、`pnpm typecheck`、`pnpm test`、`pnpm test:runtime`、`pnpm build` |
+| `apps/wechat` | `pnpm typecheck`、`pnpm test`、`pnpm test:runtime`、`pnpm build`（无页面，无视觉检查） |
 | `apps/images` | `pnpm check:visual-coverage`、`pnpm typecheck`、`pnpm test`、`pnpm build` |
 | `apps/tavern` | `pnpm check:visual-coverage`、`pnpm typecheck`、隔离本地 D1 迁移、`pnpm test`、`pnpm test:session-runtime`、`pnpm build` |
 
@@ -65,7 +66,7 @@ git diff --check
 
 主代理编辑后，先完成上述本地检查及受影响页审阅，再提交；需要新基线时，先在本地固定 Linux 镜像中生成、审阅并导入。准备合并时才创建 PR，完整 CI 在 PR 上运行一次。失败由主代理修复后再派新子代理推送复核；后续 PR 提交或 main 前进仍会重新运行检查。
 
-`check`、`visual`、`blog-check`、`blog-visual` 是既有保护要求的必需状态；Zboard/Tavern 改动还须分别通过 `zboard-check`/`zboard-visual`、`tavern-check`/`tavern-visual`；图床改动通过 `images-check`/`images-visual`。本地截图不能替代严格比较。合并后核验 main 合并 SHA、Cloudflare 自动部署和线上资源，不重复启动 main 全量 CI。
+`check`、`visual`、`blog-check`、`blog-visual` 是既有保护要求的必需状态；Zboard/Tavern 改动还须分别通过 `zboard-check`/`zboard-visual`、`tavern-check`/`tavern-visual`；图床改动通过 `images-check`/`images-visual`；微信改动通过 `wechat-check`（无视觉检查）。本地截图不能替代严格比较。合并后核验 main 合并 SHA、Cloudflare 自动部署和线上资源，不重复启动 main 全量 CI。
 
 既有交付登记采用个人账号仓库的 PR 保护与 squash，未启用 merge queue。保护要求最新 main 与必要状态，故 PR 打开前先把功能分支与最新 main 对齐。仓库设置只允许 squash，合并使用 `gh pr merge --squash`。手动 dispatch 只用于明确排障。PR CI 成功不代表真实 JWT、数据库或生产路由已验收。[GitHub 合并队列说明](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue)
 

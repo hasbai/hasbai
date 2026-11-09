@@ -21,6 +21,7 @@
 | Blog | [范围与任务路由](blog/README.md) | SSR、内容模型、图片、编辑与共享 Markdown |
 | Zboard | [范围与任务路由](zboard/README.md) | 节点、订阅、模板、流量与 D1 |
 | Images | [范围与任务路由](images/README.md) | 统一图片存储、管理、AI 生成与 API |
+| WeChat | [微信 Bot 会话与 MCP](wechat/README.md) | iLink 接入、持久化会话、轮询与 MCP 工具 |
 | Tavern | [范围与任务路由](tavern/README.md) | 架构、Agent/DO、模型与 Director、当前状态及图解 |
 
 每个应用的 `history/` 保存有价值的方案演进、迁移与验收证据，按需追溯。旧命令、旧权限、旧候选协议或一次实测只说明当时结果；当前契约链接优先，历史文件不追加当前流程。
