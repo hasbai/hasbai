@@ -2,13 +2,13 @@
 
 财务及历史命令在 `apps/financial` 运行。根 `pnpm` 脚本代理财务命令。
 
-根 `ci.yml` 判断影响范围，再调用各应用的可复用 workflow；无关应用合法跳过，失败不得跳过。受影响范围以 `scripts/ci/affected.mjs` 和 PR 标签为准，当前 `packages/`、根 workspace 配置及 lockfile 变更验证所有应用。各应用的 `visual-coverage.json` 复用同一 manifest/execution gate。
+根 `ci.yml` 判断影响范围，再调用各应用的可复用 workflow；无关应用合法跳过，失败不得跳过。受影响范围由开 PR 的主代理用 `ci:*` 标签声明，共享代码（`packages/`、根 workspace 配置、lockfile、共享视觉脚本）须声明所有受影响应用或 `ci:all`。各应用的 `visual-coverage.json` 复用同一 manifest/execution gate。
 
 ## 运行
 
 2026-10-09 用户要求：完整 Playwright 回归留在 CI。提交前必须在本地跑完受影响应用的全部非浏览器检查。检查包括类型、完整单测、已配置的覆盖率门槛、生产构建及 workflow 其他检查；失败先修复再提交。此规则取代旧的本地禁跑要求。CI 在最终 PR 上重复这些检查并执行完整 Playwright，不能用本地结果替代 PR 验收。
 
-先在仓库根执行 `pnpm install --frozen-lockfile`，再按下表在对应应用目录运行现有命令。共享改动按 `scripts/ci/affected.mjs` 的范围检查所有受影响应用；纯文档改动执行下文[文档检查](#文档检查)。提交前统一执行 `git diff --check`，不因只改一个组件而省略该应用完整单测。
+先在仓库根执行 `pnpm install --frozen-lockfile`，再按下表在对应应用目录运行现有命令。共享改动检查所有受影响应用；纯文档改动执行下文[文档检查](#文档检查)。提交前统一执行 `git diff --check`，不因只改一个组件而省略该应用完整单测。
 
 | 应用目录 | 本地提交前检查（不含完整 Playwright） |
 | --- | --- |
@@ -66,9 +66,9 @@ git diff --check
 
 **开 PR 前**：完成上述本地检查及受影响页审阅。需要新基线时，先在本地固定 Linux 镜像中生成、审阅并导入。
 
-**声明 CI 范围**：由主代理创建 PR 并用标签声明，不派发布子代理。`gh pr create --label ci:<应用>`，标签为 `ci:financial`、`ci:blog`、`ci:zboard`、`ci:tavern`、`ci:images`、`ci:ai`、`ci:wechat` 和 `ci:all`。`scripts/ci/affected.mjs` 的路径规则给出最低范围，标签只能加宽。`packages/`、依赖文件、共享视觉脚本、`ci.yml`、`automerge.yml` 和 `scripts/ci/` 的路径规则已覆盖所有应用。PR 描述写明加宽的原因。标签首次创建：`gh label create ci:<名称>`。
+**声明 CI 范围**：由主代理创建 PR 并手动加标签，不派发布子代理，也没有路径推导脚本。每个 PR 都必须用 `gh pr create --label ci:<应用>` 声明（可多个）：`ci:financial`、`ci:blog`、`ci:zboard`、`ci:tavern`、`ci:images`、`ci:ai`、`ci:wechat`，或 `ci:all`。主代理按改动、调用方和共享契约判断范围：`packages/`、依赖文件、共享视觉脚本、`.github/` 的改动用 `ci:all`。没有任何 `ci:` 标签的 PR 和手动 dispatch 默认运行所有应用。PR 描述写明跳过其余应用的理由。
 
-**必需状态**：只有 `Hasbai CI`。`.github/workflows/ci.yml` 的 `changes` job 先运行 `scripts/ci/*.test.mjs` 并计算范围，再对每个受影响应用调用其可复用 workflow（`financial.yml`、`blog.yml` 等）。`gate` job 用 `scripts/ci/gate.mjs` 核对：计划内应用必须 `success`，计划外必须 `skipped`；失败、取消或缺失都使门禁失败。同一 PR 的新运行取消旧运行，标签增删会重新触发。应用 workflow 的 job 名（`<应用>-check`、`<应用>-visual`）仍用于排查，不再单独设为必需状态。可复用 workflow 不设 `concurrency`，上传 artifact 须带应用前缀。
+**必需状态**：只有 `Hasbai CI`。`.github/workflows/ci.yml` 的 `changes` job 读取 PR 的 `ci:` 标签并输出每个应用是否运行，再调用各应用的可复用 workflow（`financial.yml`、`blog.yml` 等）。`gate` job 核对：计划内应用必须 `success`，计划外必须 `skipped`；失败、取消或缺失都使门禁失败。同一 PR 的新运行取消旧运行，标签增删会重新触发。应用 workflow 的 job 名（`<应用>-check`、`<应用>-visual`）仍用于排查，不再单独设为必需状态。可复用 workflow 不设 `concurrency`，上传 artifact 须带应用前缀。
 
 **自动合并**：非 Draft PR 打开、重开或转为 Ready 后，`automerge.yml` 执行 `gh pr merge --auto --squash`；`Hasbai CI` 通过后 GitHub 自动 squash 合并。该 workflow 用 `pull_request_target` 在 main 版本上运行，不检出 PR 代码。需要暂停时创建 Draft 或执行 `gh pr merge <PR> --disable-auto`。`GITHUB_TOKEN` 没有 `workflows` 权限，修改 `.github/workflows/` 的 PR 可能无法自动合并；CI 通过后改用 `gh pr merge <PR> --squash` 手动合并。
 
@@ -82,9 +82,14 @@ git diff --check
 
 ## 直推
 
-直推仅适用于独立且确认不影响前端输出的文档、数据库或维护脚本改动。相关本地检查通过后，可从最新 `origin/main` 的任务分支使用 `pnpm direct:push --validated --backend-reviewed --reviewed-path=<文件>` 快进推送 main；每个非文档文件各列一次，纯文档可省略参数。
+直推仅适用于纯文档、skills，以及确认不影响前端输出的数据库或维护脚本改动。相关本地检查通过后，从最新 `origin/main` 的任务分支快进推送，再核对远端 SHA：
 
-脚本拒绝共享 UI、页面、测试门禁、CI 配置（`.github/`、`scripts/ci/`）和混合路径，且核对远端提交。既有直推例外依赖维护者权限，按脚本和维护流程分类；远端保护配置变更后须重新核对，不绕过失败状态。API 契约、页面数据形状、共享配置仍走 PR。
+```sh
+git push origin HEAD:main
+git ls-remote origin refs/heads/main
+```
+
+共享 UI、页面、测试门禁、`.github/` 的 CI 配置、API 契约、页面数据形状和共享配置走 PR。直推依赖管理员绕过 `main` 保护；保护配置变更后须重新核对，不绕过失败状态。
 
 ## 视觉变更的提交前准备
 

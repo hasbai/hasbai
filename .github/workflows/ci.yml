@@ -25,28 +25,26 @@ jobs:
       ai: ${{ steps.plan.outputs.ai }}
       wechat: ${{ steps.plan.outputs.wechat }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - run: node --test scripts/ci/*.test.mjs
-      - id: scope
-        name: Read declared CI scope
-        shell: bash
-        run: |
-          labels=""
-          if [ -n "$PR" ]; then labels=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/labels" --jq '.[].name'); fi
-          { echo 'labels<<EOF'; echo "$labels"; echo 'EOF'; } >> "$GITHUB_OUTPUT"
+      # The agent declares the scope with `ci:<app>` or `ci:all` labels. A PR without a ci: label, or a dispatch, runs every app.
+      - id: plan
+        name: "Plan from ci: labels"
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
-      - id: plan
-        run: node scripts/ci/affected.mjs
-        env:
-          CI_LABELS: ${{ steps.scope.outputs.labels }}
-          CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          labels=""
+          if [ -n "$PR" ]; then
+            all=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/labels" --jq '.[].name')
+            labels=$(echo "$all" | grep '^ci:' || true)
+          fi
+          echo "labels: ${labels:-none}"
+          echo "$labels" | grep -qx 'ci:all' && labels=""
+          for app in financial blog zboard tavern images ai wechat; do
+            if [ -z "$labels" ] || echo "$labels" | grep -qx "ci:$app"; then value=true; else value=false; fi
+            echo "$app=$value" >> "$GITHUB_OUTPUT"
+            [ "$value" = true ] && planned=1
+          done
+          [ -n "${planned:-}" ] || { echo 'No ci: label names an app. Use ci:<app> or ci:all.'; exit 1; }
   financial:
     needs: changes
     if: needs.changes.outputs.financial == 'true'
@@ -81,11 +79,15 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - run: node scripts/ci/gate.mjs
+      # A planned app must succeed and an unplanned app must be skipped. Failed, cancelled or missing results fail the gate.
+      - run: |
+          test "$(jq -r '.changes.result' <<<"$NEEDS")" = success || { echo 'Change analysis did not pass.'; exit 1; }
+          for app in financial blog zboard tavern images ai wechat; do
+            plan=$(jq -r ".changes.outputs.$app" <<<"$NEEDS")
+            result=$(jq -r ".$app.result" <<<"$NEEDS")
+            expected=skipped; [ "$plan" = true ] && expected=success
+            echo "$app: plan=$plan result=$result"
+            [ "$result" = "$expected" ] || { echo "$app: expected $expected, received $result"; exit 1; }
+          done
         env:
-          CI_PLAN: ${{ toJSON(needs.changes.outputs) }}
-          CI_NEEDS: ${{ toJSON(needs) }}
+          NEEDS: ${{ toJSON(needs) }}
