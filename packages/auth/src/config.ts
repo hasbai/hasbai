@@ -12,6 +12,7 @@ export const permissions = {
   blog: "blog.all:all",
   images: "images.all:all",
   tavern: "tavern.all:all",
+  wechat: "wechat.all:all",
   zboard: "zboard.all:all",
 } as const;
 

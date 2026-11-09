@@ -11,6 +11,7 @@ Hasbai 使用 pnpm workspace；`apps/*` 是独立应用，`packages/*` 提供共
 | [Zboard](zboard/ARCHITECTURE.md) | Svelte 5 / Vite SPA；Worker `zboard` | Worker 验签、D1 用户/节点/模板/报告、订阅与 Node API |
 | [Images](images/README.md) | Svelte 5 / Vite SPA；Worker `images` | 统一 R2 image、Neon public.image、Codex 图片生成 |
 | [AI](ai/README.md) | Svelte 5 / Vite SPA；Worker `ai` | AI Gateway、Workers AI、自定义 Provider 与 BYOK |
+| [WeChat](wechat/README.md) | 无界面 Worker `wechat`，`wechat.hasbai.xyz` | 每用户一个 SQLite DO 保存 Bot 凭据、游标、会话与消息；alarm 长轮询；MCP 工具 |
 | [Tavern](tavern/ARCHITECTURE.md) | Svelte 5 / Vite SPA；Worker `tavern` | D1 目录/角色/世界书/设置；每会话 SQLite DO 保存正文与状态；私有 R2；AI Gateway `dynamic/rp` |
 
 ```mermaid
@@ -56,6 +57,7 @@ Cloudflare Workers Builds 监听 `main` 自动构建发布。当前 Git remote �
 | Blog | 应用根 `apps/blog`；`pnpm build`，含 workerd 启动检查 | `apps/blog/wrangler.jsonc`；`/api/version`、SSR |
 | Zboard | 仓库根；`pnpm --filter zboard build` | `apps/zboard/wrangler.jsonc`；Worker 版本及线上资源 |
 | Images | 应用根 `apps/images`；`pnpm build` | `apps/images/wrangler.jsonc`；`/health`、公开图片与生成 API |
+| WeChat | 应用根 `apps/wechat`；`pnpm build` | `apps/wechat/wrangler.jsonc`；`/health`、`wechat_list_accounts` |
 | Tavern | 仓库根；`pnpm --filter tavern build` | `apps/tavern/wrangler.jsonc`；`/health` 与部署版本 |
 
 2026-10-10 回读的构建过滤：财务 `apps/financial/*`、博客 `apps/blog/*`，均包含 `packages/*` 和根 workspace/lockfile；Tavern 为 `apps/tavern/**`、`packages/**` 和根 workspace/lockfile；Zboard 当前为 `*`（全仓库），并非只监控应用路径。此次仅记录现状，不修改后台触发器。
