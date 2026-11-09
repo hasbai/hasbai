@@ -22,5 +22,5 @@ jobs:
           file: docker/visual-ci/Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/hasbai/financial-visual-ci:chromium-pw1.63.0-node24-pnpm10.33.2-v2
+          tags: ghcr.io/hasbai/financial-visual-ci:chromium-pw1.63.0-node24-pnpm10.33.2-v3
       - run: echo "Image digest ${{ steps.build.outputs.digest }}" >> "$GITHUB_STEP_SUMMARY"
