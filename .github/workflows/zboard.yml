@@ -6,31 +6,22 @@ permissions:
 jobs:
   check:
     name: zboard-check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/hasbai/financial-visual-ci@sha256:894da852f84db9b566590821dbe5804fa4ca2a880a396f42ee8ebfe9d4099617
     timeout-minutes: 15
     defaults:
       run:
         working-directory: apps/zboard
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: node ../financial/scripts/check-visual-coverage.mjs
       - run: pnpm typecheck
       - run: pnpm exec wrangler d1 migrations apply zboard --local
-      - name: Install pinned Mihomo for subscription compatibility
-        run: |
-          curl --fail --location --retry 2 --max-time 120 https://github.com/MetaCubeX/mihomo/releases/download/v1.19.32/mihomo-linux-amd64-v1.19.32.gz -o "$RUNNER_TEMP/mihomo.gz"
-          echo "8451100836c9eda194331c2babfad490b2faf30cebc1a04b0e76fd8ac2d35d10  $RUNNER_TEMP/mihomo.gz" | sha256sum --check
-          gunzip "$RUNNER_TEMP/mihomo.gz"
-          chmod +x "$RUNNER_TEMP/mihomo"
+      # MIHOMO_BIN points at the pinned Mihomo preinstalled in the image. The native test skips silently without it.
+      - run: test -x "$MIHOMO_BIN" && "$MIHOMO_BIN" -v
       - run: pnpm test
-        env:
-          MIHOMO_BIN: ${{ runner.temp }}/mihomo
       - run: pnpm build
       - uses: actions/upload-artifact@v4
         with:
@@ -40,7 +31,7 @@ jobs:
     name: zboard-visual
     runs-on: ubuntu-24.04
     container:
-      image: ghcr.io/hasbai/financial-visual-ci@sha256:4aca1416fa6743042754ec8aaac4a68239f25e89e4535c5f152c2b4a6c03ce4b
+      image: ghcr.io/hasbai/financial-visual-ci@sha256:894da852f84db9b566590821dbe5804fa4ca2a880a396f42ee8ebfe9d4099617
       options: --ipc=host
     timeout-minutes: 20
     defaults:

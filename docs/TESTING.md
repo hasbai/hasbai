@@ -20,9 +20,9 @@
 | `apps/images` | `pnpm check:visual-coverage`、`pnpm typecheck`、`pnpm test`、`pnpm build` |
 | `apps/tavern` | `pnpm check:visual-coverage`、`pnpm typecheck`、隔离本地 D1 迁移、`pnpm test`、`pnpm test:session-runtime`、`pnpm build` |
 
-Zboard 的 `MIHOMO_BIN` 必须指向 Mihomo 二进制。版本须与 workflow 一致，SHA-256 须通过校验。
+Mihomo 固定为 v1.19.32，SHA-256 在 `docker/visual-ci/Dockerfile` 中校验，镜像内路径 `/usr/local/bin/mihomo`，并预设 `MIHOMO_BIN`。`zboard-check` 在该镜像中运行，不再下载 Mihomo。
 
-使用适配本机架构的发行包或固定 Linux 容器；未配置时原生用例会跳过，不能称为全部通过。Zboard/Tavern 的 D1 迁移用每次新建的临时目录，执行 `pnpm exec wrangler d1 migrations apply <zboard|tavern> --local --persist-to <临时目录>`，验证后清理；不写生产或既有开发存储。Tavern session-runtime 已自带隔离资源。
+本地用 `node scripts/cloud-dev.mjs run` 的固定 Linux 镜像（已含 `MIHOMO_BIN`）；在其他环境未配置时原生用例会跳过，不能称为全部通过。Zboard/Tavern 的 D1 迁移用每次新建的临时目录，执行 `pnpm exec wrangler d1 migrations apply <zboard|tavern> --local --persist-to <临时目录>`，验证后清理；不写生产或既有开发存储。Tavern session-runtime 已自带隔离资源。
 
 例如博客提交前在仓库根运行：
 

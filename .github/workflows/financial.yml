@@ -43,7 +43,7 @@ jobs:
     name: financial-visual
     runs-on: ubuntu-24.04
     container:
-      image: ghcr.io/hasbai/financial-visual-ci@sha256:4aca1416fa6743042754ec8aaac4a68239f25e89e4535c5f152c2b4a6c03ce4b
+      image: ghcr.io/hasbai/financial-visual-ci@sha256:894da852f84db9b566590821dbe5804fa4ca2a880a396f42ee8ebfe9d4099617
       options: --ipc=host
     timeout-minutes: 20
     steps:
