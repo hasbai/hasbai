@@ -20,11 +20,11 @@ const docs = path => path.startsWith('docs/') || path.includes('/docs/')
   || path.endsWith('/README.md') || path === 'README.md' || path === 'AGENTS.md'
   || /^[A-Z][A-Z-]+\.md$/.test(path);
 const maintenance = path => ['scripts/', 'apps/financial/scripts/', 'apps/blog/scripts/', 'apps/zboard/scripts/'].some(prefix => path.startsWith(prefix))
-  && !/(ci-queue-gate|direct-push|affected|wait-ci|visual|browser-build|baselines)/.test(path);
+  && !/(scripts\/ci\/|direct-push|visual|browser-build|baselines)/.test(path);
 const backend = path => ['database/', 'apps/financial/worker/', 'apps/blog/worker/', 'apps/zboard/worker/'].some(prefix => path.startsWith(prefix));
 const denied = files.filter(path => !docs(path)
   && !(args.has('--backend-reviewed') && (maintenance(path) || backend(path))));
-if (denied.length) throw new Error('PR and merge-queue CI required for these files:\n' + denied.join('\n'));
+if (denied.length) throw new Error('A PR with CI is required for these files:\n' + denied.join('\n'));
 const nonDocs = files.filter(path => !docs(path));
 if (nonDocs.some(path => !reviewedPaths.has(path)) || [...reviewedPaths].some(path => !nonDocs.includes(path))) {
   throw new Error('List each reviewed non-document file exactly with --reviewed-path=<file>:\n' + nonDocs.join('\n'));

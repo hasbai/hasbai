@@ -1,0 +1,91 @@
+name: Hasbai CI
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+  workflow_dispatch:
+permissions:
+  contents: read
+# The newest run of a PR cancels older ones, so the latest check suite always decides the PR status.
+concurrency:
+  group: hasbai-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      financial: ${{ steps.plan.outputs.financial }}
+      blog: ${{ steps.plan.outputs.blog }}
+      zboard: ${{ steps.plan.outputs.zboard }}
+      tavern: ${{ steps.plan.outputs.tavern }}
+      images: ${{ steps.plan.outputs.images }}
+      ai: ${{ steps.plan.outputs.ai }}
+      wechat: ${{ steps.plan.outputs.wechat }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node --test scripts/ci/*.test.mjs
+      - id: scope
+        name: Read declared CI scope
+        shell: bash
+        run: |
+          labels=""
+          if [ -n "$PR" ]; then labels=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/labels" --jq '.[].name'); fi
+          { echo 'labels<<EOF'; echo "$labels"; echo 'EOF'; } >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+      - id: plan
+        run: node scripts/ci/affected.mjs
+        env:
+          CI_LABELS: ${{ steps.scope.outputs.labels }}
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+  financial:
+    needs: changes
+    if: needs.changes.outputs.financial == 'true'
+    uses: ./.github/workflows/financial.yml
+  blog:
+    needs: changes
+    if: needs.changes.outputs.blog == 'true'
+    uses: ./.github/workflows/blog.yml
+  zboard:
+    needs: changes
+    if: needs.changes.outputs.zboard == 'true'
+    uses: ./.github/workflows/zboard.yml
+  tavern:
+    needs: changes
+    if: needs.changes.outputs.tavern == 'true'
+    uses: ./.github/workflows/tavern.yml
+  images:
+    needs: changes
+    if: needs.changes.outputs.images == 'true'
+    uses: ./.github/workflows/images.yml
+  ai:
+    needs: changes
+    if: needs.changes.outputs.ai == 'true'
+    uses: ./.github/workflows/ai.yml
+  wechat:
+    needs: changes
+    if: needs.changes.outputs.wechat == 'true'
+    uses: ./.github/workflows/wechat.yml
+  gate:
+    name: Hasbai CI
+    needs: [changes, financial, blog, zboard, tavern, images, ai, wechat]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node scripts/ci/gate.mjs
+        env:
+          CI_PLAN: ${{ toJSON(needs.changes.outputs) }}
+          CI_NEEDS: ${{ toJSON(needs) }}

@@ -1,27 +1,11 @@
 name: AI
 on:
-  pull_request:
-  workflow_dispatch:
+  workflow_call:
 permissions:
   contents: read
-concurrency:
-  group: ai-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
 jobs:
-  changes:
-    runs-on: ubuntu-latest
-    outputs:
-      ai: ${{ steps.filter.outputs.ai }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - id: filter
-        run: node scripts/affected.mjs "${{ github.event.pull_request.base.sha }}"
   check:
     name: ai-check
-    needs: changes
-    if: needs.changes.outputs.ai == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -41,8 +25,6 @@ jobs:
       - run: pnpm build
   visual:
     name: ai-visual
-    needs: changes
-    if: needs.changes.outputs.ai == 'true'
     runs-on: ubuntu-24.04
     container:
       image: ghcr.io/hasbai/financial-visual-ci@sha256:4aca1416fa6743042754ec8aaac4a68239f25e89e4535c5f152c2b4a6c03ce4b
