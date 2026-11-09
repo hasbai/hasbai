@@ -58,7 +58,7 @@ Neon 网关要求 JWT，包括匿名访问。Worker 仅在重建公开快照时�
 
 Cloudflare MCP Portal“北极小站”的入口为 `https://mcp.hasbai.xyz/mcp`。Managed OAuth 与 Access Allow/Everyone 允许任意用户登录。登录统一使用北极组织及 `auth.hasbai.xyz`，提供邮箱、Google、Microsoft Account、GitHub。
 
-Portal 的 Managed OAuth 回调白名单包含 `https://chatgpt.com/connector/oauth/*` 与 `https://chatgpt.com/connector_platform_oauth_redirect`。仅允许本地回调会使 ChatGPT 连接返回 `Redirect URI not allowed by application configuration`。2026-10-13 补齐配置后，两种回调的 OAuth 请求均返回 302 并进入 Access 登录；ChatGPT 完整连接须重新发起验收。[官方回调规则](https://developers.openai.com/plugins/build/auth#redirect-url)
+Portal 的 Managed OAuth 回调白名单包含 `https://chatgpt.com/connector/oauth/*` 与 `https://chatgpt.com/connector_platform_oauth_redirect`。仅允许本地回调会使 ChatGPT 连接返回 `Redirect URI not allowed by application configuration`。2026-10-13 补齐配置后，两种回调的 OAuth 请求均返回 302 并进入 Access 登录；ChatGPT 完整连接须重新发起验收。Claude（claude.ai 与桌面端）的回调 `https://claude.ai/api/mcp/auth_callback` 和 `https://claude.com/api/mcp/auth_callback` 同样须在白名单，缺失时动态注册返回 `redirect_uri is not allowed by the account configuration`，连接显示失败；2026-11-09 补齐后两者注册均返回客户端 ID。[官方回调规则](https://developers.openai.com/plugins/build/auth#redirect-url)
 
 上游为 `https://hasbai.xyz/api/mcp`，采用手动 OAuth，`on_behalf=true`。Portal 为每个用户保存并转发共享 audience 的 Auth0 Token，不使用共享管理员 Token。普通用户经 Portal 读取公开内容，管理员经同一 Portal 增删改查。
 
