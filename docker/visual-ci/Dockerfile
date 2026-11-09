@@ -18,6 +18,10 @@ RUN --mount=type=secret,id=proxy_ca,mode=0444 \
     curl --fail --show-error --location --retry 2 "https://nodejs.org/dist/v24.20.0/node-v24.20.0-linux-x64.tar.xz" -o /tmp/node.tar.xz; \
     printf '2f2c0da162318f0de47665410c7c8c2ed3d36c8f3105de4bbc61176c70a7cbf2  /tmp/node.tar.xz\n' | sha256sum --check; \
     tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1; \
+    curl --fail --show-error --location --retry 5 --retry-all-errors "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.32/mihomo-linux-amd64-v1.19.32.gz" -o /tmp/mihomo.gz; \
+    printf '8451100836c9eda194331c2babfad490b2faf30cebc1a04b0e76fd8ac2d35d10  /tmp/mihomo.gz\n' | sha256sum --check; \
+    gunzip -c /tmp/mihomo.gz > /usr/local/bin/mihomo; \
+    chmod 0755 /usr/local/bin/mihomo; \
     npm install --global pnpm@10.33.2; \
     npm exec --yes --package=playwright@1.63.0 -- playwright install --with-deps --only-shell chromium; \
     chmod -R a+rX /ms-playwright; \
@@ -29,5 +33,5 @@ RUN --mount=type=secret,id=proxy_ca,mode=0444 \
 # A single filesystem layer avoids copying seven parent filesystems under vfs.
 FROM scratch
 COPY --from=prepared / /
-ENV DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8 TZ=UTC PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+ENV DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8 TZ=UTC PLAYWRIGHT_BROWSERS_PATH=/ms-playwright MIHOMO_BIN=/usr/local/bin/mihomo
 CMD ["/bin/bash"]

@@ -4,7 +4,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, write
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const image = 'ghcr.io/hasbai/financial-visual-ci@sha256:4aca1416fa6743042754ec8aaac4a68239f25e89e4535c5f152c2b4a6c03ce4b';
+const image = 'ghcr.io/hasbai/financial-visual-ci@sha256:894da852f84db9b566590821dbe5804fa4ca2a880a396f42ee8ebfe9d4099617';
 const repo = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const app = process.argv[2];
 if (!['financial', 'blog', 'zboard', 'tavern', 'images', 'ai'].includes(app)) throw new Error('Usage: node scripts/visual-linux.mjs <financial|blog|zboard|tavern> [--all|--page <source-or-scenario>]');

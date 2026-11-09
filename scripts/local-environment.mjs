@@ -29,7 +29,7 @@ function info() {
   console.log('Rules: AGENTS.md; checks/delivery: docs/TESTING.md; navigation: docs/README.md');
   console.log('Root dev/test/build/typecheck target financial. Other apps: pnpm --filter <app> <script>.');
   console.log('Zboard/Tavern/AI API: node scripts/local-environment.mjs api <zboard|tavern|ai> (build first; port 8787, one at a time).');
-  console.log('Zboard native tests require the pinned, SHA-256-verified MIHOMO_BIN; see docs/TESTING.md.');
+  console.log('Zboard native tests need MIHOMO_BIN, preinstalled in the pinned Linux image; see docs/TESTING.md.');
   console.log('Full Playwright: CI. Page screenshots: existing visual:* actions with the pinned Linux image.');
 }
 

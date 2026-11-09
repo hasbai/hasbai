@@ -17,7 +17,6 @@
     "visual:blog": "node scripts/visual-linux.mjs blog",
     "visual:zboard": "node scripts/visual-linux.mjs zboard",
     "visual:baseline:import-local": "node scripts/import-local-visual.mjs",
-    "direct:push": "node scripts/direct-push.mjs",
     "test:e2e:update": "pnpm --filter financial test:e2e:update",
     "check:visual-coverage": "pnpm --filter financial check:visual-coverage",
     "visual:baseline:import": "pnpm --filter financial visual:baseline:import",

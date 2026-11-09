@@ -45,7 +45,7 @@ flowchart LR
 | `packages/observability` | 脱敏请求摘要、状态分级与响应就绪计时；见[日志说明](OBSERVABILITY.md) | 请求正文、凭据及外部日志服务 |
 | `packages/markdown` | 安全 Markdown 渲染与阅读组件、数学/引用/图表扩展 | 内容自动改写或发布决策 |
 
-视觉与复用要求见[DESIGN](DESIGN.md)。根脚本默认代理财务；财务源码、原脚本与视觉清单中的相对路径以 `apps/financial` 为工作目录，CI 等待脚本位于根 `scripts/wait-ci.mjs`。
+视觉与复用要求见[DESIGN](DESIGN.md)。根脚本默认代理财务；财务源码、原脚本与视觉清单中的相对路径以 `apps/financial` 为工作目录。
 
 ## 自动构建与运行入口
 

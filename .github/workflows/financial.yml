@@ -1,0 +1,68 @@
+name: Financial
+on:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  check:
+    defaults:
+      run:
+        working-directory: apps/financial
+    name: financial-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:ci-tools
+      - name: Check page coverage inventory
+        run: pnpm check:visual-coverage
+      - run: pnpm typecheck
+      - run: pnpm test:coverage
+      - run: pnpm build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: financial-production-build
+          path: apps/financial/dist/
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: financial-coverage
+          path: apps/financial/coverage/
+          retention-days: 14
+  visual:
+    defaults:
+      run:
+        working-directory: apps/financial
+    name: financial-visual
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/hasbai/financial-visual-ci@sha256:894da852f84db9b566590821dbe5804fa4ca2a880a396f42ee8ebfe9d4099617
+      options: --ipc=host
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: pnpm install --frozen-lockfile
+      - run: test "$(pnpm exec playwright --version)" = 'Version 1.63.0'
+      - run: pnpm build
+      - run: pnpm exec vite build --mode e2e
+        env:
+          VITE_DATA_API_URL: http://127.0.0.1:4173/test-api
+      - run: node scripts/prepare-browser-build.mjs
+      - run: pnpm test:e2e
+        env:
+          VISUAL_COVERAGE_GATE: '1'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: financial-playwright-results
+          path: |
+            apps/financial/playwright-report/
+            apps/financial/test-results/
+          retention-days: 14

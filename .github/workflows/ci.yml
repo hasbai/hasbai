@@ -1,0 +1,93 @@
+name: Hasbai CI
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+  workflow_dispatch:
+permissions:
+  contents: read
+# The newest run of a PR cancels older ones, so the latest check suite always decides the PR status.
+concurrency:
+  group: hasbai-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      financial: ${{ steps.plan.outputs.financial }}
+      blog: ${{ steps.plan.outputs.blog }}
+      zboard: ${{ steps.plan.outputs.zboard }}
+      tavern: ${{ steps.plan.outputs.tavern }}
+      images: ${{ steps.plan.outputs.images }}
+      ai: ${{ steps.plan.outputs.ai }}
+      wechat: ${{ steps.plan.outputs.wechat }}
+    steps:
+      # The agent declares the scope with `ci:<app>` or `ci:all` labels. A PR without a ci: label, or a dispatch, runs every app.
+      - id: plan
+        name: "Plan from ci: labels"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          labels=""
+          if [ -n "$PR" ]; then
+            all=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/labels" --jq '.[].name')
+            labels=$(echo "$all" | grep '^ci:' || true)
+          fi
+          echo "labels: ${labels:-none}"
+          echo "$labels" | grep -qx 'ci:all' && labels=""
+          for app in financial blog zboard tavern images ai wechat; do
+            if [ -z "$labels" ] || echo "$labels" | grep -qx "ci:$app"; then value=true; else value=false; fi
+            echo "$app=$value" >> "$GITHUB_OUTPUT"
+            [ "$value" = true ] && planned=1
+          done
+          [ -n "${planned:-}" ] || { echo 'No ci: label names an app. Use ci:<app> or ci:all.'; exit 1; }
+  financial:
+    needs: changes
+    if: needs.changes.outputs.financial == 'true'
+    uses: ./.github/workflows/financial.yml
+  blog:
+    needs: changes
+    if: needs.changes.outputs.blog == 'true'
+    uses: ./.github/workflows/blog.yml
+  zboard:
+    needs: changes
+    if: needs.changes.outputs.zboard == 'true'
+    uses: ./.github/workflows/zboard.yml
+  tavern:
+    needs: changes
+    if: needs.changes.outputs.tavern == 'true'
+    uses: ./.github/workflows/tavern.yml
+  images:
+    needs: changes
+    if: needs.changes.outputs.images == 'true'
+    uses: ./.github/workflows/images.yml
+  ai:
+    needs: changes
+    if: needs.changes.outputs.ai == 'true'
+    uses: ./.github/workflows/ai.yml
+  wechat:
+    needs: changes
+    if: needs.changes.outputs.wechat == 'true'
+    uses: ./.github/workflows/wechat.yml
+  gate:
+    name: Hasbai CI
+    needs: [changes, financial, blog, zboard, tavern, images, ai, wechat]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      # A planned app must succeed and an unplanned app must be skipped. Failed, cancelled or missing results fail the gate.
+      - run: |
+          test "$(jq -r '.changes.result' <<<"$NEEDS")" = success || { echo 'Change analysis did not pass.'; exit 1; }
+          for app in financial blog zboard tavern images ai wechat; do
+            plan=$(jq -r ".changes.outputs.$app" <<<"$NEEDS")
+            result=$(jq -r ".$app.result" <<<"$NEEDS")
+            expected=skipped; [ "$plan" = true ] && expected=success
+            echo "$app: plan=$plan result=$result"
+            [ "$result" = "$expected" ] || { echo "$app: expected $expected, received $result"; exit 1; }
+          done
+        env:
+          NEEDS: ${{ toJSON(needs) }}
