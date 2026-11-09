@@ -62,4 +62,19 @@ DO alarm 驱动长轮询，不依赖 Cron。每次 alarm 先设置 90 秒看门�
 `wechat_list_conversations` 用 `before_last_message_at` 翻页，同一毫秒的会话可能被跳过。
 同一个 Bot 只应有一个消费者；其他客户端同时读取会争抢游标。
 
-首次上线须真实联调并记录：二维码内容格式、服务端接受的版本与 `bot_agent`、`-14` 是否可恢复、`context_token` 有效期。联调只记录账号 ID 与状态，不记录凭据。
+2026-11-09 已对真实服务端验证（仅获取二维码并查询一次状态，未登录任何账号）：
+- 服务端接受 `ILINK_CLIENT_VERSION=2.4.8` 与 `bot_agent=Hasbai`。
+- `qrcode_img_content` 是 `liteapp.weixin.qq.com` 的 URL，不是图片；`wechat_login_start` 原样返回为 `qrcode_content`，由调用方生成二维码或在手机微信打开。
+- 新二维码的状态为 `wait`。
+
+仍待首次真实登录后记录：`-14` 是否可恢复、`context_token` 有效期、`binded_redirect` 含义。联调只记录账号 ID 与状态，不记录凭据。
+
+## 发布
+
+在 Cloudflare 登记 Workers Builds 后，合并到 `main` 才会自动部署：
+
+```sh
+python3 apps/wechat/scripts/setup-builds.py < token-file
+```
+
+脚本从标准输入读取 Cloudflare 用户级 API Token，创建 Worker 资源和 `main` 构建触发器，不部署版本。路径过滤为 `apps/wechat/**`、`packages/**` 及 workspace 文件。
