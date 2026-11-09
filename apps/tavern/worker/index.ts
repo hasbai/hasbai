@@ -2,7 +2,7 @@ import { observeRequest } from '@hasbai/observability';
 import { identity, authenticatedUsername, AuthError } from './auth';
 import { body, boundedBody, HttpError, json } from './http';
 import { discover, download } from './discovery';
-import { modelInput, modelOptions } from './models';
+import { modelInput, modelOptions, validateModel } from './models';
 import { callSession, sessionStub } from './session-object';
 export { TavernSession } from './session-object';
 export { MessageInbox } from './message-inbox';
@@ -36,7 +36,7 @@ export default {
    }
    if(p==='/api/settings'){
     if(method==='GET')return json(await userSettings(env,owner));
-    if(method==='PUT'){const data=settings(await body(request));modelInput(data);await env.DB.prepare('INSERT INTO settings(owner,settings_json) VALUES(?,?) ON CONFLICT(owner) DO UPDATE SET settings_json=excluded.settings_json').bind(owner,JSON.stringify(data)).run();return json(data);}
+    if(method==='PUT'){const data=settings(await body(request));modelInput(data);await validateModel(env,ctx,data.modelId);await env.DB.prepare('INSERT INTO settings(owner,settings_json) VALUES(?,?) ON CONFLICT(owner) DO UPDATE SET settings_json=excluded.settings_json').bind(owner,JSON.stringify(data)).run();return json(data);}
    }
    if(p==='/api/discover' && method==='GET'){
     const query=(url.searchParams.get('q')??'').trim();const page=Number(url.searchParams.get('page')??'1');

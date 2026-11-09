@@ -23,7 +23,7 @@ it('uses the SDK provider with the complete fixed-route wire and retains raw obs
  expect(events.at(-1)).toEqual({ type: 'finish', reason: 'stop', calls: [] });
  expect(fetch).toHaveBeenCalledOnce();
  const [url, options] = fetch.mock.calls[0]; expect(url).toBe('https://ai.hasbai.xyz/internal/roleplay');
- expect(JSON.parse(options.body)).toEqual({ ...input, model: 'dynamic/rp', stream: true });
+ expect(JSON.parse(options.body)).toEqual({ ...input, model: 'rp', stream: true });
  expect(JSON.parse(new Headers(options.headers).get('X-AI-Attribution')!)).toEqual({ app: 'tavern', username: '用户😀', requestId: 'request-id' });
 
  expect(options.redirect).toBe('manual');

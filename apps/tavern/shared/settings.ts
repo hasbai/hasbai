@@ -7,7 +7,7 @@ export function normalizeSettings(value: unknown): Settings {
  const range = (n: unknown, min: number, max: number, integer = false) => typeof n === 'number' && Number.isFinite(n) && n >= min && n <= max && (!integer || Number.isInteger(n));
  if (typeof v.userName !== 'string' || !v.userName.trim() || v.userName.length > 80) throw new Error('请检查你的名字');
  if (typeof v.persona !== 'string' || v.persona.length > 12000 || typeof v.systemPrompt !== 'string' || !v.systemPrompt.trim()) throw new Error('请检查角色设定与系统提示');
- if (v.modelId !== 'rp') throw new Error('模型不可用');
+ if (typeof v.modelId !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9._/-]{0,255}$/.test(v.modelId)) throw new Error('模型不可用');
  if (typeof v.thinkingEnabled !== 'boolean') throw new Error('请检查思考开关');
  if (!['low', 'medium', 'high'].includes(v.reasoningEffort)) throw new Error('请检查思考强度');
  if (!range(v.temperature, 0, 2)) throw new Error('温度需为 0–2');

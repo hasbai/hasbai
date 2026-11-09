@@ -18,8 +18,9 @@ export class RuntimeInbox extends MessageInbox {
 const telegramEvents=[];
 globalThis.fetch=async(url,options)=>{
  if(String(url).includes('api.telegram.org/')){telegramEvents.push({method:String(url).split('/').at(-1),body:JSON.parse(options.body)});return Response.json({ok:true,result:{message_id:123}});}
+ if(String(url).endsWith('/internal/models'))return Response.json({data:[{id:'rp',name:'RP 动态路由',type:'chat'},{id:'translate',name:'Translate · 翻译',type:'chat'},{id:'image',name:'Image',type:'image'}]});
  if(!String(url).includes('/internal/roleplay'))throw Error('unexpected external request');
- const input=JSON.parse(options.body);if(input.model!=='dynamic/rp')throw Error('unexpected model');
+ const input=JSON.parse(options.body);if(input.model!=='rp')throw Error('unexpected model');
  if(input.messages.some(m=>m.role==='user'&&m.content.includes('"speaker":')))throw Error('Telegram envelope leaked into model prompt');
  if(!input.messages.some(m=>m.role==='user'&&m.content.includes('@untrusted-telegram-name: 你好')))throw Error('Telegram dialogue projection missing');
  if(input.messages.some(m=>m.content.includes('口吻更自然'))&&!input.messages.some(m=>m.content.includes('[OOC：')))throw Error('OOC instruction lost');
