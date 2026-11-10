@@ -18,9 +18,9 @@ export class RuntimeInbox extends MessageInbox {
 const telegramEvents=[];
 globalThis.fetch=async(url,options)=>{
  if(String(url).includes('api.telegram.org/')){telegramEvents.push({method:String(url).split('/').at(-1),body:JSON.parse(options.body)});return Response.json({ok:true,result:{message_id:123}});}
- if(String(url).endsWith('/internal/models'))return Response.json({data:[{id:'rp',name:'RP 动态路由',type:'chat'},{id:'translate',name:'Translate · 翻译',type:'chat'},{id:'image',name:'Image',type:'image'}]});
+ if(String(url).endsWith('/internal/models'))return Response.json({data:[{id:'default',name:'平台默认 · qwen3',type:'chat',target:'custom-main/qwen3',context_tokens:32768},{id:'custom-main/qwen3',name:'qwen3',type:'chat',context_tokens:32768},{id:'image',name:'Image',type:'image'}]});
  if(!String(url).includes('/internal/roleplay'))throw Error('unexpected external request');
- const input=JSON.parse(options.body);if(input.model!=='rp')throw Error('unexpected model');
+ const input=JSON.parse(options.body);if(input.model!=='default')throw Error('unexpected model');
  if(input.messages.some(m=>m.role==='user'&&m.content.includes('"speaker":')))throw Error('Telegram envelope leaked into model prompt');
  if(!input.messages.some(m=>m.role==='user'&&m.content.includes('@untrusted-telegram-name: 你好')))throw Error('Telegram dialogue projection missing');
  if(input.messages.some(m=>m.content.includes('口吻更自然'))&&!input.messages.some(m=>m.content.includes('[OOC：')))throw Error('OOC instruction lost');
@@ -42,10 +42,9 @@ let runtime=new Miniflare(convertV4MiniflareOptions(options));
 async function call(method,data={}){const response=await runtime.dispatchFetch('https://test',{method:'POST',body:JSON.stringify({method,...data})});assert.equal(response.status,200);return response.json();}
 try{
  const db=await runtime.getD1Database('DB');for(const name of readdirSync(join(root,'migrations')).filter(n=>n.endsWith('.sql')).sort())await db.exec(readFileSync(join(root,'migrations',name),'utf8').replace(/--[^\n]*/g,'').replace(/\n/g,' '));
- const settings={userName:'群成员',persona:'',systemPrompt:'保持角色',modelId:'rp',thinkingEnabled:false,temperature:.9,topP:1,topK:0,frequencyPenalty:0,presencePenalty:0};
+ const settings={userName:'群成员',persona:'',systemPrompt:'保持角色',modelId:'default',thinkingEnabled:false,temperature:.9,topP:1,topK:0,frequencyPenalty:0,presencePenalty:0};
  await db.prepare("INSERT INTO sessions(id,owner,title,character_json,character_name,settings_json,created_at,updated_at,storage_backend,generation_id,generation_until) VALUES('session','owner','Saki',?, 'Saki',?,1,1,'do','do:session',?)").bind('{"name":"Saki"}',JSON.stringify(settings),Number.MAX_SAFE_INTEGER).run();
  await db.prepare("INSERT INTO channel_routes VALUES('route','[12,0]',12,0,'owner','verified-profile','session',1,1)").run();
- await db.prepare('INSERT INTO model_capabilities VALUES(?,?,?)').bind('rp',JSON.stringify({contextTokens:32768,source:'llama.cpp:n_ctx',inputRatio:1.2}),Date.now()+300000).run();
  assert.equal((await call('receive')).accepted,true);const first=await call('inspect');assert.equal(first.jobs.length,1);const requestId=first.jobs[0].request_id;assert((await call('events')).some(e=>e.method==='setMessageReaction'&&e.body.message_id===10&&e.body.reaction[0].emoji==='👀'));
  await runtime.dispose();runtime=new Miniflare(convertV4MiniflareOptions(options));
  for(let n=0;n<300;n++){const value=await call('inspect');if(value.jobs[0].phase==='done')break;await new Promise(r=>setTimeout(r,50));}

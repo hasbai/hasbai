@@ -14,7 +14,7 @@ Saki 角色卡、账号绑定与消息中台契约见 [MESSAGING](MESSAGING.md)�
 | 世界书 | 独立 JSON 导入/导出、查看编辑原文、条目数量、启用/停用，给会话选择世界书；内嵌角色书自动生效 |
 | 对话 | 会话列表、角色与用户 persona。右侧用户气泡、无气泡角色正文、单行自动伸展输入、圆形发送/停止、回答末尾操作。持久化历史、重试、重新生成、任意历史消息编辑、删除和重生成，原会话内截断后续、导出 JSONL、删除会话 |
 | 关于 | 从设置进入；按阶段展示架构与可编辑提示词。登录用户可改个人系统提示；管理员可改应用提示词 |
-| 设置 | RP模型、默认关闭思考、采样参数、用户名称/persona、系统提示、主题；模型路由由服务端固定，不接受客户端覆盖 |
+| 设置 | 对话模型（平台自动发现）、默认关闭思考、采样参数、用户名称/persona、系统提示、主题；模型路由由服务端固定，不接受客户端覆盖 |
 
 当前不执行外来 JS/Lua、正则替换脚本或扩展工具，不提供多人群聊、语音或全量 SillyTavern 插件兼容。图像生成用于角色头像和立绘。未知扩展和资源留在原始卡及导出中；兼容导入不等于执行全部扩展。不会提供伪造角色推荐、示例历史、评分或人数。只有 e2e 独立夹具有合成内容。
 
@@ -63,7 +63,7 @@ flowchart LR
   Worker --> Files[(私有 R2 tavern)]
   Worker --> Sources[公开角色源]
   Worker -->|AI_SERVICE| AI
-  AI -->|dynamic/rp| Gateway[AI Gateway default]
+  AI -->|custom-slug/model| Gateway[AI Gateway default]
   Gateway --> Model[路由配置中的模型]
 ```
 
@@ -119,7 +119,7 @@ Cloudflare 边缘缓存一年，浏览器缓存一天；错误响应不缓存。
 两者通过图床服务绑定调用，携带原用户 JWT，返回已存储图片的 ID 和 URL。
 关闭表单取消请求并丢弃迟到结果，已完成图片仍可在图床管理。
 
-`POST /api/characters/generate` 验证本人 JWT 与账户 username，复用固定 Gateway `dynamic/rp`，metadata task 为 `character-generation`。输入为 `{brief,draft}`，输出为 `{card}`，不写 D1/R2。使用 strict CCv2 JSON Schema（固定版本、完整字段、禁止额外属性），可靠 stop 后再次严格校验并经 `parseCard` 检查。
+`POST /api/characters/generate` 验证本人 JWT 与账户 username，使用平台默认对话模型，metadata task 为 `character-generation`。输入为 `{brief,draft}`，输出为 `{card}`，不写 D1/R2。使用 strict CCv2 JSON Schema（固定版本、完整字段、禁止额外属性），可靠 stop 后再次严格校验并经 `parseCard` 检查。
 
 拒绝、工具调用、截断、非法结构或上游错误明确失败，不补模板、不重试。姓名及作者/版本/备注/高级指令保留用户填写值，不虚构署名。生成期间锁定表单，关闭取消请求并丢弃迟到回填；生成或保存失败保留输入。
 
@@ -211,7 +211,7 @@ KV 使用自身缓存，保存后逐步传播。
 | [TheatreLM 目录](https://huggingface.co/datasets/G-reen/TheatreLM-v2.1-Characters) | 固定 revision `eb8597aec4e3e114b2d28b86c3e2496dd48c5af3`，worlds.json 完整 hash/5011 行校验，9 条损坏名称隔离后 5002 可用；CC-BY-2.0 署名、版本与转换标记随卡保存 |
 | [Chub](https://docs.chub.ai/docs/the-basics/character-creation) | 固定适配器、真实排序/标签与标准 PNG 下载，不绕过访问保护；上游可用性单独验收 |
 | [RisuRealm API](https://realm.risuai.net/help/api)、[CharaVault](https://charavault.net/) | 首版未依赖 Risu 的未文档化搜索或需访问验证的 CharaVault；历史探针结果见交付记录 |
-| [AI Gateway 动态路由](https://developers.cloudflare.com/ai-gateway/features/dynamic-routing/usage/) | `worker/gateway.ts` 的 `runRoleplay` 经 `AI_SERVICE` 调用统一 AI Worker，model 为会话所选逻辑 ID；模型目录与校验见 MODELS，完整日志与单次调用约束见 MODELS |
+| [AI Gateway 统一 API](https://developers.cloudflare.com/ai-gateway/usage/chat-completion/) | `worker/gateway.ts` 的 `runRoleplay` 经 `AI_SERVICE` 调用统一 AI Worker，model 为会话所选逻辑 ID；模型目录与校验见 MODELS，完整日志与单次调用约束见 MODELS |
 
 目录先全量校验再原子切换 release，安装只从服务端同步内容读取，不相信客户端传回角色定义。上表固定版本与数量为目录版本数据，外部来源当前可用性不能由历史探针外推。
 

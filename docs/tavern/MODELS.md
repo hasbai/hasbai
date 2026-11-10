@@ -1,14 +1,14 @@
 # Tavern 模型参数与独立 Director
 
-对话模型目录由项目 AI 平台维护。酒馆通过 `AI_SERVICE` 读取目录并保存所选逻辑 ID。默认 `rp` 对应 Gateway `default` / `dynamic/rp`；实际 provider/model 由平台配置决定。
+对话模型目录由项目 AI 平台从上游自动发现，不使用 Cloudflare 动态路由。酒馆通过 `AI_SERVICE` 读取目录并保存所选模型 ID。默认 `default` 由平台解析为配置的默认模型。
 
-本文是参数、候选协议及 UI 的维护入口；运行实现见 `apps/tavern/shared/settings.ts`、`worker/director.ts`、`worker/inference.ts`、`worker/gateway.ts`。不靠 route version/schema/管理 API 探测作为聊天准入，调用经 `AI_SERVICE` 服务绑定进入[统一 AI Worker](../ai/README.md)。推理凭据仅保存在 AI Worker。推理不依赖管理 Token。
+本文是参数、候选协议及 UI 的维护入口；运行实现见 `apps/tavern/shared/settings.ts`、`worker/director.ts`、`worker/inference.ts`、`worker/gateway.ts`。不靠 route version/schema 探测作为聊天准入（模型目录由 AI Worker 发现，见其文档），调用经 `AI_SERVICE` 服务绑定进入[统一 AI Worker](../ai/README.md)。推理凭据仅保存在 AI Worker。酒馆不持有管理 Token；目录发现在 AI Worker 内使用管理 Token 读取 Provider 列表。
 
 当前实现和最新真实验收缺口见[PROGRESS](PROGRESS.md)。
 
 ## 角色卡生成
 
-角色创建独立于会话及 Director，复用 `dynamic/rp` 固定 HTTP Gateway，不接受客户端模型、URL 或凭据。`worker/character-generation.ts` 使用首位 system 创作规则和 user 草稿数据，关闭思考，发送 `shared/character-draft.ts` 的 `response_format:json_schema`。生成请求使用独立 UUID、完整 payload 日志与 `app=tavern/task=character-generation/username` attribution。
+角色创建独立于会话及 Director，使用平台默认对话模型，经固定 HTTP Gateway 调用，不接受客户端模型、URL 或凭据。`worker/character-generation.ts` 使用首位 system 创作规则和 user 草稿数据，关闭思考，发送 `shared/character-draft.ts` 的 `response_format:json_schema`。生成请求使用独立 UUID、完整 payload 日志与 `app=tavern/task=character-generation/username` attribution。
 
 输入和输出严格字段校验，模型输出只在可靠 stop 后回填完整 CCv2。不增加字段、输入输出长度或数组数量限制；异常返回可重试错误，保留用户草稿；没有持久会话、占用、候选或自动续写。此流程的真实 schema 支持须独立验收，不由 Director 夹具外推。
 
@@ -16,7 +16,7 @@
 
 | 设置 | 应用默认值 | 校验 / 请求行为 |
 | --- | --- | --- |
-| 模型 `modelId` | `rp`，显示“RP 动态路由” | 从 AI 平台对话模型目录选择，默认映射到 `dynamic/rp` |
+| 模型 `modelId` | `default`，显示“平台默认 · 模型名” | 从 AI 平台对话模型目录选择；旧值 `rp`、`translate` 读取时归一为 `default` |
 | 启用思考 `thinkingEnabled` | **false，关闭** | 必须是布尔值；通过真实上游支持的参数关闭，不靠隐藏输出或提示词实现 |
 | 思考强度 `reasoningEffort` | `low`，低 | 低 / 中 / 高对应 low / medium / high；关闭时保留选档 |
 | 温度 `temperature` | 0.7 | 0–2，步长 0.05 |
@@ -41,11 +41,11 @@
 摘要和角色生成使用 Instruct 模板。
 参数实际效果以所选上游的支持为准。
 
-`GET /api/models` 经服务绑定读取 AI 平台的 `/internal/models`，仅返回对话模型。当前选项为 `rp` 和 `translate`，图片与向量模型不进入下拉框。平台列表加载失败时显示错误并允许重试，不伪造可用选项。
+`GET /api/models` 经服务绑定读取 AI 平台的 `/internal/models`，仅返回对话模型。选项为平台发现的对话模型和 `default`，图片与向量模型不进入下拉框。平台列表加载失败时显示错误并允许重试，不伪造可用选项。
 
 全局和会话设置共用平台选项。保存时校验目录；已下架的模型保留原 ID 并显示不可用，用户须重新选择。正文、Director 和按需摘要使用当前会话所选模型，平台拒绝未知 ID，不静默切回 RP。
 
-上下文容量和上游反馈按逻辑 ID 隔离；仅 RP 使用现有 llama.cpp 容量探测。角色卡生成继续使用 RP。
+上下文容量来自目录的 `context_tokens`；上游明确报出更小的限制时，按实际模型 ID（`default` 取其 `target`）缓存 1 小时，只会降低容量。目录没有容量时视为未知，首次超限错误后才触发压缩，缓存过期后再次发生。不再探测 llama.cpp `/props`。角色卡生成使用平台默认模型，摘要使用会话所选模型。
 
 标准参数随请求直接发送，默认 `chat_template_kwargs.enable_thinking:false`，同时 `reasoning_effort:none`；开启时传 true 和保存的 low / medium / high。缺少强度字段的旧设置补 low。
 
@@ -173,8 +173,8 @@ Director 末尾任务包含目标边界，实际 messages 与 tools 前缀仍原
 
 ## 官方契约依据
 
-- [Cloudflare动态路由](https://developers.cloudflare.com/ai-gateway/features/dynamic-routing/usage/)：当前代码通过固定 default Gateway 的 `/compat/chat/completions` HTTP 入口调用，model 为当前会话所选逻辑 ID，由平台映射上游路由。平台模型校验和完整输入保持，HTTP错误与日志头由每次Response读取，不依赖绑定实例的可变日志ID。当前调用入口的真实验收限制见[PROGRESS](PROGRESS.md)；专用推理 Secret 不进入浏览器，不直连@cf模型、不删参数重试。
-- [llama.cpp服务契约](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md)：`/props`运行容量及`chat_template_kwargs`；当前模板实际使用enable_thinking，关闭时预填充空think，开启时等待思考内容。reasoning_format:none不是关闭思考。
+- [AI Gateway 统一 API](https://developers.cloudflare.com/ai-gateway/usage/chat-completion/)：当前代码通过固定 default Gateway 的 `/compat/chat/completions` HTTP 入口调用，model 为平台发现的模型 ID（`custom-<slug>/<模型>`）。平台模型校验和完整输入保持，HTTP错误与日志头由每次Response读取，不依赖绑定实例的可变日志ID。当前调用入口的真实验收限制见[PROGRESS](PROGRESS.md)；专用推理 Secret 不进入浏览器，不直连@cf模型、不删参数重试。
+- [llama.cpp服务契约](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md)：`chat_template_kwargs`；当前模板实际使用enable_thinking，关闭时预填充空think，开启时等待思考内容。reasoning_format:none不是关闭思考。
 
 正文原 system 保留；Director 的本次任务另作为末尾 user 追加；本地 Qwen 模板只允许 system 位于开头，避免触发模板错误和 Gateway 备用节点。此任务不写入用户剧情或正文投影。通知复用共享`@hasbai/ui/notice`；项目原则见[AGENTS](../../AGENTS.md#全局约束)，证据见[PROGRESS](PROGRESS.md)。
 

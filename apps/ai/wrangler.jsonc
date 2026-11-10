@@ -6,7 +6,7 @@
   "compatibility_flags": ["nodejs_compat", "enable_request_signal"],
   "routes": [{"pattern": "ai.hasbai.xyz", "custom_domain": true}],
   "assets": {"directory": "dist", "binding": "ASSETS", "not_found_handling": "single-page-application", "run_worker_first": ["/api/*", "/v1/*", "/internal/*", "/health"]},
-  "vars": {"CLOUDFLARE_ACCOUNT_ID": "5cecc63c78acf8f5473f8745f4244448", "AIG_GATEWAY_ID": "default"},
+  "vars": {"CLOUDFLARE_ACCOUNT_ID": "5cecc63c78acf8f5473f8745f4244448", "AIG_GATEWAY_ID": "default", "DEFAULT_CHAT_MODEL": "", "TRANSLATE_MODEL": ""},
   "secrets": {"required": ["AIG_RUN_TOKEN", "CF_AI_MANAGEMENT_TOKEN"]},
   "ai": {"binding": "AI", "remote": true},
   "version_metadata": {"binding": "VERSION"},

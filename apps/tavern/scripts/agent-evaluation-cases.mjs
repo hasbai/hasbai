@@ -2,7 +2,7 @@
 export const scenario={
  name:'warehouse-correction-pause-closure',
  card:{name:'岚',description:'岚是北港仓库管理员，能独立核对手边货单和账册，只陈述已核查的结果。',personality:'简洁、谨慎，接受委托后完成明确范围内的工作；不代替旅人作决定。',scenario:'仓库柜台边，货单与账册都在岚面前。',first_mes:'岚把货单摊在柜台上。“货单与账册都写着两箱，铜钥匙在北柜。你想先核对什么？”'},
- settings:{userName:'旅人',persona:'负责委托和签收，签收决定由我作出。',systemPrompt:'用中文扮演仓库管理员岚，每次最多两段。按确认事实回答，不凭空扩展案件或障碍。',modelId:'rp',thinkingEnabled:false,reasoningEffort:'low',temperature:.9,topP:1,topK:0,frequencyPenalty:0,presencePenalty:0},
+ settings:{userName:'旅人',persona:'负责委托和签收，签收决定由我作出。',systemPrompt:'用中文扮演仓库管理员岚，每次最多两段。按确认事实回答，不凭空扩展案件或障碍。',modelId:'default',thinkingEnabled:false,reasoningEffort:'low',temperature:.9,topP:1,topK:0,frequencyPenalty:0,presencePenalty:0},
  turns:[
   {id:'delegate',input:'我委托你核对面前货单与账册的木箱数量，范围只限这两张纸。先只登记委托，等我明确让你核对时再动手。我尚未决定是否签收。',checks:['建立角色核对目标；不得代签收']},
   {id:'correction',input:'更正刚才的口头信息：木箱是两箱，不是三箱；面前货单与账册都清楚写着两箱。铜钥匙已经从北柜移到南柜。以这个更正为准。',checks:['记住两箱与南柜；否定旧说法']},

@@ -7,6 +7,10 @@ const {Miniflare,convertV4MiniflareOptions}=runtimeRequire('miniflare'),{build}=
 const root=resolve(import.meta.dirname,'..');
 let last;
 const upstream=async(request,response)=>{
+ // Model discovery: provider listing through the management API, then the provider's /models through the Gateway.
+ const target=`${request.headers.host??''}${request.url}`;
+ if(target.includes('api.cloudflare.com')&&target.includes('/custom-providers')){response.writeHead(200,{'Content-Type':'application/json'});response.end(JSON.stringify({success:true,result:[{slug:'main',enable:true}]}));return;}
+ if(target.endsWith('/custom-main/models')){response.writeHead(200,{'Content-Type':'application/json'});response.end(JSON.stringify({data:[{id:'qwen3'}]}));return;}
  let body='';for await(const chunk of request)body+=chunk;
  const record={input:JSON.parse(body),headers:request.headers,cancelled:false};last=record;
  if(record.input.fail){response.writeHead(429,{'cf-aig-log-id':'failure-log'});response.end('upstream failure');return;}
@@ -21,7 +25,7 @@ export default {async fetch(request,env,ctx){const input=await request.json(),ab
 `},bundle:true,write:false,format:'esm',platform:'browser',target:'es2022'});
 const runtime=new Miniflare(convertV4MiniflareOptions({handleUncaughtError(error){if(!/AbortError|operation was aborted/.test(String(error)))throw error;},workers:[
  {name:'client',modules:true,script:client.outputFiles[0].text,compatibilityDate:'2026-10-16',compatibilityFlags:['enable_request_signal'],serviceBindings:{AI_SERVICE:{name:'ai',entrypoint:'InferenceService'}}},
- {name:'ai',modules:true,script:service.outputFiles[0].text,compatibilityDate:'2026-10-16',compatibilityFlags:['nodejs_compat','enable_request_signal'],bindings:{CLOUDFLARE_ACCOUNT_ID:'fixture',AIG_GATEWAY_ID:'default',AIG_RUN_TOKEN:'fixture'},outboundService:{node:upstream}},
+ {name:'ai',modules:true,script:service.outputFiles[0].text,compatibilityDate:'2026-10-16',compatibilityFlags:['nodejs_compat','enable_request_signal'],bindings:{CLOUDFLARE_ACCOUNT_ID:'fixture',AIG_GATEWAY_ID:'default',AIG_RUN_TOKEN:'fixture',CF_AI_MANAGEMENT_TOKEN:'fixture',DEFAULT_CHAT_MODEL:'',TRANSLATE_MODEL:''},outboundService:{node:upstream}},
 ]}));
 try {
  const abort=new AbortController();const response=await runtime.dispatchFetch('https://client.test',{method:'POST',signal:abort.signal,body:JSON.stringify({model:'translate',messages:[{role:'user',content:'hi'}],stream:true})});
@@ -29,8 +33,8 @@ try {
  const reader=response.body.getReader();const first=await reader.read();assert.equal(new TextDecoder().decode(first.value),'data: first\n\n');abort.abort();await reader.cancel().catch(()=>{});
  for(let n=0;n<50&&!last.cancelled;n++)await new Promise(resolve=>setTimeout(resolve,20));
  assert.equal(last.cancelled,true,'response cancellation must close the HTTP upstream before it finishes');
- assert.equal(last.input.model,'dynamic/translate');assert.equal(JSON.parse(last.headers['cf-aig-metadata']).username,'verified');assert.equal(last.headers['cf-aig-event-id'],'round');
+ assert.equal(last.input.model,'custom-main/qwen3');assert.equal(last.headers['cf-aig-byok-alias'],'default');assert.equal(JSON.parse(last.headers['cf-aig-metadata']).username,'verified');assert.equal(last.headers['cf-aig-event-id'],'round');
  const ai=await runtime.getWorker('ai');assert.equal((await ai.fetch('https://ai.test/internal/roleplay',{method:'POST',body:'{}'})).status,404);
  const failed=await runtime.dispatchFetch('https://client.test',{method:'POST',body:JSON.stringify({fail:true})});assert.equal(failed.status,429);assert.equal(failed.headers.get('cf-aig-log-id'),'failure-log');assert.equal(await failed.text(),'upstream failure');
- console.log('workerd: named service binding, first SSE chunk, HTTP upstream cancellation, fixed route, attribution, public/internal separation and raw upstream failures passed');
+ console.log('workerd: named service binding, first SSE chunk, HTTP upstream cancellation, discovered default model, attribution, public/internal separation and raw upstream failures passed');
 } finally {await runtime.dispose();}
