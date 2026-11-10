@@ -4,11 +4,11 @@ import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, write
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const image = 'ghcr.io/hasbai/financial-visual-ci@sha256:894da852f84db9b566590821dbe5804fa4ca2a880a396f42ee8ebfe9d4099617';
+const image = 'ghcr.io/hasbai/financial-visual-ci@sha256:cc48be4b60948d04c091d95e32ab0c2a2ec1393b778fa39bf69cedd4d94dd579';
 if (process.arch !== 'arm64') throw new Error('Visual baselines use native linux/arm64 Docker (Apple Silicon or an ARM runner). x86_64 hosts are cloud-environment only; see docs/TESTING.md.');
 const repo = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const app = process.argv[2];
-if (!['financial', 'blog', 'zboard', 'tavern', 'images', 'ai'].includes(app)) throw new Error('Usage: node scripts/visual-linux.mjs <financial|blog|zboard|tavern> [--all|--page <source-or-scenario>]');
+if (!['financial', 'blog', 'zboard', 'tavern', 'images', 'ai'].includes(app)) throw new Error('Usage: node scripts/visual-linux.mjs <financial|blog|zboard|tavern|images|ai> [--all|--page <source-or-scenario>]');
 const manifest = JSON.parse(readFileSync(join(repo, 'apps', app, 'visual-coverage.json'), 'utf8'));
 const git = (...args) => execFileSync('git', args, { cwd: repo });
 const paths = bytes => bytes.toString().split('\0').filter(Boolean);
