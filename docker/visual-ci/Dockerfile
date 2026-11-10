@@ -10,7 +10,7 @@ ENV DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8 TZ=UTC PLAYWRIGHT_BROWSERS_PATH=
 RUN --mount=type=secret,id=proxy_ca,mode=0444 \
     set -eu; \
     case "$TARGETARCH" in \
-        arm64) node_arch=arm64; node_sha=5f4ddab610c1ab2016b3c227cebdbf6d9495161487e4739c7b90090595f465f7; mihomo_sha=@@ARM_MIHOMO@@ ;; \
+        arm64) node_arch=arm64; node_sha=5f4ddab610c1ab2016b3c227cebdbf6d9495161487e4739c7b90090595f465f7; mihomo_sha=9dd862e28b46ff7d775f169cceebc28deccaa0a9e804237d421cd2571e0caba0 ;; \
         amd64) node_arch=x64; node_sha=2f2c0da162318f0de47665410c7c8c2ed3d36c8f3105de4bbc61176c70a7cbf2; mihomo_sha=8451100836c9eda194331c2babfad490b2faf30cebc1a04b0e76fd8ac2d35d10 ;; \
         *) echo "Only linux/arm64 and linux/amd64 are supported" >&2; exit 1 ;; \
     esac; \
