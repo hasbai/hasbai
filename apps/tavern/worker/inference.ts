@@ -63,7 +63,7 @@ export async function* inferRoleplay(env: Env, username: string, requestId: stri
   name: 'tavern', baseURL: ROLEPLAY_GATEWAY_URL.slice(0, -'/chat/completions'.length),
   // The application owns the exact wire: preserve tools, original arguments, message
   // boundaries, template parameters and the Director prefix across SDK conversion.
-  transformRequestBody: () => ({ ...input, model: input.model ?? 'rp', stream: true }),
+  transformRequestBody: () => ({ ...input, model: input.model ?? 'default', stream: true }),
   fetch: async (_url, options) => {
    let response: Response;
    try { response = await runRoleplay(env, username, requestId, JSON.parse(String(options?.body)), combined, task); }
@@ -89,7 +89,7 @@ export async function* inferRoleplay(env: Env, username: string, requestId: stri
  });
  const definitions = input.tools ? Object.fromEntries(input.tools.map(t => [t.function.name, tool({ description: t.function.description, inputSchema: jsonSchema(t.function.parameters) })])) : undefined;
  try {
-  const result = streamText({ model: provider.chatModel(String(input.model ?? 'rp')), messages: modelMessages(input.messages), allowSystemInMessages: true,
+  const result = streamText({ model: provider.chatModel(String(input.model ?? 'default')), messages: modelMessages(input.messages), allowSystemInMessages: true,
    tools: definitions, toolChoice: input.tool_choice, maxRetries: 0, streamRetries: 0, abortSignal: combined, includeRawChunks: true, onError: () => {},
   });
   for await (const part of result.fullStream) {

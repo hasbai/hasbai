@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { invalidateCatalog } from './discovery';
 import { HttpError } from './http';
 
 const slug = z.string().regex(/^[a-zA-Z0-9_-]+$/).max(128);
@@ -14,10 +15,10 @@ const providerFields = ['id', 'name', 'slug', 'base_url', 'description', 'enable
 const keyFields = ['id', 'provider_slug', 'alias', 'default_config', 'gateway_id', 'modified_at', 'last_used_at'];
 const pick = (value: Record<string, unknown>, fields: string[]) => Object.fromEntries(fields.filter(name => name in value).map(name => [name, value[name]]));
 type Envelope = {success: boolean; result?: unknown; data?: unknown; result_info?: unknown};
-async function cloudflare(env: Env, method: string, suffix: string, value?: unknown): Promise<Envelope> {
+export async function cloudflare(env: Env, method: string, suffix: string, value?: unknown, timeout = 20000): Promise<Envelope> {
   if (!env.CF_AI_MANAGEMENT_TOKEN) throw new HttpError(503, 'AI 管理服务未配置');
   const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai-gateway/${suffix}`, {
-    method, redirect: 'manual', signal: AbortSignal.timeout(20000),
+    method, redirect: 'manual', signal: AbortSignal.timeout(timeout),
     headers: {'Authorization': `Bearer ${env.CF_AI_MANAGEMENT_TOKEN}`, 'Content-Type': 'application/json'},
     ...(value === undefined ? {} : {body: JSON.stringify(value)}),
   });
@@ -60,6 +61,7 @@ export async function manage(request: Request, env: Env) {
     suffix += `?page=${page}&per_page=100`;
   }
   const result = await cloudflare(env, method, suffix, schema ? await parse(request, schema) : undefined);
+  if (method !== 'GET' && (suffix.startsWith('custom-providers') || suffix.includes('/provider_configs'))) invalidateCatalog();
   const raw = result.result ?? result.data;
   const rows = Array.isArray(raw) ? raw : collection && raw && typeof raw === 'object' ? (raw as Record<string, unknown>)[collection] : undefined;
   const sanitized = Array.isArray(rows) ? rows.map(row => pick(row, fields)) : raw && typeof raw === 'object' ? pick(raw as Record<string, unknown>, fields) : null;

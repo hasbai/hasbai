@@ -20,15 +20,15 @@
 | 调用方 | 用途 | 上游 |
 | --- | --- | --- |
 | Tavern | 正文、Director、摘要 | `default/compat/chat/completions`，使用会话所选对话模型 |
-| Tavern | 角色生成 | 同一入口，默认 `dynamic/rp` |
+| Tavern | 角色生成 | 同一入口，使用平台默认对话模型 |
 | Tavern | 向量检索 | Workers AI `@cf/baai/bge-m3`，同一 Gateway |
-| Blog | 翻译 | `default/compat/chat/completions`，`dynamic/translate` |
+| Blog | 翻译 | 同一入口，使用 `TRANSLATE_MODEL`，未配置则用平台默认对话模型 |
 | Images | 图片、头像、立绘 | `default/custom-codex/images/generations` |
 
 图片模型仍限制为 Flare 和 Sunburst。
 Worker 根据平台目录映射对话模型，调用方不能覆盖 URL、Gateway 或运行凭据。
 直连图片接口使用 `cf-aig-byok-alias: default`。
-动态路由的密钥选择由 Cloudflare 路由配置决定。
+对话模型不使用 Cloudflare 动态路由。上游模型由 Worker 自动发现，请求带 `cf-aig-byok-alias: default` 选择 BYOK 密钥。
 流式响应不缓冲，保留状态、Gateway log ID 和取消信号。
 请求不重试、不跟随重定向，日志保留完整 payload。
 
@@ -40,7 +40,7 @@ Worker 根据平台目录映射对话模型，调用方不能覆盖 URL、Gatewa
 | 接口 | 请求 |
 | --- | --- |
 | `GET /v1/models` | 查询模型 ID、显示名称和类型（chat / image / embedding） |
-| `POST /v1/chat/completions` | OpenAI 格式；`model` 为 `rp` 或 `translate`，支持 SSE |
+| `POST /v1/chat/completions` | OpenAI 格式；`model` 为 `/v1/models` 返回的对话模型 ID，省略或 `default` 用平台默认，支持 SSE |
 | `POST /v1/images/generations` | `model` 为完整图片模型 ID |
 | `POST /v1/embeddings` | `model=@cf/baai/bge-m3`，`input` 为字符串或字符串数组 |
 | `GET /api/me` | 当前身份与管理权限 |
@@ -48,7 +48,24 @@ Worker 根据平台目录映射对话模型，调用方不能覆盖 URL、Gatewa
 工作台提供流式对话。API 提供图片和向量调用。
 真实模型输出仍由各业务应用按原契约校验。
 
-`worker/models.ts` 统一维护模型目录与对话路由校验。服务绑定的 `GET /internal/models` 和公共 `/v1/models` 返回相同目录。公共 HTTP 仍拒绝 `/internal/*`。Tavern 仅展示 `chat` 类型；所选模型传至平台，平台拒绝未知 ID。兼容旧应用提交的 `dynamic/rp` 与 `dynamic/translate`，不会把未知模型替换为默认模型。
+## 模型发现
+
+`worker/discovery.ts` 自动发现上游对话模型，不再手写目录，也不使用 Cloudflare 动态路由。
+
+1. 用管理 Token 读取 Cloudflare 账号下已启用的自定义 Provider。
+2. 对每个 Provider 经 Gateway 请求 `custom-<slug>/models`（OpenAI 格式 `data[].id`），带运行 Token 和 BYOK alias `default`，不写 Gateway 日志。
+3. 对话模型 ID 为 `custom-<slug>/<模型>`，原样作为 `compat/chat/completions` 的 `model`。名称含 image、embed、bge、whisper、tts、rerank、moderation 的条目不进入对话目录。
+4. 条目带 `context_length` 或 `max_model_len`（不小于 1024 的整数）时，目录返回 `context_tokens`。
+
+目录在 Worker 实例内缓存 5 分钟，并发刷新共享同一请求；管理接口改动 Provider 或 BYOK 密钥后，处理该请求的 Worker 实例立即失效，其他实例等 TTL。单个 Provider 失败时沿用其最近一次成功结果，最长 1 小时。刷新失败后 30 秒内不再重试，直接用缓存（超过 1 小时则返回 503）。没有可用缓存时 `/v1/models` 和对话返回 503，不转发未经验证的模型 ID。发现依赖管理 Token（读取 Provider 列表，5 秒超时）。
+
+请求限制：只访问 `gateway.ai.cloudflare.com`，不跟随重定向，每个 Provider 超时 5 秒，响应上限 256 KB，每个 Provider 最多 200 个模型，ID 须匹配 `packages/ai` 的 `MODEL_ID`。目录不返回 `base_url`、Provider ID、请求头或上游错误正文。
+
+`worker/models.ts` 合并发现结果与固定的图片、向量模型。服务绑定的 `GET /internal/models` 和公共 `/v1/models` 返回相同目录，公共 HTTP 仍拒绝 `/internal/*`。
+
+目录首项是虚拟条目 `default`，含 `target`（实际模型 ID）。`DEFAULT_CHAT_MODEL` 变量指定默认模型；已配置但未被发现时返回 503，不换用其他模型；未配置时取第一个发现的模型，上线前须核对 `/v1/models` 首项 `target`，并按需固定该变量。`TRANSLATE_MODEL` 未配置或未被发现时，翻译使用默认模型。默认模型不可用时，列表省略 `default`，明确指定的已发现模型仍可使用。平台拒绝未知 ID，不替换为默认模型。
+
+滚动发布期间仍接受旧应用提交的 `rp`、`dynamic/rp`（解析为默认模型）以及 `translate`、`dynamic/translate`（解析为翻译模型），后续发布移除。Tavern 仅展示 `chat` 类型，所选 ID 传至平台。
 
 ## Provider 与 BYOK
 
@@ -84,7 +101,7 @@ PUT 仅轮换 `secret`，不改变 alias。
 发布顺序必须保持：
 
 1. 用 `node scripts/setup-ai-auth0.mjs --apply` 注册新站点 URL 与管理员权限。
-2. 先发布 AI Worker，配置两项 Secret，并核验真实 JWT 与上游。
+2. 先发布 AI Worker，配置两项 Secret，并核验真实 JWT 与上游。用管理员令牌调用 `GET /v1/models`，确认每个 Provider 的 `/models` 经 Gateway 可达，并用一个发现的模型完成一次真实对话。`DEFAULT_CHAT_MODEL` 与 `TRANSLATE_MODEL` 为空时自动取默认。
 3. 再发布 Blog、Images 和 Tavern 的服务绑定迁移。
 4. 核验调用后，移除旧应用中不再使用的运行 Secret。
 

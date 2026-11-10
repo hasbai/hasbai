@@ -29,14 +29,14 @@ export async function inference(env: Env, task: AITask, input: Record<string, un
   if (task.startsWith('image-') || task.startsWith('character-avatar') || task.startsWith('character-portrait')) {
     if (!['gpt-image-2.5-flare', 'gpt-image-2.5-sunburst'].includes(String(input.model))) throw new HttpError(400, '未知图片模型');
     model = String(input.model); path = 'custom-codex/images/generations';
-  } else model = task === 'translate' ? 'dynamic/translate' : chatModel(input.model ?? 'rp');
+  } else model = await chatModel(env, input.model, task === 'translate' ? 'translate' : 'roleplay');
   const headers: Record<string, string> = {
     'Content-Type': 'application/json', 'cf-aig-authorization': `Bearer ${env.AIG_RUN_TOKEN}`,
     'cf-aig-skip-cache': 'true', 'cf-aig-collect-log': 'true', 'cf-aig-collect-log-payload': 'true',
     'cf-aig-event-id': requestId, 'cf-aig-max-attempts': '1',
     'cf-aig-metadata': JSON.stringify(logMetadata).replace(/[^\x00-\x7f]/g, c => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0')),
   };
-  if (path.startsWith('custom-')) headers['cf-aig-byok-alias'] = 'default';
+  if (path.startsWith('custom-') || model.startsWith('custom-')) headers['cf-aig-byok-alias'] = 'default';
   const abort = new AbortController();
   const response = await fetch(`https://gateway.ai.cloudflare.com/v1/${env.CLOUDFLARE_ACCOUNT_ID}/${gateway}/${path}`, {
     method: 'POST', redirect: 'manual', signal: AbortSignal.any([signal, abort.signal]), headers, body: JSON.stringify({...input, model}),

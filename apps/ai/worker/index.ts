@@ -10,7 +10,7 @@ export class InferenceService extends WorkerEntrypoint<Env> {
   async fetch(request: Request) {
     try {
       const path = new URL(request.url).pathname;
-      if (path === '/internal/models' && request.method === 'GET') return modelList();
+      if (path === '/internal/models' && request.method === 'GET') return await modelList(this.env);
       if (request.method !== 'POST' || !path.startsWith('/internal/')) throw new HttpError(404, '接口不存在');
       const who = JSON.parse(request.headers.get('X-AI-Attribution') || 'null');
       if (!who || !['tavern', 'blog', 'images'].includes(who.app) || typeof who.username !== 'string' || !who.username.trim()) throw new HttpError(400, '缺少调用归属');
@@ -37,13 +37,13 @@ export default {
         if (!user.admin) throw new HttpError(403, '仅 Super Admin 可管理 AI 服务');
         return await manage(request, env);
       }
-      if (path === '/v1/models' && request.method === 'GET') return modelList();
+      if (path === '/v1/models' && request.method === 'GET') return await modelList(env);
       if (request.method !== 'POST') throw new HttpError(404, '接口不存在');
       const input = await body(request);
       let task: string;
       if (path === '/v1/chat/completions') {
-        chatModel(input.model);
-        task = input.model === 'translate' ? 'translate' : 'roleplay';
+        await chatModel(env, input.model);
+        task = 'roleplay';
         if (!Array.isArray(input.messages) || !input.messages.length) throw new HttpError(400, '缺少对话消息');
       } else if (path === '/v1/images/generations') task = 'image-generation';
       else if (path === '/v1/embeddings') {

@@ -1,4 +1,6 @@
 export const AI_ORIGIN = 'https://ai.hasbai.xyz';
+/** Upstream chat model IDs are interpolated into requests and settings, so both ends share one shape. */
+export const MODEL_ID = /^[a-zA-Z0-9][a-zA-Z0-9._/:+-]{0,255}$/;
 export type AITask = 'roleplay' | 'character-generation' | 'translate' | 'embedding' | 'image-generation' | 'character-avatar' | 'character-portrait';
 export type AIAttribution = { app: 'tavern' | 'blog' | 'images'; username: string; requestId?: string };
 export type AIService = { fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> };

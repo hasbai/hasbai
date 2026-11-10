@@ -39,7 +39,7 @@ runtime=new Miniflare(convertV4MiniflareOptions({modules:true,script:bundled.out
  if(new URL(request.url).pathname!=='/internal/roleplay')throw Error('Unexpected evaluation endpoint');
  const input=await request.json(),start=Date.now(),record={round:active.id,session:active.session,sequence:requests.length+1,phase:input.response_format?'director':input.tools?'body':'summary',input,toolDeltas:[],firstTextMs:null,elapsedMs:null,promptTokens:null,cachedTokens:null,prefillTokens:null,prefillMs:null,decodeMs:null,finishReason:null,model:null};
  record.phaseIndex=requests.filter(r=>r.round===record.round&&r.session===record.session&&r.phase===record.phase).length+1;requests.push(record);
- const response=await fetch('https://ai.hasbai.xyz/v1/chat/completions',{method:'POST',headers:{Authorization:'Bearer '+process.env.AI_ACCESS_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({...input,model:'rp'}),signal:AbortSignal.any([request.signal,AbortSignal.timeout(180000)]),redirect:'manual'});
+ const response=await fetch('https://ai.hasbai.xyz/v1/chat/completions',{method:'POST',headers:{Authorization:'Bearer '+process.env.AI_ACCESS_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({...input,model:'default'}),signal:AbortSignal.any([request.signal,AbortSignal.timeout(180000)]),redirect:'manual'});
  record.httpStatus=response.status;record.logId=response.headers.get('cf-aig-log-id');let wire='',decoder=new TextDecoder();
  return new Response(response.body?.pipeThrough(new TransformStream({transform(chunk,controller){
   wire+=decoder.decode(chunk,{stream:true});const lines=wire.split('\n');wire=lines.pop();
@@ -65,7 +65,7 @@ async function generate(id,test,extra={}){
 try{
  const db=await runtime.getD1Database('DB');for(const name of readdirSync(join(appRoot,'migrations')).filter(n=>n.endsWith('.sql')).sort())await db.exec(readFileSync(join(appRoot,'migrations',name),'utf8').replace(/--[^\n]*/g,'').replace(/\n/g,' '));
  for(const id of resources){await db.prepare('INSERT INTO sessions(id,owner,title,character_json,character_name,settings_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)').bind(id,'evaluation','合成评测',JSON.stringify(scenario.card),scenario.card.name,JSON.stringify(scenario.settings),1,1).run();await db.prepare("INSERT INTO messages(id,session_id,role,content,status,ordinal,created_at,finish_reason) VALUES(?,?,'assistant',?,'completed',0,1,'stop')").bind(id+'-greeting',id,scenario.card.first_mes).run();}
- await db.prepare('INSERT INTO model_capabilities VALUES(?,?,?)').bind('rp',JSON.stringify({contextTokens:32768,source:'evaluation-fixed-context',inputRatio:1.2}),Date.now()+3600000).run();
+ await db.prepare('INSERT INTO model_capabilities VALUES(?,?,?)').bind('default',JSON.stringify({contextTokens:32768,source:'upstream:limit',inputRatio:1.2}),Date.now()+3600000).run();
  // A nonempty KV snapshot verifies capabilities are not accidentally default-only.
  const kv=await runtime.getKVNamespace('PROMPTS');
  const promptBundle=await build({entryPoints:[join(appRoot,'shared/prompts.ts')],bundle:true,write:false,format:'esm',platform:'node'});

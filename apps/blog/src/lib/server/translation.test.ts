@@ -30,11 +30,9 @@ it("uses the deployed custom provider translation route with JSON output", async
   expect(await translate(env, source, "en-US")).toEqual(text);
   const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
   expect(url).toContain("/internal/translate");
-  expect(JSON.parse(String(init.body))).toMatchObject({
-    model: "dynamic/translate",
-    stream: false,
-    response_format: { type: "json_object" },
-  });
+  const sent = JSON.parse(String(init.body));
+  expect(sent).toMatchObject({ stream: false, response_format: { type: "json_object" } });
+  expect(sent).not.toHaveProperty("model");
 });
 it.each([
   { finish_reason: "length", message: { content: JSON.stringify(text) } },

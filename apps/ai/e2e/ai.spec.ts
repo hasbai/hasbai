@@ -14,6 +14,7 @@ async function shot(page:Page,info:TestInfo,name:string){
 }
 async function fixture(page:Page,admin=false){
  await page.addInitScript(()=>{document.documentElement.classList.toggle('dark',matchMedia('(prefers-color-scheme:dark)').matches);});
+ await page.route('**/v1/models',route=>route.fulfill({json:{object:'list',data:[{id:'default',name:'平台默认 · qwen3',type:'chat'},{id:'custom-main/qwen3',name:'qwen3',type:'chat'},{id:'gpt-image-2.5-flare',name:'Flare',type:'image'}]}}));
  await page.route('**/api/me',route=>route.fulfill({json:{username:'测试用户',admin}}));
  await page.route('**/api/admin/**',route=>{
   const path=new URL(route.request().url()).pathname;

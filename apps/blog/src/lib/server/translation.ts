@@ -18,7 +18,6 @@ export async function translate(
   target: string,
 ) {
   const response = await runAI(env.AI_SERVICE, 'translate', {
-        model: "dynamic/translate",
         stream: false,
         messages: [
           {

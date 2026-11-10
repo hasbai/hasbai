@@ -28,7 +28,7 @@ flowchart LR
   Tavern[Tavern SPA] --> TWorker[Tavern Worker / D1 / 私有 R2]
   TWorker --> DO[每会话 SQLite DO]
   DO --> AI[统一 AI Worker]
-  AI --> Gateway[AI Gateway dynamic/rp]
+  AI --> Gateway[AI Gateway default]
 ```
 
 签名、有效期、audience 和授权执行点见[AUTHORIZATION](AUTHORIZATION.md)；Neon 数据库角色权限与 Worker owner 隔离各自承担业务授权。

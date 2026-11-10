@@ -8,11 +8,19 @@
  import type { Api } from './lib';
  let {api, logout}: {api: Api; logout: () => void} = $props();
  let admin = $state(false), loading = $state(true), error = $state(''), tab = $state('use'), dark = $state(false);
- let prompt = $state(''), output = $state(''), busy = $state(false), model = $state('rp');
+ let prompt = $state(''), output = $state(''), busy = $state(false), model = $state('default'), models = $state<{id: string; name: string}[]>([]), modelError = $state('');
  let abort: AbortController | undefined;
- onMount(() => {dark = document.documentElement.classList.contains('dark'); void init();});
+ onMount(() => {dark = document.documentElement.classList.contains('dark'); void init(); void loadModels();});
  onDestroy(() => abort?.abort());
  async function init() {error = ''; loading = true; try {admin = ((await (await api('/api/me')).json()) as {admin:boolean}).admin;} catch (e) {error = (e as Error).message;} finally {loading = false;}}
+ async function loadModels() {
+  modelError = '';
+  try {
+   const list = (await (await api('/v1/models')).json()) as {data: {id: string; name: string; type: string}[]};
+   models = list.data.filter(item => item.type === 'chat');
+   if (!models.some(item => item.id === model)) model = models[0]?.id ?? '';
+  } catch (e) {modelError = (e as Error).message;}
+ }
  function theme() {dark = !dark; document.documentElement.classList.toggle('dark', dark);}
  async function generate() {
   if (busy || !prompt.trim()) return;
@@ -46,7 +54,7 @@
 {#if loading}<p role="status">正在加载…</p>{:else if error && !admin && tab !== 'use'}<Notice variant="error">{error}<Button onclick={init}>重试</Button></Notice>{:else}
 {#if admin}<nav class="tabs" aria-label="工作台视图"><Button variant={tab==='use'?'default':'ghost'} aria-pressed={tab==='use'} onclick={()=>tab='use'}>使用 AI</Button><Button variant={tab==='manage'?'default':'ghost'} aria-pressed={tab==='manage'} onclick={()=>tab='manage'}>Provider 与密钥</Button></nav>{/if}
 {#if tab==='manage' && admin}<Manager {api}/>{:else}
-<div class="use-layout"><section class="panel compose"><div class="panel-heading"><h2>新对话</h2><label><span class="sr-only">对话模型</span><select bind:value={model} disabled={busy}><option value="rp">RP · 对话</option><option value="translate">Translate · 翻译</option></select></label></div><form onsubmit={e=>{e.preventDefault();void generate();}}><label for="prompt">你的消息</label><Textarea id="prompt" bind:value={prompt} rows={8} placeholder="输入问题或想翻译的内容…" disabled={busy}/><div class="compose-actions">{#if busy}<span role="status">正在生成…</span><Button variant="outline" type="button" onclick={()=>abort?.abort()}><Square size={14}/>停止</Button>{:else}<Button type="submit" disabled={!prompt.trim()}><Send size={16}/>发送</Button>{/if}</div></form></section>
+<div class="use-layout"><section class="panel compose"><div class="panel-heading"><h2>新对话</h2><label><span class="sr-only">对话模型</span><select bind:value={model} disabled={busy}>{#each models as item (item.id)}<option value={item.id}>{item.name}</option>{/each}</select>{#if modelError}<Button variant="ghost" type="button" onclick={loadModels}>{modelError} 重试</Button>{/if}</label></div><form onsubmit={e=>{e.preventDefault();void generate();}}><label for="prompt">你的消息</label><Textarea id="prompt" bind:value={prompt} rows={8} placeholder="输入问题或想翻译的内容…" disabled={busy}/><div class="compose-actions">{#if busy}<span role="status">正在生成…</span><Button variant="outline" type="button" onclick={()=>abort?.abort()}><Square size={14}/>停止</Button>{:else}<Button type="submit" disabled={!prompt.trim() || !model}><Send size={16}/>发送</Button>{/if}</div></form></section>
 <section class="panel response" aria-labelledby="response-title"><div class="panel-heading"><h2 id="response-title">回复</h2></div>{#if output}<pre>{output}</pre>{:else}<div class="response-empty"><Sparkles size={28} aria-hidden="true"/><p>模型回复会显示在这里</p></div>{/if}</section></div>
 {#if error}<Notice variant="error">{error}</Notice>{/if}
 <section class="api-note"><h2>API 接入</h2><p>使用 Auth0 用户访问令牌调用，支持流式回复。</p><code>https://ai.hasbai.xyz/v1</code><div class="api-paths"><span>POST /chat/completions</span><span>POST /images/generations</span><span>POST /embeddings</span><span>GET /models</span></div></section>
