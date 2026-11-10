@@ -6,7 +6,7 @@ permissions:
 jobs:
   check:
     name: zboard-check
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     container:
       image: ghcr.io/hasbai/financial-visual-ci@sha256:894da852f84db9b566590821dbe5804fa4ca2a880a396f42ee8ebfe9d4099617
     timeout-minutes: 15
@@ -29,7 +29,7 @@ jobs:
           path: apps/zboard/dist/
   visual:
     name: zboard-visual
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     container:
       image: ghcr.io/hasbai/financial-visual-ci@sha256:894da852f84db9b566590821dbe5804fa4ca2a880a396f42ee8ebfe9d4099617
       options: --ipc=host

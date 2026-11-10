@@ -5,6 +5,7 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const image = 'ghcr.io/hasbai/financial-visual-ci@sha256:894da852f84db9b566590821dbe5804fa4ca2a880a396f42ee8ebfe9d4099617';
+if (process.arch !== 'arm64') throw new Error('Visual baselines use native linux/arm64 Docker (Apple Silicon or an ARM runner). x86_64 hosts are cloud-environment only; see docs/TESTING.md.');
 const repo = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const app = process.argv[2];
 if (!['financial', 'blog', 'zboard', 'tavern', 'images', 'ai'].includes(app)) throw new Error('Usage: node scripts/visual-linux.mjs <financial|blog|zboard|tavern> [--all|--page <source-or-scenario>]');
@@ -76,7 +77,7 @@ const localRoot = join(stage, 'apps', app, '.local-visual');
 const before = new Set(existsSync(localRoot) ? readdirSync(localRoot) : []);
 const command = 'pnpm install --frozen-lockfile --store-dir=/pnpm-store --prefer-offline && node scripts/visual-capture.mjs "$@"';
 const result = spawnSync('docker', [
-  'run', '--rm', '--init', '--ipc=host', '--platform', 'linux/amd64',
+  'run', '--rm', '--init', '--ipc=host', '--platform', 'linux/arm64',
   '--user', `${process.getuid()}:${process.getgid()}`, '-e', 'HOME=/tmp',
   '-e', 'CI=true', '-e', 'GITHUB_ACTIONS=true',
   ...proxyArgs,
