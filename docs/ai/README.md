@@ -55,7 +55,7 @@ Worker 根据平台目录映射对话模型，调用方不能覆盖 URL、Gatewa
 1. 用管理 Token 读取 Cloudflare 账号下已启用的自定义 Provider。
 2. 对每个 Provider 经 Gateway 请求 `custom-<slug>/models`（OpenAI 格式 `data[].id`），带运行 Token 和 BYOK alias `default`，不写 Gateway 日志。
 3. 对话模型 ID 为 `custom-<slug>/<模型>`，原样作为 `compat/chat/completions` 的 `model`。名称含 image、embed、bge、whisper、tts、rerank、moderation 的条目不进入对话目录。
-4. 条目带 `context_length` 或 `max_model_len`（不小于 1024 的整数）时，目录返回 `context_tokens`。
+4. 条目带 `context_length` 或 `max_model_len`（不小于 1024 的整数）时，目录返回 `context_tokens`。每个对话条目带 `provider`（Provider slug，不含 `custom-` 前缀），供客户端分组。
 
 目录在 Worker 实例内缓存 5 分钟，并发刷新共享同一请求；管理接口改动 Provider 或 BYOK 密钥后，处理该请求的 Worker 实例立即失效，其他实例等 TTL。单个 Provider 失败时沿用其最近一次成功结果，最长 1 小时。刷新失败后 30 秒内不再重试，直接用缓存（超过 1 小时则返回 503）。没有可用缓存时 `/v1/models` 和对话返回 503，不转发未经验证的模型 ID。发现依赖管理 Token（读取 Provider 列表，5 秒超时）。
 

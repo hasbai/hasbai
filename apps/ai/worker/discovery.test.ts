@@ -6,7 +6,7 @@ beforeEach(()=>vi.useFakeTimers({toFake:['Date']}));
 afterEach(()=>{vi.useRealTimers();vi.unstubAllGlobals();resetDiscovery();});
 it('discovers chat models of enabled providers through the Gateway, skipping other modalities',async()=>{
  const call=stubUpstream();
- expect(await discoverModels(env)).toEqual([{id:'custom-main/qwen3',name:'qwen3',type:'chat',context_tokens:32768},{id:'custom-main/chat-b',name:'chat-b',type:'chat'}]);
+ expect(await discoverModels(env)).toEqual([{id:'custom-main/qwen3',name:'qwen3',provider:'main',type:'chat',context_tokens:32768},{id:'custom-main/chat-b',name:'chat-b',provider:'main',type:'chat'}]);
  const [url,init]=call.mock.calls.find(([u])=>String(u).endsWith('/models'))!;
  expect(url).toBe('https://gateway.ai.cloudflare.com/v1/account/default/custom-main/models');
  expect(init).toMatchObject({redirect:'manual',headers:{'cf-aig-authorization':'Bearer run','cf-aig-byok-alias':'default','cf-aig-collect-log':'false'}});

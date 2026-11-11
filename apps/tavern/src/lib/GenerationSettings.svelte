@@ -1,14 +1,17 @@
 <script lang="ts">
  import { Brain, SlidersHorizontal, Cpu, RotateCcw } from '@lucide/svelte';
  import { Button } from '@hasbai/ui/button';
+ import { ModelPicker } from '@hasbai/ui/model-picker';
  import { SAMPLING_TEMPLATES, type Settings, type ModelOption } from '../../shared/types';
  let { settings = $bindable(), models = [], disabled = false, scope = '新会话默认', id = 'generation' }: { settings: Settings; models?: ModelOption[]; disabled?: boolean; scope?: string; id?: string } = $props();
  function applyTemplate(thinkingEnabled:boolean){Object.assign(settings,{thinkingEnabled,...(thinkingEnabled?SAMPLING_TEMPLATES.thinking:SAMPLING_TEMPLATES.instruct),frequencyPenalty:0});}
  const unavailable = $derived(disabled);
+ // A saved model that left the catalog stays visible but cannot be picked again.
+ const pickerModels = $derived(models.some(m=>m.id===settings.modelId) ? models.map(m=>({id:m.id,name:m.name,provider:m.provider,contextTokens:m.contextTokens,available:m.available})) : [{id:settings.modelId,name:settings.modelId,available:false}, ...models.map(m=>({id:m.id,name:m.name,provider:m.provider,contextTokens:m.contextTokens,available:m.available}))]);
 </script>
 <section class="settings-section model-section" aria-labelledby={`${id}-model-heading`}>
  <div class="section-heading"><div><Cpu size={18} aria-hidden="true"/><h2 id={`${id}-model-heading`}>模型</h2></div><span class="scope-badge">{scope}</span></div>
- <div class="field"><label for={`${id}-model`}>对话模型</label><select id={`${id}-model`} bind:value={settings.modelId} {disabled}>{#if !models.some(m=>m.id===settings.modelId && m.available)}<option value={settings.modelId} disabled>{settings.modelId}（不可用）</option>{/if}{#each models as model (model.id)}<option value={model.id} disabled={!model.available}>{model.name}{model.available?'':'（不可用）'}</option>{/each}</select></div>
+ <div class="field"><label for={`${id}-model`}>对话模型</label><ModelPicker id={`${id}-model`} bind:value={settings.modelId} models={pickerModels} {disabled}/></div>
  <div class="thinking-row"><div class="thinking-label"><Brain size={19} aria-hidden="true"/><label id={`${id}-thinking-label`} for={`${id}-thinking`}>启用思考</label></div><button type="button" class="thinking-switch" id={`${id}-thinking`} role="switch" aria-checked={settings.thinkingEnabled} aria-labelledby={`${id}-thinking-label`} disabled={unavailable} onclick={()=>applyTemplate(!settings.thinkingEnabled)}><span></span></button></div>
  <div class="field"><label for={`${id}-reasoning-effort`}>思考强度</label><select id={`${id}-reasoning-effort`} bind:value={settings.reasoningEffort} disabled={unavailable||!settings.thinkingEnabled}><option value="low">低</option><option value="medium">中</option><option value="high">高</option></select></div>
 </section>
