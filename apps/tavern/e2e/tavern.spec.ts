@@ -13,6 +13,7 @@ async function startConversation(page:Page) {
  await page.getByRole('button',{name:'开始对话',exact:true}).click();
  await expect(page.getByRole('button',{name:/随机开场/})).toHaveAttribute('aria-pressed','true');
  await page.getByRole('dialog').getByRole('button',{name:'开始对话',exact:true}).click();
+ await expect(page.getByRole('dialog')).toHaveCount(0);
 }
 async function fixture(page:Page,{empty=false,fail=false,delay=false,streamDelay=false,stopDelay=false,partial=false,long=false,promptAdmin=true,agent=false,telegram=false}={}) {
  let promptTexts={...DEFAULT_PROMPTS};let activities:Record<string,unknown>[]=[];let estimatedTokens=8250,coveredMessages=0;
@@ -471,6 +472,8 @@ test('greeting options and form fields keep hover feedback without focus borders
  expect(await search.evaluate(el=>({border:getComputedStyle(el).borderColor,shadow:getComputedStyle(el).boxShadow}))).toEqual(before);
  expect(await search.evaluate(el=>getComputedStyle(el).outlineStyle)).toBe('none');
  await page.getByRole('button',{name:'开始对话',exact:true}).click();
+ // bits-ui moves initial focus one frame after mount; wait for it so option.focus() is not overwritten.
+ const picker=page.getByRole('dialog');await expect.poll(()=>picker.evaluate(el=>el.contains(document.activeElement))).toBe(true);
  const option=page.getByRole('button',{name:'开场白 2',exact:true});
  await option.focus();expect(await option.evaluate(el=>getComputedStyle(el).outlineStyle)).toBe('none');
  await page.keyboard.press('Enter');await expect(option).toHaveAttribute('aria-pressed','true');
