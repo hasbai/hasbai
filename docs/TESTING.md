@@ -37,16 +37,17 @@ git diff --check
 
 页面改动还须在本地固定 Linux 镜像生成并审阅受影响截图；`pnpm visual:local` 构建生产包和 e2e 包，仅运行所选 Financial 场景。完整 Playwright 套件与全部基线严格比较仍在 CI 执行。
 
-视觉 CI 与本地截图统一使用 `docker/visual-ci/Dockerfile` 构建的 Linux AMD64 镜像。
+视觉 CI 与本地截图统一使用 `docker/visual-ci/Dockerfile` 构建的 Linux ARM64 镜像（`ubuntu-24.04-arm` 运行器和 Apple Silicon 原生 Docker）。
 镜像按 digest 固定 Chromium headless、Playwright 1.63.0、Node 24.20.0、pnpm 10.33.2 和 CJK 字体。镜像发布工作流是 `.github/workflows/visual-image.yml`；各应用的视觉 job 使用同一个 digest，单元任务仍运行在 Ubuntu。日常 `pnpm visual:local` 从相对 `origin/main` 的 Financial 页面改动选择清单场景；Blog、Zboard、Tavern 分别用 `pnpm visual:blog`、`pnpm visual:zboard`、`pnpm visual:tavern`，图床用 `pnpm visual:images`。
 
-云环境与视觉 CI 统一使用 [AMD64 开发镜像](../README.md#codex-本地环境)，不使用 ARM 或 QEMU 模拟。
-该镜像复用 CI 的 Dockerfile 与版本，适用于本地检查和服务启动。
+云环境（Linux x86_64）使用同一 Dockerfile 发布的 [AMD64 开发镜像](../README.md#codex-本地环境)，避免 ARM 模拟开销。
+该镜像复用 CI 的 Dockerfile 与版本，适用于本地检查和服务启动；其截图仅作预览，不是基线。
+任何环境都不使用 QEMU 模拟。
 镜像只安装 Chromium headless，并合并最终文件系统为一层。
 日常 `run` 拉取固定发布镜像；修改配方后才显式 `build`。
 
 需要局部预览时，可通过 `cloud-dev.mjs run` 执行 `node scripts/visual-capture.mjs <应用> <场景ID>`。
-导入 CI 基线使用同一 AMD64 镜像，并遵循上述截图审阅与导入流程。
+导入 CI 基线必须使用上述 ARM64 截图流程，并遵循截图审阅与导入规则。
 
 共享组件、样式、夹具或 `packages/` 改动须指定可重复的 `--page <源页面>` 或 `--all`。首次生成 Linux 基线运行 `--all`。审阅图在各应用忽略的 `.local-visual/<时间>/review/`；审阅后从仓库根运行 `pnpm visual:baseline:import-local <该次运行目录> --reviewed`，校验源码和 PNG 后导入本次截图。旧 macOS PNG 已清理；日常只维护 `linux-ci` 基线。
 

@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const image = 'hasbai-cloud-dev:chromium-pw1.63.0-node24-pnpm10.33.2-amd64-v2';
-const publishedImage = 'ghcr.io/hasbai/financial-visual-ci@sha256:894da852f84db9b566590821dbe5804fa4ca2a880a396f42ee8ebfe9d4099617';
+const publishedImage = 'ghcr.io/hasbai/financial-visual-ci@sha256:79116b230e94b803e895a1a8473611f27dc828590204429ad37c5e9cc1e058dd';
 const dockerfile = readFileSync(new URL('../docker/visual-ci/Dockerfile', import.meta.url), 'utf8');
 const fingerprint = createHash('sha256').update(dockerfile).digest('hex');
 const label = 'xyz.hasbai.cloud-dev.source';

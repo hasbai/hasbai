@@ -41,7 +41,7 @@ Zboard 与酒馆的 API 操作先构建，再启动本地 Worker。
 API 命令为 `node scripts/local-environment.mjs api <zboard|tavern>`。
 类型检查不替代[提交前检查](docs/TESTING.md#运行)。
 
-云环境的 Linux x86_64 开发使用 Chromium 单浏览器镜像：
+云环境的 Linux x86_64 开发使用 AMD64 镜像（日常开发在 Apple Silicon 上直接运行 pnpm，视觉检查用 `pnpm visual:*`）：
 
 ```sh
 node scripts/cloud-dev.mjs run env CI=true pnpm install --frozen-lockfile
@@ -53,7 +53,9 @@ node scripts/cloud-dev.mjs run --publish 127.0.0.1:5174:5174 -- pnpm dev:blog --
 修改镜像配方后，显式运行 `node scripts/cloud-dev.mjs build`。
 本地构建镜像名为 `hasbai-cloud-dev:chromium-pw1.63.0-node24-pnpm10.33.2-amd64-v2`。
 
-CI 与云环境共用 `docker/visual-ci/Dockerfile`，统一使用 AMD64，不运行 ARM 模拟。
+CI 与云环境共用 `docker/visual-ci/Dockerfile`，按架构发布两个镜像：
+`linux/arm64` 是视觉 CI 和本地截图的默认镜像（`ubuntu-24.04-arm` 运行器、Apple Silicon 原生 Docker）；`linux/amd64` 仅供云环境，由 `cloud-dev.mjs` 引用。
+两者各自按 digest 固定，不运行 ARM 或 AMD64 模拟；`cloud-dev.mjs` 在非 Linux x86_64 主机上拒绝运行。
 镜像固定 Ubuntu Noble、Node 24.20.0、pnpm 10.33.2、Playwright 1.63.0 和 CJK 字体。
 只安装 Chromium headless，最终文件系统合并为一层，以减少 `vfs` 的父层复制。
 代理证书仅在构建及运行时挂载。
