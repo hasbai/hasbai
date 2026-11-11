@@ -5,7 +5,7 @@ import { boundedBody, HttpError } from './http';
 const TTL = 60 * 60 * 1000;
 export type Capability = { contextTokens: number | null; source: string; checkedAt: number; inputRatio: number; modelId?: string };
 const unknown: Capability = { contextTokens: null, source: 'unknown', checkedAt: 0, inputRatio: 1.2 };
-type CatalogModel = { id: string; name: string; type: string; target?: string; context_tokens?: number };
+type CatalogModel = { id: string; name: string; type: string; provider?: string; target?: string; context_tokens?: number };
 
 async function catalog(env: Env): Promise<CatalogModel[]> {
  if (!env.AI_SERVICE) throw new HttpError(503, 'AI 服务未配置');
@@ -35,7 +35,7 @@ async function capability(env: Env, key: string, contextTokens?: number): Promis
 export async function modelOptions(env: Env, ctx: Pick<ExecutionContext, 'waitUntil'>): Promise<ModelOption[]> {
  const models = await catalog(env);
  return Promise.all(models.map(async m => ({
-  id: m.id, name: m.name, available: true, contextTokens: (await capability(env, m.target ?? m.id, m.context_tokens)).contextTokens,
+  id: m.id, name: m.name, ...(typeof m.provider === 'string' ? { provider: m.provider } : {}), available: true, contextTokens: (await capability(env, m.target ?? m.id, m.context_tokens)).contextTokens,
   parameters: {topK: true, penalties: true, thinking: true, topKMax: 1000},
  })));
 }

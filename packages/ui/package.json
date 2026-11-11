@@ -27,6 +27,8 @@
     "./command/index.js": "./src/components/command/index.ts",
     "./select": "./src/components/select/index.ts",
     "./select/index.js": "./src/components/select/index.ts",
+    "./model-picker": "./src/components/model-picker/index.ts",
+    "./model-picker/index.js": "./src/components/model-picker/index.ts",
     "./badge": "./src/components/badge/index.ts",
     "./badge/index.js": "./src/components/badge/index.ts",
     "./theme.css": "./src/theme.css",

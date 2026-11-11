@@ -2,7 +2,7 @@ import { MODEL_ID } from '@hasbai/ai';
 import { HttpError } from './http';
 import { cloudflare } from './management';
 
-export type ChatModel = {id: string; name: string; type: 'chat'; context_tokens?: number};
+export type ChatModel = {id: string; name: string; provider: string; type: 'chat'; context_tokens?: number};
 const FRESH = 5 * 60_000, STALE = 60 * 60_000, MAX_BODY = 256 * 1024, MAX_MODELS = 200;
 // Provider /models lists mix modalities; only chat models enter the catalog.
 const NOT_CHAT = /image|embed|bge|whisper|tts|rerank|moderation/i;
@@ -47,7 +47,7 @@ async function fromProvider(env: Env, slug: string): Promise<ChatModel[]> {
     const full = `${key}/${id}`;
     if (typeof id !== 'string' || !MODEL_ID.test(full) || NOT_CHAT.test(id)) continue;
     const context = contextTokens(row as Record<string, unknown>);
-    models.push({id: full, name: id, type: 'chat', ...(context ? {context_tokens: context} : {})});
+    models.push({id: full, name: id, provider: key.slice(7), type: 'chat', ...(context ? {context_tokens: context} : {})});
   }
   return models;
 }
