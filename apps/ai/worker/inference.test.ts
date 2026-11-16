@@ -34,7 +34,7 @@ it('forwards cancellation and does not retry network failures',async()=>{
  const pending=inference(env,'roleplay',{},who,abort.signal);await vi.waitFor(()=>expect(inferCalls(call)).toHaveLength(1));abort.abort();await expect(pending).rejects.toThrow('aborted');expect(inferCalls(call)).toHaveLength(1);
 });
 
-it.each([['custom-main/chat-b','custom-main/chat-b'],['default','custom-main/qwen3'],[undefined,'custom-main/qwen3'],['rp','custom-main/qwen3'],['dynamic/rp','custom-main/qwen3'],['translate','custom-main/qwen3']])('routes selected chat model %s to %s without changing the task attribution', async (model,expected) => {
+it.each([['custom-main/chat-b','custom-main/chat-b'],['default','custom-main/qwen3'],[undefined,'custom-main/qwen3'],['rp','dynamic/rp'],['dynamic/rp','dynamic/rp'],['translate','dynamic/translate']])('routes selected chat model %s to %s without changing the task attribution', async (model,expected) => {
  const call=stubUpstream();
  await inference(env,'roleplay',{model},who,new AbortController().signal);
  const [,init]=inferCalls(call)[0];expect(JSON.parse(String(init?.body)).model).toBe(expected);
@@ -63,3 +63,5 @@ it('keeps explicitly named models usable and omits default when the pinned defau
  const {modelList}=await import('./models');const list=await (await modelList(pinned)).json() as {data:{id:string}[]};
  expect(list.data.map(m=>m.id)).not.toContain('default');expect(list.data.map(m=>m.id)).toContain('custom-main/chat-b');
 });
+
+it('rejects unknown or undeployed dynamic routes before inference',async()=>{const call=stubUpstream();await expect(inference(env,'roleplay',{model:'dynamic/missing'},who,new AbortController().signal)).rejects.toThrow('未知或未部署');expect(inferCalls(call)).toHaveLength(0);});

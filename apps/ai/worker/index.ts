@@ -3,7 +3,7 @@ import { identity } from './auth';
 import { failure, HttpError } from './http';
 import { inference, validateTask, type Attribution } from './inference';
 import { manage } from './management';
-import { chatModel, modelList } from './models';
+import { modelList } from './models';
 
 /** Only explicitly configured service bindings can reach this entrypoint. */
 export class InferenceService extends WorkerEntrypoint<Env> {
@@ -42,7 +42,7 @@ export default {
       const input = await body(request);
       let task: string;
       if (path === '/v1/chat/completions') {
-        await chatModel(env, input.model);
+        if(typeof input.model!=='string' || !input.model || input.model==='default')throw new HttpError(400,'请选择对话模型');
         task = 'roleplay';
         if (!Array.isArray(input.messages) || !input.messages.length) throw new HttpError(400, '缺少对话消息');
       } else if (path === '/v1/images/generations') task = 'image-generation';

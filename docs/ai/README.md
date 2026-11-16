@@ -28,7 +28,10 @@
 图片模型仍限制为 Flare 和 Sunburst。
 Worker 根据平台目录映射对话模型，调用方不能覆盖 URL、Gateway 或运行凭据。
 直连图片接口使用 `cf-aig-byok-alias: default`。
-对话模型不使用 Cloudflare 动态路由。上游模型由 Worker 自动发现，请求带 `cf-aig-byok-alias: default` 选择 BYOK 密钥。
+对话模型包含自动发现的 Provider 模型和已部署的 Cloudflare 动态路由。
+直接调用 Provider 模型时，请求带 `cf-aig-byok-alias: default` 选择 BYOK 密钥。
+动态路由使用 `dynamic/<name>`，由 Gateway 的已部署规则选择模型。
+
 流式响应不缓冲，保留状态、Gateway log ID 和取消信号。
 请求不重试、不跟随重定向，日志保留完整 payload。
 
@@ -40,17 +43,25 @@ Worker 根据平台目录映射对话模型，调用方不能覆盖 URL、Gatewa
 | 接口 | 请求 |
 | --- | --- |
 | `GET /v1/models` | 查询模型 ID、显示名称和类型（chat / image / embedding） |
-| `POST /v1/chat/completions` | OpenAI 格式；`model` 为 `/v1/models` 返回的对话模型 ID，省略或 `default` 用平台默认，支持 SSE |
+| `POST /v1/chat/completions` | OpenAI 格式；`model` 必须明确指定 `/v1/models` 返回的对话模型 ID，支持 SSE。省略、空值和 `default` 返回 400 |
 | `POST /v1/images/generations` | `model` 为完整图片模型 ID |
 | `POST /v1/embeddings` | `model=@cf/baai/bge-m3`，`input` 为字符串或字符串数组 |
 | `GET /api/me` | 当前身份与管理权限 |
 
-工作台提供流式对话。API 提供图片和向量调用。
+工作台采用酒馆式阅读列和底部输入框，支持连续流式对话、停止和复制回复。
+新对话不预选模型，也不沿用上次选择。模型选择使用完整弹层，按 Provider 展示模型卡片。
+卡片展示模型 ID、调用方式及上游提供的上下文长度；未知值不推测。
+
+选择后关闭弹层；关闭按钮、Escape 和点击外部均可收起，并恢复触发器焦点。
+消息区独立滚动；用户向上阅读时，流式输出不强制滚到底部。
+停止或失败保留草稿与未完成回复；后续请求只带已完成的对话轮次。
+
+当前对话保存在页面内存中，刷新后清空。API 提供图片和向量调用。
 真实模型输出仍由各业务应用按原契约校验。
 
 ## 模型发现
 
-`worker/discovery.ts` 自动发现上游对话模型，不再手写目录，也不使用 Cloudflare 动态路由。
+`worker/discovery.ts` 自动发现上游对话模型。`worker/routes.ts` 读取当前 Gateway 的已部署动态路由。
 
 1. 用管理 Token 读取 Cloudflare 账号下已启用的自定义 Provider。
 2. 对每个 Provider 经 Gateway 请求 `custom-<slug>/models`（OpenAI 格式 `data[].id`），带运行 Token 和 BYOK alias `default`，不写 Gateway 日志。
@@ -63,9 +74,19 @@ Worker 根据平台目录映射对话模型，调用方不能覆盖 URL、Gatewa
 
 `worker/models.ts` 合并发现结果与固定的图片、向量模型。服务绑定的 `GET /internal/models` 和公共 `/v1/models` 返回相同目录，公共 HTTP 仍拒绝 `/internal/*`。
 
-目录首项是虚拟条目 `default`，含 `target`（实际模型 ID）。`DEFAULT_CHAT_MODEL` 变量指定默认模型；已配置但未被发现时返回 503，不换用其他模型；未配置时取第一个发现的模型，上线前须核对 `/v1/models` 首项 `target`，并按需固定该变量。`TRANSLATE_MODEL` 未配置或未被发现时，翻译使用默认模型。默认模型不可用时，列表省略 `default`，明确指定的已发现模型仍可使用。平台拒绝未知 ID，不替换为默认模型。
+目录不包含 `default` 虚拟模型。公共对话 API 必须明确选择模型或动态路由。
+目录中的 Provider 模型和动态路由分别读取；一方失败时保留另一方可用条目。
+两方均失败时返回 503。动态路由每次读取当前 Cloudflare 配置，不使用旧缓存。
 
-滚动发布期间仍接受旧应用提交的 `rp`、`dynamic/rp`（解析为默认模型）以及 `translate`、`dynamic/translate`（解析为翻译模型），后续发布移除。Tavern 仅展示 `chat` 类型，所选 ID 传至平台。
+为保留现有业务应用的兼容性，服务绑定暂时接受省略模型和 `default`。
+仅此兼容路径沿用 `DEFAULT_CHAT_MODEL`，为空时取首个发现的模型。
+
+固定默认模型未发现时返回 503；明确指定的模型仍可使用。
+翻译未明确指定模型时沿用 `TRANSLATE_MODEL`，不可用则走该兼容路径。
+`rp` 和 `translate` 旧 ID 解析为同名动态路由，不再替换成 Provider 首个模型。
+未知或未部署的路由拒绝调用；明确选择的模型不被翻译用途覆盖。
+
+本次只修改 AI 平台，不修改、部署或接入 Tavern。酒馆待平台验收后再接入。
 
 ## Provider 与 BYOK
 
@@ -90,6 +111,28 @@ PUT 仅轮换 `secret`，不改变 alias。
 管理响应按字段白名单返回，不转发 Provider headers、密钥或原始错误。
 页面在提交或关闭密钥表单时清空输入，不写入本地存储。
 
+## 动态路由管理
+
+仅 `ai.all:all` 管理员可以创建、编辑、删除路由和管理版本。
+配置保存在当前 Gateway 的 Cloudflare 动态路由中，不另建数据库。
+
+| 管理接口 | 方法 |
+| --- | --- |
+| `/api/admin/gateways/:gateway/routes` | GET、POST |
+| `/api/admin/gateways/:gateway/routes/:id` | GET、PATCH（重命名）、DELETE |
+| `/api/admin/gateways/:gateway/routes/:id/versions` | GET、POST（保存版本） |
+| `/api/admin/gateways/:gateway/routes/:id/deployments` | POST（发布指定版本） |
+
+页面管理 `default` Gateway。模型节点提供模型卡片选择及 Provider、模型 ID、超时和重试表单。
+高级编辑器使用 Cloudflare 节点 JSON，支持条件、百分比分流、限流和模型回退。
+保存版本不自动发布；管理员在版本界面明确发布，发布旧版本即可回滚。
+
+创建后同样检查版本并明确发布。部署成功后刷新可选模型目录。
+
+Worker 校验节点 ID、起点、终点和连线目标，并按白名单返回字段。
+不返回版本原始 `data`、Provider headers 或密钥。
+
+
 ## 配置与发布
 
 当前按用户要求共用一个 Cloudflare Token。
@@ -110,7 +153,7 @@ PUT 仅轮换 `secret`，不改变 alias。
 Auth0 配置脚本要求现有管理 CLI 登录，不创建凭据文件。
 
 本地检查为 `pnpm --filter ai-service typecheck`、`test`、`test:runtime` 和 `build`。
-工作台与 CI 使用固定 ARM64 Chromium 镜像生成、审阅和严格比较基线。
+截图与基线使用执行环境对应的固定 Chromium 镜像：云环境统一使用 AMD64，本地 ARM64 流程见 [TESTING](../TESTING.md)。
 
 运行时测试使用仓库固定 workerd 支持的兼容日期 `2026-10-16`。
 生产配置日期为 `2026-11-07`，须另行核验生产运行时。

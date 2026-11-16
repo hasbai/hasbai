@@ -10,6 +10,7 @@ const upstream=async(request,response)=>{
  // Model discovery: provider listing through the management API, then the provider's /models through the Gateway.
  const target=`${request.headers.host??''}${request.url}`;
  if(target.includes('api.cloudflare.com')&&target.includes('/custom-providers')){response.writeHead(200,{'Content-Type':'application/json'});response.end(JSON.stringify({success:true,result:[{slug:'main',enable:true}]}));return;}
+ if(target.includes('api.cloudflare.com')&&target.includes('/routes')){response.writeHead(200,{'Content-Type':'application/json'});response.end(JSON.stringify({success:true,data:{routes:[{name:'translate',deployment:{version_id:'v1'}}]}}));return;}
  if(target.endsWith('/custom-main/models')){response.writeHead(200,{'Content-Type':'application/json'});response.end(JSON.stringify({data:[{id:'qwen3'}]}));return;}
  let body='';for await(const chunk of request)body+=chunk;
  const record={input:JSON.parse(body),headers:request.headers,cancelled:false};last=record;
@@ -33,8 +34,8 @@ try {
  const reader=response.body.getReader();const first=await reader.read();assert.equal(new TextDecoder().decode(first.value),'data: first\n\n');abort.abort();await reader.cancel().catch(()=>{});
  for(let n=0;n<50&&!last.cancelled;n++)await new Promise(resolve=>setTimeout(resolve,20));
  assert.equal(last.cancelled,true,'response cancellation must close the HTTP upstream before it finishes');
- assert.equal(last.input.model,'custom-main/qwen3');assert.equal(last.headers['cf-aig-byok-alias'],'default');assert.equal(JSON.parse(last.headers['cf-aig-metadata']).username,'verified');assert.equal(last.headers['cf-aig-event-id'],'round');
+ assert.equal(last.input.model,'dynamic/translate');assert.equal(last.headers['cf-aig-byok-alias'],undefined);assert.equal(JSON.parse(last.headers['cf-aig-metadata']).username,'verified');assert.equal(last.headers['cf-aig-event-id'],'round');
  const ai=await runtime.getWorker('ai');assert.equal((await ai.fetch('https://ai.test/internal/roleplay',{method:'POST',body:'{}'})).status,404);
  const failed=await runtime.dispatchFetch('https://client.test',{method:'POST',body:JSON.stringify({fail:true})});assert.equal(failed.status,429);assert.equal(failed.headers.get('cf-aig-log-id'),'failure-log');assert.equal(await failed.text(),'upstream failure');
- console.log('workerd: named service binding, first SSE chunk, HTTP upstream cancellation, discovered default model, attribution, public/internal separation and raw upstream failures passed');
+ console.log('workerd: named service binding, first SSE chunk, HTTP upstream cancellation, deployed dynamic route, attribution, public/internal separation and raw upstream failures passed');
 } finally {await runtime.dispose();}
