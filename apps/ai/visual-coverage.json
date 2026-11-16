@@ -28,6 +28,18 @@
       "scenarios": [
         "manage"
       ]
+    },
+    {
+      "source": "src/ModelPicker.svelte",
+      "scenarios": [
+        "catalog"
+      ]
+    },
+    {
+      "source": "src/Routes.svelte",
+      "scenarios": [
+        "routes"
+      ]
     }
   ],
   "scenarios": [
@@ -66,6 +78,45 @@
           "snapshots": [
             "management.png",
             "key-form.png"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "catalog",
+      "kind": "screenshot",
+      "evidence": [
+        {
+          "spec": "e2e/ai.spec.ts",
+          "test": "model catalog groups cards by provider and closes by button escape and outside click",
+          "projects": [
+            "desktop",
+            "mobile",
+            "dark",
+            "short"
+          ],
+          "snapshots": [
+            "model-catalog.png"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "routes",
+      "kind": "screenshot",
+      "evidence": [
+        {
+          "spec": "e2e/ai.spec.ts",
+          "test": "admin manages route versions and explicitly deploys a rollback",
+          "projects": [
+            "desktop",
+            "mobile",
+            "dark",
+            "short"
+          ],
+          "snapshots": [
+            "routes.png",
+            "route-editor.png"
           ]
         }
       ]

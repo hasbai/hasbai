@@ -6,6 +6,7 @@ export function stubUpstream(infer: (url: string, init: RequestInit) => Response
   resetDiscovery();
   const call = vi.fn(async (url: string, init: RequestInit = {}) => {
     if (url.includes('api.cloudflare.com') && url.includes('/custom-providers')) return Response.json({success: true, result: Object.keys(providers).map(slug => ({id: slug, slug, enable: true, base_url: 'https://example.com'}))});
+    if(url.includes('/routes'))return Response.json({success:true,data:{routes:[{id:'rp',name:'rp',deployment:{version_id:'v1'}},{id:'translate',name:'translate',deployment:{version_id:'v1'}}]}});
     const match = url.match(/\/(custom-[a-z0-9_-]+)\/models$/);
     if (match) { const body = providers[match[1].slice(7)]; return body instanceof Response ? body : Response.json(body); }
     return infer(url, init);

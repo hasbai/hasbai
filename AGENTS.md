@@ -27,8 +27,10 @@
 ## 校验与交付
 
 环境摘要运行 `node scripts/local-environment.mjs info`；依赖准备和快捷操作见 [Codex 本地环境](README.md#codex-本地环境)。
-视觉 CI 和 `linux-ci` 截图基线（含 Apple Silicon Mac 上的 `pnpm visual:*`）统一使用 Linux ARM64 镜像，在本机原生 Docker 和 ARM 运行器运行，不使用 QEMU 模拟。
-AMD64 镜像只用于云环境（Linux x86_64）：`node scripts/cloud-dev.mjs run <命令>`，复用 CI 的版本与配置。
+当前视觉 CI 和 Apple Silicon Mac 上的 `pnpm visual:*` 使用 Linux ARM64 镜像，在本机原生 Docker 和 ARM 运行器运行。
+云环境遵守下述 AMD64 规则，任何环境均不使用 QEMU 模拟。
+云环境（Linux x86_64）的开发、测试、截图和基线生成统一使用 AMD64：`node scripts/cloud-dev.mjs run <命令>`。
+云端截图可审阅并导入基线，不要求转用 ARM64，也不再为架构差异另行确认。
 
 修改前按[TESTING](docs/TESTING.md)确认本地检查、截图、迁移与交付路径。该文档统一维护按需 PR、`ci:*` 标签、自动合并、允许直推和自动部署核验规则，应用文档不重复流程。
 

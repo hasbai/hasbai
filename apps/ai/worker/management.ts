@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { routeCreate, routeName, graph, safeRoute } from './routes';
 import { invalidateCatalog } from './discovery';
 import { HttpError } from './http';
 
@@ -40,6 +41,27 @@ async function parse<T>(request: Request, schema: z.ZodType<T>): Promise<T> {
 }
 export async function manage(request: Request, env: Env) {
   const url = new URL(request.url), path = url.pathname.slice('/api/admin/'.length), method = request.method;
+  const route = path.match(/^gateways\/([a-zA-Z0-9_-]+)\/routes(?:\/([a-zA-Z0-9_-]+))?(?:\/(versions|deployments))?$/);
+  if(route) {
+    const [,gateway,id,action]=route;
+    let schema: z.ZodType | undefined;
+    if(method==='POST'&&!id) schema=routeCreate;
+    else if(method==='PATCH'&&id&&!action) schema=z.object({name:routeName}).strict();
+    else if(method==='POST'&&id&&action==='versions') schema=graph;
+    else if(method==='POST'&&id&&action==='deployments') schema=z.object({version_id:slug}).strict();
+    else if(!(method==='GET'||(method==='DELETE'&&id&&!action))) throw new HttpError(405,'请求方法无效');
+    const suffix=`gateways/${gateway}/routes${id?'/'+id:''}${action?'/'+action:''}`;
+    const result=await cloudflare(env,method,suffix,schema?await parse(request,schema):undefined);
+    const raw=result.result??result.data??(result as unknown as {route?:unknown}).route;
+    if(action==='versions') {
+      const data=raw as {versions?:unknown[];version_id?:string;data?:string;created_at?:string};
+      const clean=(row:Record<string,unknown>)=>pick(row,['version_id','created_at','active','is_valid']);
+      return Response.json({result:Array.isArray(data?.versions)?data.versions.map(row=>clean(row as Record<string,unknown>)):data?clean(data):null},{headers:{'Cache-Control':'no-store'}});
+    }
+    if(action==='deployments')return Response.json({result:raw?pick(raw as Record<string,unknown>,['version_id','deployment_id','created_at']):null},{headers:{'Cache-Control':'no-store'}});
+    const rows=Array.isArray(raw)?raw:(raw as {routes?:unknown[]})?.routes;
+    return Response.json({result:Array.isArray(rows)?rows.map(safeRoute):raw?safeRoute(raw as Record<string,unknown>):null},{headers:{'Cache-Control':'no-store'}});
+  }
   let suffix: string, schema: z.ZodType | undefined, fields: string[], collection: string | undefined;
   if (path === 'gateways' && method === 'GET') {suffix = 'gateways'; fields = ['id']; collection = 'gateways';}
   else if (/^providers(?:\/[a-zA-Z0-9_-]+)?$/.test(path)) {

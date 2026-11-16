@@ -46,9 +46,11 @@ it('shares one typed model catalog between authenticated public callers and serv
  expect((await call('/internal/models')).status).toBe(404);
 });
 
-it('lists discovered chat models, a default entry and fixed image/embedding models without provider details', async () => {
+it('lists discovered chat models, deployed dynamic routes and fixed image/embedding models without provider details', async () => {
  stubUpstream();
  const body=await (await call('/v1/models')).json() as {data:{id:string;type:string;target?:string;context_tokens?:number}[]};
- expect(body.data.map(m=>m.id)).toEqual(['default','custom-main/qwen3','custom-main/chat-b','gpt-image-2.5-flare','gpt-image-2.5-sunburst','@cf/baai/bge-m3']);
- expect(body.data[0]).toMatchObject({target:'custom-main/qwen3',context_tokens:32768});expect(JSON.stringify(body)).not.toContain('example.com');
+ expect(body.data.map(m=>m.id)).toEqual(['custom-main/qwen3','custom-main/chat-b','dynamic/rp','dynamic/translate','gpt-image-2.5-flare','gpt-image-2.5-sunburst','@cf/baai/bge-m3']);
+ expect(body.data[0]).toMatchObject({context_tokens:32768});expect(JSON.stringify(body)).not.toContain('example.com');
 });
+
+it.each([undefined,'','default'])('requires explicit public chat selection: %s',async model=>{const fetch=stubUpstream();expect((await call('/v1/chat/completions','POST',{model,messages:[{role:'user',content:'hi'}]})).status).toBe(400);expect(inferCalls(fetch)).toHaveLength(0);});
