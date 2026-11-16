@@ -15,9 +15,9 @@ async function startConversation(page:Page) {
  await page.getByRole('dialog').getByRole('button',{name:'开始对话',exact:true}).click();
  await expect(page.getByRole('dialog')).toHaveCount(0);
 }
-async function fixture(page:Page,{empty=false,fail=false,delay=false,streamDelay=false,stopDelay=false,partial=false,long=false,promptAdmin=true,agent=false,telegram=false}={}) {
+async function fixture(page:Page,{empty=false,fail=false,delay=false,streamDelay=false,stopDelay=false,partial=false,long=false,promptAdmin=true,agent=false,telegram=false,media=false}={}) {
  let promptTexts={...DEFAULT_PROMPTS};let activities:Record<string,unknown>[]=[];let estimatedTokens=8250,coveredMessages=0;
- const current=structuredClone(session);
+ const current={...structuredClone(session),...(media?{characterId:'c1',avatarImageId:'c51f7180-6795-4a3a-8ec6-060ebc3fe98b',portraitImageId:'a51f7180-6795-4a3a-8ec6-060ebc3fe98b'}:{})};
  const cards=empty?[]:[structuredClone(character)],books=empty?[]:[structuredClone(book)],sessions=empty?[]:[structuredClone(current)];let messages:Record<string,unknown>[]=empty?[]:[structuredClone(greeting)];let pending='';let generationCount=0;let savedSettings=structuredClone(settings);if(long)messages=[{...greeting,content:Array.from({length:18},(_,i)=>`第${i+1}段。雨点敲着旅店的窗，岚整理好桌边的书，等待你的回答。`).join('\n\n')}];
  if(telegram)messages=[{...greeting,id:'telegram-input',role:'user',content:'@alice: 绷\n@alice: 骇人\n@bob: deepseek v3？',ordinal:0},{...greeting,id:'telegram-reply',content:'看到啦。你们刚才聊的是模型版本吧？',ordinal:1}];
  await page.route('**/api/**',async route=>{
@@ -25,7 +25,7 @@ async function fixture(page:Page,{empty=false,fail=false,delay=false,streamDelay
   if(fail){await route.fulfill({status:503,json:{message:'服务暂时不可用'}});return;}
   const multipart=req.headers()['content-type']?.includes('multipart/form-data')?await new Response(Uint8Array.from(req.postDataBuffer()!),{headers:{'Content-Type':req.headers()['content-type']}}).formData():null;
   const body=multipart?{card:JSON.parse(String(multipart.get('card')))}:req.headers()['content-type']?.includes('application/json')?req.postDataJSON()??{}:{};let data:unknown={ok:true};
-  if(p==='/api/models')data={models:[{id:'default',name:'RP 动态路由',available:true,contextTokens:16384,parameters:{topK:true,penalties:true,thinking:true,topKMax:1000}},{id:'custom-main/qwen3',name:'qwen3',provider:'main',available:true,contextTokens:32768,parameters:{topK:true,penalties:true,thinking:true,topKMax:1000}},{id:'custom-main/chat-b',name:'chat-b',provider:'main',available:true,contextTokens:null,parameters:{topK:true,penalties:true,thinking:true,topKMax:1000}},{id:'custom-labs/anthropic/claude-x',name:'anthropic/claude-x',provider:'labs',available:true,contextTokens:200000,parameters:{topK:true,penalties:true,thinking:true,topKMax:1000}}]};
+  if(p==='/api/models')data={models:[{id:'dynamic/rp',provider:'dynamic',name:'RP 动态路由',available:true,contextTokens:16384,parameters:{topK:true,penalties:true,thinking:true,topKMax:1000}},{id:'custom-main/qwen3',name:'qwen3',provider:'main',available:true,contextTokens:32768,parameters:{topK:true,penalties:true,thinking:true,topKMax:1000}},{id:'custom-main/chat-b',name:'chat-b',provider:'main',available:true,contextTokens:null,parameters:{topK:true,penalties:true,thinking:true,topKMax:1000}},{id:'custom-labs/anthropic/claude-x',name:'anthropic/claude-x',provider:'labs',available:true,contextTokens:200000,parameters:{topK:true,penalties:true,thinking:true,topKMax:1000}}]};
   else if(p==='/api/prompts'){if(method==='PUT')promptTexts=body.texts;data={revision:'fixture',texts:promptTexts,admin:promptAdmin};}
   else if(p==='/api/settings'){if(method==='PUT')savedSettings=body;data=savedSettings;}
   else if(p==='/api/messaging/telegram')data={configured:true,botUsername:'saki_main_bot',routes:[]};
@@ -412,7 +412,7 @@ test('model phases share expandable streaming reasoning without a system loading
  const progress=page.locator('.agent-activity[data-phase]');await expect(progress).toHaveAttribute('data-phase','prefill');await expect(progress.getByRole('status')).toHaveText('处理中');await expect(page.getByRole('progressbar')).toHaveCount(0);await shot(page,'chat-prefill.png');
  await advance('reasoning','先确认旅人刚才的问题。');await expect(progress.getByRole('status')).toHaveText('思考中');await progress.locator('summary').focus();await page.keyboard.press('Enter');await expect(progress.getByLabel('思考过程')).toHaveText('先确认旅人刚才的问题。');
  await advance('reasoning','再结合旅店里已经发生的事。');await expect(progress.getByLabel('思考过程')).toContainText('再结合旅店里已经发生的事。');await shot(page,'chat-reasoning.png');
- await advance('generation');await expect(progress.getByRole('status')).toHaveText('生成中');await expect(progress).toHaveAttribute('open','');await expect(progress.getByLabel('思考过程')).toBeVisible();await expect(page.locator('.message-text').last()).not.toContainText('先确认');await expect(page.getByRole('progressbar')).toHaveCount(0);await shot(page,'chat-generating.png');
+ await advance('generation');expect(await progress.evaluate(el=>Boolean(el.compareDocumentPosition(el.closest('.message-body')!.querySelector('.message-text')!)&Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);await expect(progress.getByRole('status')).toHaveText('生成中');await expect(progress).toHaveAttribute('open','');await expect(progress.getByLabel('思考过程')).toBeVisible();await expect(page.locator('.message-text').last()).not.toContainText('先确认');await expect(page.getByRole('progressbar')).toHaveCount(0);await shot(page,'chat-generating.png');
  await page.evaluate(()=>document.documentElement.classList.add('dark'));await shot(page,'chat-reasoning-dark.png');
  if(page.viewportSize()!.width>639){await page.setViewportSize({width:1280,height:600});await expect(page.getByRole('button',{name:'停止',exact:true})).toBeInViewport();await shot(page,'chat-reasoning-short.png');}
  await advance('done');await expect(progress).toHaveCount(0);await expect(page.getByRole('button',{name:'会话设置'})).toBeEnabled();await expect(page.getByRole('progressbar')).toHaveCount(0);
@@ -523,4 +523,30 @@ test('platform model selection remains usable in light dark and short settings',
  await page.route('**/api/models',route=>route.fulfill({status:502,json:{message:'AI 平台模型列表暂时不可用，请重试'}}));await page.reload();
  await expect(page.getByRole('alert')).toContainText('AI 平台模型列表暂时不可用');await expect(model).toHaveCount(0);
  await page.unroute('**/api/models');await page.getByRole('button',{name:'重试',exact:true}).click();await expect(model).toBeVisible();
+});
+
+test('chat avatar and adjustable portrait background persist with session settings',async({page})=>{
+ const artwork='<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600"><rect width="400" height="600" rx="30" fill="#adc9bd"/><circle cx="200" cy="165" r="70" fill="#344f55"/><path d="M70 600V390Q70 270 200 270Q330 270 330 390V600Z" fill="#497c72"/></svg>';
+ let broken=false;
+ await page.route('https://media.hasbai.xyz/**',route=>broken?route.fulfill({status:404}):route.fulfill({contentType:'image/svg+xml',body:artwork}));
+ await fixture(page,{media:true});await startConversation(page);
+ const avatar=page.locator('.chat-character-avatar img'),background=page.locator('.chat-portrait-background');
+ await expect(avatar).toBeVisible();await expect.poll(()=>avatar.evaluate((el:HTMLImageElement)=>el.naturalWidth)).toBe(400);await expect(background).toHaveCount(0);
+ await page.getByRole('button',{name:'会话设置'}).click();await page.getByLabel('使用角色立绘',{exact:true}).check();
+ const opacity=page.getByLabel('背景不透明度');await opacity.evaluate((el:HTMLInputElement)=>{el.value='35';el.dispatchEvent(new Event('input',{bubbles:true}));});
+ await expect(page.getByText('35%',{exact:true})).toBeVisible();await shot(page,'chat-background-settings.png');
+ await page.getByRole('button',{name:'保存',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);
+ await expect(background).toHaveCSS('opacity','0.35');await expect.poll(()=>background.evaluate((el:HTMLImageElement)=>el.naturalWidth)).toBe(400);
+ await page.getByLabel('发送消息',{exact:true}).fill('立绘背景下的草稿');await shot(page,'chat-background.png');
+ await page.evaluate(()=>document.documentElement.classList.add('dark'));await shot(page,'chat-background-dark.png');
+ await page.getByRole('button',{name:'会话设置'}).click();await expect(page.getByLabel('使用角色立绘',{exact:true})).toBeChecked();await expect(opacity).toHaveValue('35');
+ await opacity.evaluate((el:HTMLInputElement)=>{el.value='0';el.dispatchEvent(new Event('input',{bubbles:true}));});await page.getByRole('button',{name:'保存',exact:true}).click();await expect(background).toHaveCSS('opacity','0');
+ await page.getByRole('button',{name:'会话设置'}).click();await page.getByLabel('使用角色立绘',{exact:true}).uncheck();await page.getByRole('button',{name:'保存',exact:true}).click();await expect(background).toHaveCount(0);
+ await expect(page.getByLabel('发送消息',{exact:true})).toHaveValue('立绘背景下的草稿');
+ await nav(page,'设置');await page.getByLabel('使用角色立绘',{exact:true}).check();await page.getByRole('button',{name:'保存设置',exact:true}).click();await expect(page.getByRole('status')).toHaveText('已保存');
+ await nav(page,'角色库');await nav(page,'设置');await expect(page.getByLabel('使用角色立绘',{exact:true})).toBeChecked();
+ broken=true;
+ await page.route('**/api/sessions/s1',route=>route.fulfill({json:{session:{...session,settings:{...settings,characterBackground:true,backgroundOpacity:35},avatarImageId:'b51f7180-6795-4a3a-8ec6-060ebc3fe98b',portraitImageId:'d51f7180-6795-4a3a-8ec6-060ebc3fe98b'},messages:[greeting],activities:[]}}));
+ await nav(page,'对话');await page.getByRole('button',{name:/港城的雨夜/}).click();
+ await expect(page.locator('.chat-character-avatar img')).toHaveCount(0);await expect(page.locator('.chat-character-avatar')).toHaveText('岚');await expect(background).toHaveCount(0);
 });

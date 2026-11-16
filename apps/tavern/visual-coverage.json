@@ -59,7 +59,8 @@
         "desktop-navigation",
         "chat-viewport",
         "mobile-immersive",
-        "model-phases"
+        "model-phases",
+        "chat-appearance"
       ]
     },
     {
@@ -70,7 +71,8 @@
         "model-controls",
         "telegram",
         "progress-lifecycle",
-        "model-selection"
+        "model-selection",
+        "chat-appearance"
       ]
     },
     {
@@ -680,6 +682,26 @@
             "model-selection.png",
             "model-selection-dark.png",
             "model-selection-short.png"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "chat-appearance",
+      "kind": "screenshot",
+      "description": "角色头像、可调不透明度的立绘背景、会话与全局保存及图片失败回退。",
+      "evidence": [
+        {
+          "spec": "e2e/tavern.spec.ts",
+          "test": "chat avatar and adjustable portrait background persist with session settings",
+          "projects": [
+            "iphone",
+            "desktop"
+          ],
+          "snapshots": [
+            "chat-background-settings.png",
+            "chat-background.png",
+            "chat-background-dark.png"
           ]
         }
       ]

@@ -86,7 +86,8 @@ Worker 根据平台目录映射对话模型，调用方不能覆盖 URL、Gatewa
 `rp` 和 `translate` 旧 ID 解析为同名动态路由，不再替换成 Provider 首个模型。
 未知或未部署的路由拒绝调用；明确选择的模型不被翻译用途覆盖。
 
-本次只修改 AI 平台，不修改、部署或接入 Tavern。酒馆待平台验收后再接入。
+Tavern 已按该目录契约接入，默认使用 `dynamic/rp`。
+其他已保存的 Provider 模型或动态路由保持原选择。
 
 ## Provider 与 BYOK
 

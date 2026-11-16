@@ -9,12 +9,6 @@
  function format(value:unknown):string{if(typeof value==='string'){try{return JSON.stringify(JSON.parse(value),null,2);}catch{return value;}}return JSON.stringify(value,null,2)??'';}
 </script>
 {#if visible.length||progress}<div class="agent-activities" aria-label="Agent 执行记录">
- {#if progress}
-  <details class="agent-activity" data-status="running" data-phase={progress.phase}>
-   <summary><ChevronRight class="activity-chevron" size={14} aria-hidden="true"/><LoaderCircle class="activity-spinner" size={15} aria-hidden="true"/><span role="status">{phases[progress.phase]}</span>{#if progress.target==='director'}<span class="activity-status">Director</span>{/if}</summary>
-   <div class="activity-result">{#if progress.reasoning}<pre aria-label="思考过程">{progress.reasoning}</pre>{:else}<span>{phases[progress.phase]}</span>{/if}</div>
-  </details>
- {/if}
  {#each visible as activity(activity.id)}{@const Icon=icons[activity.kind]}
  {#if activity.kind==='compression'}
   <div class="agent-activity" data-kind="compression" data-status={activity.status}>
@@ -28,6 +22,12 @@
   </details>
  {/if}
  {/each}
+ {#if progress}
+  <details class="agent-activity" data-status="running" data-phase={progress.phase}>
+   <summary><ChevronRight class="activity-chevron" size={14} aria-hidden="true"/><LoaderCircle class="activity-spinner" size={15} aria-hidden="true"/><span role="status">{phases[progress.phase]}</span>{#if progress.target==='director'}<span class="activity-status">Director</span>{/if}</summary>
+   <div class="activity-result">{#if progress.reasoning}<pre aria-label="思考过程">{progress.reasoning}</pre>{:else}<span>{phases[progress.phase]}</span>{/if}</div>
+  </details>
+ {/if}
 </div>{/if}
 <style>
  .compression-line{display:flex;align-items:center;gap:7px;min-height:44px}

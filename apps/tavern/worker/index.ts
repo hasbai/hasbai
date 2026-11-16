@@ -104,7 +104,7 @@ export default {
      const opts=await userSettings(env,owner),card=parseCard(JSON.parse(c.card_json)),greetings=[card.data.first_mes,...card.data.alternate_greetings];
      const greeting=Number(data.greeting??0);if(!Number.isInteger(greeting)||greeting<0||greeting>=greetings.length)throw new HttpError(400,'开场白无效');
      const id=crypto.randomUUID(),now=Date.now();
-     await env.DB.batch([env.DB.prepare("INSERT INTO sessions(id,owner,title,character_json,character_name,settings_json,created_at,updated_at,storage_backend,generation_id,generation_until) VALUES(?,?,?,?,?,?,?,?,'do',?,?)").bind(id,owner,c.name,JSON.stringify(card.raw),c.name,JSON.stringify(opts),now,now,'do:'+id,Number.MAX_SAFE_INTEGER),...(greetings[greeting]?[env.DB.prepare("INSERT INTO messages(id,session_id,role,content,status,ordinal,created_at) VALUES(?,?,'assistant',?,'completed',0,?)").bind(crypto.randomUUID(),id,macros(greetings[greeting],card.data.nickname||c.name,opts.userName),now)]:[])]);
+     await env.DB.batch([env.DB.prepare("INSERT INTO sessions(id,owner,title,character_json,character_name,settings_json,created_at,updated_at,storage_backend,generation_id,generation_until,character_id) VALUES(?,?,?,?,?,?,?,?,'do',?,?,?)").bind(id,owner,c.name,JSON.stringify(card.raw),c.name,JSON.stringify(opts),now,now,'do:'+id,Number.MAX_SAFE_INTEGER,c.id),...(greetings[greeting]?[env.DB.prepare("INSERT INTO messages(id,session_id,role,content,status,ordinal,created_at) VALUES(?,?,'assistant',?,'completed',0,?)").bind(crypto.randomUUID(),id,macros(greetings[greeting],card.data.nickname||c.name,opts.userName),now)]:[])]);
      return json((await callSession(env,owner,id,'read')).session,201);
     }
    }
