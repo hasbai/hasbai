@@ -33,6 +33,10 @@ export class TavernSession extends DurableObject<Env> {
   this.loading=(async()=>{
    const directory=await getSession(this.env,owner,id);if(directory.deleted_at)throw new HttpError(404,'会话不存在');
    this.ctx.storage.sql.exec(SESSION_SCHEMA);
+   if(!this.ctx.storage.sql.exec("PRAGMA table_info(sessions)").toArray().some(column=>column.name==='character_id')){
+    this.ctx.storage.sql.exec('ALTER TABLE sessions ADD COLUMN character_id TEXT');
+    this.ctx.storage.sql.exec('UPDATE sessions SET character_id=? WHERE id=?',directory.character_id??null,id);
+   }
    const store=new SessionStore(this.ctx.storage,id);
    if(!store.exists()){
     // Frozen before reading messages: every old mutation checks this existing generation fence.
@@ -67,7 +71,7 @@ export class TavernSession extends DurableObject<Env> {
   this.syncing=(async()=>{
    const store=this.store;if(!store)return;
    for(;;){const meta=store.syncState();if(meta.deleted){await this.purge(store);return;}if(meta.revision===meta.synced_revision)return;const row=store.directory();
-    const result=await this.env.DB.prepare("UPDATE sessions SET title=?,settings_json=?,book_ids_json=?,character_json=?,character_name=?,updated_at=? WHERE id=? AND owner=? AND storage_backend='do' AND deleted_at IS NULL").bind(row.title,row.settings_json,row.book_ids_json,row.character_json,row.character_name,row.updated_at,row.id,row.owner).run();
+    const result=await this.env.DB.prepare("UPDATE sessions SET title=?,settings_json=?,book_ids_json=?,character_json=?,character_name=?,character_id=?,updated_at=? WHERE id=? AND owner=? AND storage_backend='do' AND deleted_at IS NULL").bind(row.title,row.settings_json,row.book_ids_json,row.character_json,row.character_name,row.character_id??null,row.updated_at,row.id,row.owner).run();
     if(!result.meta.changes)throw new Error('会话目录同步失败');store.synced(meta.revision);
    }
   })();
@@ -79,7 +83,7 @@ export class TavernSession extends DurableObject<Env> {
   if(!this.store){if(!this.hasSchema())return;const row=this.ctx.storage.sql.exec<SessionRow & Record<string,SqlStorageValue>>('SELECT * FROM sessions LIMIT 1').toArray()[0];if(!row)return;const stored=new SessionStore(this.ctx.storage,row.id);if(stored.deleted())this.store=stored;else await this.load(row.owner,row.id);}
   try{await this.sync();}catch{await this.ctx.storage.setAlarm(Date.now()+10000);}
  }
- private async read(owner:string,id:string){const store=await this.load(owner,id);const context=await sessionContext(this.env,this.ctx,owner,store,async()=>{throw Error('只读请求不能调用模型');});this.available(store);return {session:{...session(store.get(),true),state:store.state()},messages:currentMessages(store.messages()),activities:store.activities(),context:contextUsage(context)};}
+ private async read(owner:string,id:string){const store=await this.load(owner,id);const context=await sessionContext(this.env,this.ctx,owner,store,async()=>{throw Error('只读请求不能调用模型');});this.available(store);const row=store.get();const media=row.character_id?await this.env.DB.prepare('SELECT avatar_image_id,portrait_image_id FROM characters WHERE id=? AND owner=?').bind(row.character_id,owner).first<Pick<CharacterRow,'avatar_image_id'|'portrait_image_id'>>():null;this.available(store);return {session:{...session(row,true),avatarImageId:media?.avatar_image_id??undefined,portraitImageId:media?.portrait_image_id??undefined,state:store.state()},messages:currentMessages(store.messages()),activities:store.activities(),context:contextUsage(context)};}
  private async stopRequest(owner:string,id:string,requestId:string){
   if(!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(requestId))throw new HttpError(400,'请求 ID 无效');
   const store=await this.load(owner,id);store.cancelRequest(requestId);
@@ -102,11 +106,11 @@ export class TavernSession extends DurableObject<Env> {
  private async update(owner:string,id:string,data:Record<string,unknown>){
   if(this.active)throw new HttpError(409,'请先停止生成');
   const store=await this.load(owner,id),row=store.idle(),opts=data.settings?settings(data.settings):settings(JSON.parse(row.settings_json));
-  let character:{json:string;name:string}|undefined;
+  let character:{id:string;json:string;name:string}|undefined;
   if(data.characterId!==undefined){
    const card=await this.env.DB.prepare('SELECT * FROM characters WHERE owner=? AND id=?').bind(owner,string(data.characterId)).first<CharacterRow>();
    if(!card)throw new HttpError(404,'角色不存在');
-   const parsed=parseCard(JSON.parse(card.card_json));character={json:JSON.stringify(parsed.raw),name:parsed.data.name};
+   const parsed=parseCard(JSON.parse(card.card_json));character={id:card.id,json:JSON.stringify(parsed.raw),name:parsed.data.name};
   }
   const ids=data.bookIds??JSON.parse(row.book_ids_json);await ownedBooks(this.env,owner,ids);if(data.settings){modelInput(opts);await validateModel(this.env,this.ctx,opts.modelId);}
   const title=data.title===undefined?row.title:string(data.title).trim();if(!title||title.length>120)throw new HttpError(400,'会话名称无效');

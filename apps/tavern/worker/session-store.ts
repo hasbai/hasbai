@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS sessions (
  id TEXT PRIMARY KEY, owner TEXT NOT NULL, title TEXT NOT NULL, character_json TEXT NOT NULL,
  character_name TEXT NOT NULL, settings_json TEXT NOT NULL, book_ids_json TEXT NOT NULL,
  generation_id TEXT, generation_until INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
- summary_json TEXT
+ summary_json TEXT, character_id TEXT
 );
 CREATE TABLE IF NOT EXISTS messages (
  id TEXT PRIMARY KEY, session_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL,
@@ -87,7 +87,7 @@ export class SessionStore {
  import(row:SessionRow,messages:MessageRow[]){
   if(this.exists())return;
   this.transaction(()=>{
-   this.write('INSERT INTO sessions VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',row.id,row.owner,row.title,row.character_json,row.character_name,row.settings_json,row.book_ids_json,null,null,row.created_at,row.updated_at,row.summary_json??null);
+   this.write('INSERT INTO sessions(id,owner,title,character_json,character_name,settings_json,book_ids_json,generation_id,generation_until,created_at,updated_at,summary_json,character_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',row.id,row.owner,row.title,row.character_json,row.character_name,row.settings_json,row.book_ids_json,null,null,row.created_at,row.updated_at,row.summary_json??null,row.character_id??null);
    for(const m of messages)this.insert(m);
    for(const s of JSON.parse(row.agent_seed_json??'[]') as TurnSnapshot[]){if(!this.findMessage(s.message_id))throw new Error('状态来源不存在');this.write('INSERT INTO turn_snapshots VALUES(?,?,?,?)',s.message_id,s.before_json,s.after_json,s.steps_json);}
    const restored=this.rawMessages();if(JSON.stringify(restored)!==JSON.stringify(messages.map(m=>({id:m.id,session_id:this.id,role:m.role,content:m.content,status:m.status,ordinal:m.ordinal,request_id:m.request_id,created_at:m.created_at,finish_reason:m.finish_reason??null,candidates_json:m.candidates_json??null}))))throw new Error('会话导入校验失败');
@@ -143,6 +143,6 @@ export class SessionStore {
  cancelRequest(requestId:string){this.write('INSERT OR IGNORE INTO cancelled_requests VALUES(?,?)',this.id,requestId);}
  cancelled(requestId:string){return !!this.rows('SELECT request_id FROM cancelled_requests WHERE session_id=? AND request_id=?',this.id,requestId)[0];}
  stop(assistantId:string,reason:FinishReason='stopped'){if(!this.owns(assistantId))throw new HttpError(409,'生成状态已改变');this.write("UPDATE messages SET status='aborted',finish_reason=? WHERE session_id=? AND id=? AND status='pending'",reason,this.id,assistantId);}
- update(settings:string,books:string,title:string,character?:{json:string;name:string}){this.transaction(()=>{const row=this.idle();this.write('UPDATE sessions SET settings_json=?,book_ids_json=?,title=?,character_json=?,character_name=?,updated_at=? WHERE id=?',settings,books,title,character?.json??row.character_json,character?.name??row.character_name,Date.now(),this.id);this.dirty();});}
+ update(settings:string,books:string,title:string,character?:{id:string;json:string;name:string}){this.transaction(()=>{const row=this.idle();this.write('UPDATE sessions SET settings_json=?,book_ids_json=?,title=?,character_json=?,character_name=?,character_id=?,updated_at=? WHERE id=?',settings,books,title,character?.json??row.character_json,character?.name??row.character_name,character?.id??row.character_id??null,Date.now(),this.id);this.dirty();});}
  remove(){this.transaction(()=>{this.idle();this.write('UPDATE session_meta SET deleted=1,revision=revision+1 WHERE id=?',this.id);});}
 }

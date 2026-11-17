@@ -12,7 +12,7 @@ it('adds generation defaults to historical snapshots and preserves identity and 
  expect(normalizeSettings(old).thinkingEnabled).toBe(false);
  expect(normalizeSettings(old).reasoningEffort).toBe('low');
 });
-it.each([{thinkingEnabled:'false'},{reasoningEffort:'xhigh'},{reasoningEffort:null},{reasoningEffort:undefined},{modelId:'../evil'},{topP:0},{topP:1.1},{topK:1.5},{frequencyPenalty:3},{presencePenalty:NaN},{temperature:undefined},{minP:-0.1},{minP:1.01},{minP:null},{repetitionPenalty:0},{repetitionPenalty:2.01}])('rejects explicit invalid settings %j', invalid=>{
+it.each([{characterBackground:'true'},{backgroundOpacity:-1},{backgroundOpacity:101},{backgroundOpacity:12.5},{backgroundOpacity:NaN},{thinkingEnabled:'false'},{reasoningEffort:'xhigh'},{reasoningEffort:null},{reasoningEffort:undefined},{modelId:'../evil'},{topP:0},{topP:1.1},{topK:1.5},{frequencyPenalty:3},{presencePenalty:NaN},{temperature:undefined},{minP:-0.1},{minP:1.01},{minP:null},{repetitionPenalty:0},{repetitionPenalty:2.01}])('rejects explicit invalid settings %j', invalid=>{
  expect(()=>normalizeSettings({...DEFAULT_SETTINGS,...invalid})).toThrow();
 });
 it('holds delimiter across every possible chunk boundary and never emits the protocol',()=>{
@@ -76,4 +76,11 @@ it('preserves raw user inputs and puts application rules only in system messages
 it('expands card post-history original to empty while preserving the card instructions',()=>{
  const prompt=buildPrompt({...card,post_history_instructions:'{{original}}\n保留角色自己填写的约定。'},[],[],DEFAULT_SETTINGS,null);
  expect(prompt.messages[0].content).toContain('保留角色自己填写的约定。');expect(prompt.messages[0].content).not.toContain('{{original}}');expect(prompt.messages[0].content).not.toContain('角色卡 original 后置文本');
+});
+
+it('preserves dynamic routes and explicit provider selections in historical settings',()=>{
+ for(const modelId of ['rp','default','dynamic/rp'])expect(normalizeSettings({...DEFAULT_SETTINGS,modelId}).modelId).toBe('dynamic/rp');
+ expect(normalizeSettings({...DEFAULT_SETTINGS,modelId:'translate'}).modelId).toBe('dynamic/translate');
+ expect(normalizeSettings({...DEFAULT_SETTINGS,modelId:'custom-main/qwen3'}).modelId).toBe('custom-main/qwen3');
+ for(const backgroundOpacity of [0,100])expect(normalizeSettings({...DEFAULT_SETTINGS,characterBackground:true,backgroundOpacity})).toMatchObject({characterBackground:true,backgroundOpacity});
 });

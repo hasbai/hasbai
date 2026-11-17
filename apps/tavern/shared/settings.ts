@@ -5,9 +5,11 @@ import { DEFAULT_SETTINGS, SAMPLING_TEMPLATES, type Settings } from './types';
 export function normalizeSettings(value: unknown): Settings {
  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('设置无效');
  const v = { ...DEFAULT_SETTINGS, ...((value as Partial<Settings>).thinkingEnabled ? SAMPLING_TEMPLATES.thinking : SAMPLING_TEMPLATES.instruct), ...value };
- // Settings saved before upstream discovery named the fixed Cloudflare routes.
- if (v.modelId === 'rp' || v.modelId === 'translate') v.modelId = 'default';
+ // Preserve old route selections and the retired platform-default selection.
+ if (v.modelId === 'rp' || v.modelId === 'translate') v.modelId = 'dynamic/' + v.modelId;
+ if (v.modelId === 'default') v.modelId = DEFAULT_SETTINGS.modelId;
  const range = (n: unknown, min: number, max: number, integer = false) => typeof n === 'number' && Number.isFinite(n) && n >= min && n <= max && (!integer || Number.isInteger(n));
+ if (typeof v.characterBackground !== 'boolean' || !range(v.backgroundOpacity, 0, 100, true)) throw new Error('请检查立绘背景与透明度');
  if (typeof v.userName !== 'string' || !v.userName.trim() || v.userName.length > 80) throw new Error('请检查你的名字');
  if (typeof v.persona !== 'string' || v.persona.length > 12000 || typeof v.systemPrompt !== 'string' || !v.systemPrompt.trim()) throw new Error('请检查角色设定与系统提示');
  if (typeof v.modelId !== 'string' || !MODEL_ID.test(v.modelId)) throw new Error('模型不可用');
@@ -19,5 +21,5 @@ export function normalizeSettings(value: unknown): Settings {
  if (!range(v.minP, 0, 1)) throw new Error('Min P 需为 0–1');
  if (!range(v.repetitionPenalty, Number.MIN_VALUE, 2)) throw new Error('重复惩罚需大于 0 且不超过 2');
  if (!range(v.frequencyPenalty, -2, 2) || !range(v.presencePenalty, -2, 2)) throw new Error('惩罚参数需为 −2–2');
- return { userName: v.userName.trim(), persona: v.persona, systemPrompt: v.systemPrompt, modelId: v.modelId, thinkingEnabled: v.thinkingEnabled, reasoningEffort: v.reasoningEffort, temperature: v.temperature, topP: v.topP, topK: v.topK, minP: v.minP, repetitionPenalty: v.repetitionPenalty, frequencyPenalty: v.frequencyPenalty, presencePenalty: v.presencePenalty };
+ return { characterBackground: v.characterBackground, backgroundOpacity: v.backgroundOpacity, userName: v.userName.trim(), persona: v.persona, systemPrompt: v.systemPrompt, modelId: v.modelId, thinkingEnabled: v.thinkingEnabled, reasoningEffort: v.reasoningEffort, temperature: v.temperature, topP: v.topP, topK: v.topK, minP: v.minP, repetitionPenalty: v.repetitionPenalty, frequencyPenalty: v.frequencyPenalty, presencePenalty: v.presencePenalty };
 }

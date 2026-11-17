@@ -20,7 +20,7 @@ async function catalog(env: Env): Promise<CatalogModel[]> {
  return body.data.filter(m => m.type === 'chat');
 }
 /** Context size comes from the discovered catalog; explicit upstream errors can only lower it. It never gates routing. */
-export async function capabilities(env: Env, _ctx: Pick<ExecutionContext, 'waitUntil'>, modelId = 'default'): Promise<Capability> {
+export async function capabilities(env: Env, _ctx: Pick<ExecutionContext, 'waitUntil'>, modelId = 'dynamic/rp'): Promise<Capability> {
  const entry = (await catalog(env).catch(() => [])).find(m => m.id === modelId);
  return capability(env, entry?.target ?? modelId, entry?.context_tokens);
 }
@@ -50,5 +50,5 @@ export async function recordFeedback(env: Env, capability: Capability, feedback:
  const limit = feedback.contextLimit;
  if (!Number.isSafeInteger(limit) || limit! < 1024 || (capability.contextTokens !== null && limit! >= capability.contextTokens)) return;
  const value: Capability = { ...capability, contextTokens: limit!, source: 'upstream:limit', checkedAt: Date.now() };
- await env.DB.prepare("INSERT INTO model_capabilities(id,value_json,expires_at) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET value_json=json_set(excluded.value_json,'$.contextTokens',min(coalesce(json_extract(value_json,'$.contextTokens'),?),?)),expires_at=excluded.expires_at").bind(capability.modelId ?? 'default',JSON.stringify(value),Date.now()+TTL,limit,limit).run();
+ await env.DB.prepare("INSERT INTO model_capabilities(id,value_json,expires_at) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET value_json=json_set(excluded.value_json,'$.contextTokens',min(coalesce(json_extract(value_json,'$.contextTokens'),?),?)),expires_at=excluded.expires_at").bind(capability.modelId ?? 'dynamic/rp',JSON.stringify(value),Date.now()+TTL,limit,limit).run();
 }

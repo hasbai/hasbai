@@ -21,7 +21,7 @@ export async function generateCharacter(request: Request, env: Env, username: st
     { role: 'system' as const, content: texts.character },
     { role: 'user' as const, content: JSON.stringify(input) },
    ], response_format: CHARACTER_RESPONSE_FORMAT, stream: true,
-   ...modelInput(DEFAULT_SETTINGS),
+   ...modelInput({...DEFAULT_SETTINGS,modelId:'default'}),
   };
   let text = '', reason: string | undefined;
   for await (const event of inferRoleplay(env,username,crypto.randomUUID(),inputModel,signal,'character-generation')) {

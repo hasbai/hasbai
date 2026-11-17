@@ -1,4 +1,5 @@
 <script lang="ts">
+ import AppearanceSettings from '../lib/AppearanceSettings.svelte';
  import LoadingPlaceholder from "../lib/LoadingPlaceholder.svelte";
  import { trackLoading, Spinner } from "@hasbai/ui/progress";
  import { Notice } from '@hasbai/ui/notice';
@@ -12,6 +13,7 @@
 <header class="page-head"><div><h1>对话设置</h1></div><div class="actions"><Button variant="ghost" href="#about"><Info size={18} aria-hidden="true"/>关于</Button><Button variant="outline" onclick={ontheme} aria-label={dark?'切换浅色模式':'切换深色模式'}>{#if dark}<Sun size={18}/>{:else}<Moon size={18}/>{/if}主题</Button></div></header>
 {#if error}<Notice variant="error">{error}<Button variant="outline" onclick={load}>重试</Button></Notice>{/if}{#if loading}<LoadingPlaceholder layout="form"/>{:else if loaded}
  <form class="settings-form" onsubmit={e=>{e.preventDefault();void save();}} oninput={()=>saved=false}>
+  <AppearanceSettings bind:settings disabled={busy}/>
   <GenerationSettings bind:settings {models} disabled={busy}/>
   <section class="settings-section" aria-labelledby="identity-heading"><div class="section-heading"><div><UserRound size={18} aria-hidden="true"/><h2 id="identity-heading">角色设定</h2></div></div><div class="field"><label for="user-name">你的名字</label><Input id="user-name" bind:value={settings.userName} required maxlength={80} disabled={busy}/></div><div class="field"><label for="persona">你的角色设定</label><textarea id="persona" bind:value={settings.persona} rows="4" maxlength={12000} disabled={busy}></textarea></div><div class="field"><div class="field-heading"><label for="system-prompt">System Prompt</label><Button type="button" variant="ghost" disabled={busy} onclick={()=>{settings.systemPrompt=systemTemplate;saved=false;}}>恢复默认提示</Button></div><textarea id="system-prompt" bind:value={settings.systemPrompt} rows="4" required disabled={busy}></textarea></div></section>
   <div class="settings-save actions"><Button type="submit" disabled={busy}>{#if busy}<Spinner/>{:else if saved}<Check size={16} aria-hidden="true"/>{/if}保存设置</Button>{#if saved}<span class="sr-only" role="status">已保存</span>{/if}</div>
