@@ -1,85 +1,32 @@
 # 博客架构
 
-开发边界、首页文案授权与任务路由见[博客入口](README.md)。本页源码路径相对 `apps/blog`；共享包和数据库路径相对仓库根。共享登录/授权见[AUTHORIZATION](../AUTHORIZATION.md)，共享组件与主题原则见[DESIGN](../DESIGN.md)。
+边界与路由见[博客入口](README.md)，登录授权见[AUTHORIZATION](../AUTHORIZATION.md)，共享视觉见[DESIGN](../DESIGN.md)。源码相对 `apps/blog`，共享包与迁移相对仓库根。
 
 ## 结构与主题
 
-SvelteKit 负责 SSR 页面，Hono 负责 `/api/**` 与 `/images/**` 接口。`hooks.server.ts` 分派请求并设置统一安全头。业务 repository 和主题留在应用内，共用 `packages/ui`、`packages/auth`、`packages/data`、`packages/markdown`。博客近白 neutral 底、深灰文字、少量玫瑰色强调、衬线正文、紧凑导航。桌面花瓣以轻量 SVG 显示首屏，水合后淡出并交给 Canvas；移动端和减少动效偏好停用。
-
-站点名称及页面无障碍名称引用 `site.name`（北极小站），手记只是内容类型；编辑器标题保留站点后缀。共享 Markdown 扩展和源码编辑选择见[MARKDOWN](../MARKDOWN.md)。
+SvelteKit 负责 SSR，Hono 负责 `/api/**` 与 `/images/**`，`hooks.server.ts` 分派请求并设安全头；复用 `packages/ui`、`packages/auth`、`packages/data`、`packages/markdown`。主题为近白 neutral 底、深灰正文、少量玫瑰强调、衬线正文与紧凑导航；桌面花瓣首屏用轻量 SVG，水合后交由 Canvas（移动端及减弱动效偏好停用）。站点及无障碍名称引用 `site.name`（北极小站）。
 
 ## 数据与权限
 
-`0010_translations.sql` 直接移除 PostgreSQL 表继承。`public.content` 保存语言无关的元数据：UUID、类型、原文语言、slug、序号、封面、发布状态和时间。文章、手记及独立页面共用这张表。`kind`、`status` 和 `source_locale` 使用 PostgreSQL enum。
-
-`public.translation` 保存 title、excerpt、markdown 和更新时间。`(content_id, locale)` 是主键；locale 使用 enum。修改和手动翻译直接覆盖该语言行，不保存多版本。元数据和所有语言正文共享发布状态；匿名 RLS 只允许读取已发布且发布时间已到的内容。
-
-迁移保留原有 UUID、slug、序号、发布时间、正文和标签关系。已有正文登记为 zh-CN。`public.tag.translations` 直接保存语言到名称的 JSONB 映射；保留 zh-CN 名称作为回退。`public.article_tag` 关联 content 与 tag。财务对象不受此迁移影响。
-
-公开路径仍为 `/articles/:slug`、`/notes/:sequence` 和独立页面根路径。`/contents/:id` 和 legacy_path 永久重定向到规范链接。页面 slug 不得占用功能路径或语言前缀；独立页面不进入首页和时间线。
-
-所有公开页面及编辑室支持 locale 前缀。默认 zh-CN 可以省略前缀；en 映射到 en-US，zh 映射到 zh-CN，zh-Hant 映射到 zh-TW。新增语言的短码按已启用语言列表匹配。内容按请求语言、zh-CN、原文语言、已有译文的顺序回退，并返回实际正文语言。
-
-前端 UI 使用 i18next，默认提供简体中文、繁体中文及英文词典。SSR 按请求解析语言，翻译函数显式指定语言，不修改共享实例的当前语言。日期和站内导航沿用界面语言；正文标记实际语言。
-
-Worker 的 BLOG_SETTINGS 绑定保存 KV 键 `blog:supported-locales`。默认列表是 zh-CN、zh-TW、en-US。编辑室可以启用或禁用已注册语言，zh-CN 必须保留。新增语言先扩展数据库 locale enum，再在编辑室启用。禁用语言保留已有译文。
-
-`save_content` RPC 在同一事务内写元数据、当前语言正文及文章标签。保存使用 content.updated_at 检查冲突。编辑室通过 `/api/content` 保存；MCP 使用同一服务端保存服务。公开读取统一经过私有 R2 快照，策略和成本边界见 [CACHE](CACHE.md)。
-
-发布后服务端自动补齐启用列表中的缺失译文，已有完整译文保持原样。空正文视为缺失，公开读取回退到完整译文。翻译失败保留已保存原文，并返回待补语言。修改时可在编辑器选择目标语言和已保存的来源语言，手动翻译并直接覆盖目标正文。未保存的修改需先保存。
-
-`save_translation` RPC 核对来源及目标译文的 updated_at。自动补译补齐缺失行和空正文；手动翻译拒绝覆盖调用期间被编辑的目标行。两种写入都会更新 content.updated_at，删除内容会级联删除译文。
-
-AI 翻译经 `AI_SERVICE` 服务绑定调用[统一 AI Worker](../ai/README.md)。模型由 AI Worker 解析为 `TRANSLATE_MODEL` 或平台默认对话模型。推理凭据仅保存在 AI Worker。服务端要求 JSON 输出，拒绝截断、无效和空正文响应。提示词要求保留 Markdown、代码、公式和链接。
-
-Neon 网关要求 JWT，包括匿名访问。Worker 仅在重建公开快照时获取短期匿名 JWT，并经匿名 RLS 读取已发布内容。SSR 和浏览器导航通过同源 `/api/public` 读取快照，不再由浏览器直连 Neon。公开页继续使用通用 `+page.ts` load，SSR 传入 SvelteKit 的请求级 fetch；导航期间显示原有骨架，关闭 hover 预取。列表只返回摘要，不序列化整篇 Markdown。
-
-原文保存、每次译文提交、删除和标签修改均更新快照。公开与管理员读取分开；Auth0 管理员登录、JWT 和数据库权限契约保持不变。计划发布、更新失败和并发处理见 [CACHE](CACHE.md)。
+- **内容与译文模型**：`0010_translations.sql` 移除表继承，`public.content` 存语言无关元数据（UUID、`kind`、`source_locale`、`slug`、`sequence`、封面、`status`、发布时间），文章/手记/独立页面共用；`public.translation` 以 `(content_id, locale)` 存 `title`、`excerpt`、`markdown`、`updated_at`（直接覆盖，不存多版本，匿名 RLS 仅允许已发布且到期内容）。`public.tag.translations` 存语言映射 JSONB（`zh-CN` 回退），`public.article_tag` 关联文章与标签。
+- **路由与多语言**：公开路径 `/articles/:slug`、`/notes/:sequence` 与独立页面根路径（`/contents/:id` 与 `legacy_path` 永久重定向；独立页面不占功能路径或语言前缀，不进首页/时间线）。支持 locale 前缀（默认 `zh-CN` 可省，`en`→`en-US`、`zh`→`zh-CN`、`zh-Hant`→`zh-TW`），正文按请求语言→`zh-CN`→原文→已有译文回退；UI 使用 `i18next`（`zh-CN`、`zh-TW`、`en-US`，SSR 显式传参不改共享实例）。KV `BLOG_SETTINGS` 键 `blog:supported-locales` 控制启用语言（`zh-CN` 不可删；新语言先扩 DB enum 再启用）。
+- **保存、翻译与公开快照**：`save_content` RPC 同事务写元数据、正文与标签并校验 `content.updated_at`；发布后自动补齐启用语言的缺失/空译文（不覆盖已有完整译文），编辑器也可基于选定来源语言手动覆盖目标译文（`save_translation` 校验来源与目标 `updated_at`）。AI 翻译经 `AI_SERVICE` 调用[统一 AI Worker](../ai/README.md)（`TRANSLATE_MODEL` 或平台默认，要求 JSON 输出并保留 Markdown/代码/公式/链接）。
+- **公开读取**：SSR 与浏览器导航统一经同源 `/api/public` 读取私有 R2 快照（不直接暴露 Neon 源库给访客，详情见 [CACHE](CACHE.md)）；关闭 hover 预取，列表只传摘要。
 
 ## 图片
 
-图片存储、上传和 AI 生成由[图床](../images/README.md)统一负责。
-博客的 `/api/images`、`/images/:id` 通过服务绑定转发。
-原 UUID、正文图片地址和封面外键保留，用户内容不改写。
+图片存储、上传与 AI 生成由[图床](../images/README.md)负责；博客 `/api/images` 与 `/images/:id` 经服务绑定转发，原 UUID、正文链接与封面外键保留。
 
 ## MCP
 
-`/api/mcp` 提供 Streamable HTTP MCP，匿名公开读取，管理员携带 Bearer Token 管理内容。Hono 路由使用标准 MCP SDK，响应为 JSON。每个请求新建 server 和 transport，完成后关闭；不使用会话或独立 SSE 流。
-
-- `list_content`：按类型分页，可搜索标题、摘要和正文。列表只返回摘要与规范网址，每页最多 50 条。
-- `get_content`：按类型和 UUID 读取 Markdown 正文与规范网址。
-- `list_tags`：读取公开标签。
-
-匿名请求使用与公开页面相同的快照读取，列表和详情限定发布状态与发布时间。管理员 Token 使用共享 `packages/auth/server` 验证签名、issuer、audience、有效期和用户身份，再检查 `blog.all:all`。无效 Token 返回 401；普通用户仍只读公开内容。
-
-管理员可调用 `create_content`、`update_content`、`delete_content`，管理文章、手记和独立页面。写入复用统一 content/translation schema、repository 和原子 RPC。修改和删除要求最近读取的 `updated_at`；文章详情返回 `tag_ids`。
-
-管理员还可新建、修改、删除标签；已被文章引用的标签不能直接删除。数据库继续执行 GRANT/RLS。
-
-Cloudflare MCP Portal“北极小站”的入口为 `https://mcp.hasbai.xyz/mcp`。Managed OAuth 与 Access Allow/Everyone 允许任意用户登录。登录统一使用北极组织及 `auth.hasbai.xyz`，提供邮箱、Google、Microsoft Account、GitHub。
-
-Portal 的 Managed OAuth 回调白名单包含 `https://chatgpt.com/connector/oauth/*` 与 `https://chatgpt.com/connector_platform_oauth_redirect`。仅允许本地回调会使 ChatGPT 连接返回 `Redirect URI not allowed by application configuration`。2026-10-13 补齐配置后，两种回调的 OAuth 请求均返回 302 并进入 Access 登录；ChatGPT 完整连接须重新发起验收。Claude（claude.ai 与桌面端）的回调 `https://claude.ai/api/mcp/auth_callback` 和 `https://claude.com/api/mcp/auth_callback` 同样须在白名单，缺失时动态注册返回 `redirect_uri is not allowed by the account configuration`，连接显示失败；2026-11-09 补齐后两者注册均返回客户端 ID。[官方回调规则](https://developers.openai.com/plugins/build/auth#redirect-url)
-
-上游为 `https://hasbai.xyz/api/mcp`，采用手动 OAuth，`on_behalf=true`。Portal 为每个用户保存并转发共享 audience 的 Auth0 Token，不使用共享管理员 Token。普通用户经 Portal 读取公开内容，管理员经同一 Portal 增删改查。
-
-MCP 固定公布九个工具，避免 Portal 缓存目录随登录用户权限缩减。每次管理调用检查 `blog.all:all`，普通用户和旧权限 Token 均拒绝写入。Portal 未登录请求返回 401，并提供 OAuth 发现地址；上游仍允许匿名读取。
-
-2026-10-13 真实管理员经 Portal 的增删改查与版本冲突拒绝通过。无角色合成账号公开读取通过，草稿不可见，六个管理调用均拒绝。详细证据见[DELIVERY](history/DELIVERY.md#hono-mcp-portal-与权限统一2026-10-13)。
-
-既有 Eastmoney Portal 迁到 `eastmoney-mcp.hasbai.xyz`，保留服务与访问策略。API 创建 Portal 后须设置 proxied CNAME，指向 `gateway.agents.cloudflare.com`。完成部署后再同步工具并核验实际调用，不能只核验资源创建。[官方配置说明](https://developers.cloudflare.com/cloudflare-one/access-controls/ai-controls/mcp-portals/)
+- **接口**：`/api/mcp` 提供无状态 Streamable HTTP MCP（JSON 响应）。匿名可调用 `list_content`（每页最多 50 条摘要）、`get_content`、`list_tags`（读取 R2 公开快照）；管理员携带 Bearer Token 经 `packages/auth/server` 验签并校验 `blog.all:all` 后，可调用 `create_content`、`update_content`、`delete_content`（均需最近 `updated_at`）及标签 CRUD（被引用标签不可删；DB GRANT/RLS 仍生效）。
+- **Cloudflare MCP Portal**：`https://mcp.hasbai.xyz/mcp`（Managed OAuth + Access Allow/Everyone，登录走 `auth.hasbai.xyz`，手动 OAuth `on_behalf=true` 连至 `https://hasbai.xyz/api/mcp`）。固定公布全部 9 个工具（每次管理调用校验 `blog.all:all`）。OAuth 回调白名单已登记 ChatGPT（`https://chatgpt.com/connector/oauth/*`、`https://chatgpt.com/connector_platform_oauth_redirect`）与 Claude（`https://claude.ai/api/mcp/auth_callback`、`https://claude.com/api/mcp/auth_callback`）。既有 Eastmoney Portal 迁至 `eastmoney-mcp.hasbai.xyz`（proxied CNAME 指向 `gateway.agents.cloudflare.com`）。
 
 ## 编辑和阅读
 
-Tiptap 3 WYSIWYG，Markdown 官方扩展；支持标题、粗斜体、列表、引用、代码块、链接、表格、图片、撤销/重做和 Markdown 源码切换。安全渲染与扩展契约见[共享 MARKDOWN](../MARKDOWN.md)。Markdown 表格不支持合并单元格，编辑工具不提供这种操作。
-
-文章可管理标签；手记使用同一 Markdown 编辑器，不填写标题或标签。封面可上传/移除，图片 name 作为默认 alt/title。离开未保存文档有确认；失败不清空内容。
-
-YAML 的 SSR 解析固定使用依赖提供的浏览器 ESM 入口，避免 Node/CommonJS 构建注入 `createRequire(import.meta.url)`，导致 Worker 初始化失败。博客固定独立 workerd 开发依赖，保留生产兼容日期，通过 Miniflare 的运行时路径覆盖用于启动检查。生产 `build` 完成后用本地 workerd 启动实际 Worker。检查包括版本接口、MCP 初始化、工具发现、无效输入、通知与 HTTP 方法。候选流程和 CI 均执行；Vite/Node 预览不能替代该运行时检查。
+- 使用 Tiptap 3 WYSIWYG（不支持合并单元格）；含扩展语法时自动切源码与统一预览以保真（契约见 [MARKDOWN](../MARKDOWN.md)）。手记无标题与标签；未保存离开确认，失败保留内容。
+- YAML SSR 解析固定使用浏览器 ESM 入口，避免产物注入 `createRequire`；`pnpm build` 附带 `scripts/check-worker-startup.mjs` 用固定 workerd 启动真实产物并验证 `/api/version` 与 MCP 协议。
 
 ## 迁移与发布
 
-迁移在 `database/blog`；测试 SQL 的写入事务回滚。历史 `0002`–`0004` 完成继承和分类清理；当前 `0010` 直接替换为统一内容及翻译表。
-
-`0005` 增加独立页面约束/权限；`0006`–`0009` 是特定内容版本的名称/政策迁移，不能当通用初始化脚本重放。正文冲突整体回滚，保留 UUID 与用户内容，详细历史见[DELIVERY](history/DELIVERY.md)。
-
-Worker 使用 `wrangler.jsonc` 的 IMAGE_SERVICE、KV BLOG_SETTINGS、私有 R2 BLOG_PUBLIC 绑定和两个自定义域名。Workers Builds 从 `apps/blog` 执行 `pnpm build`，本地构建亦包含实际 workerd `/api/version` 启动验证；自动 Build 与线上 SSR 仍须单独核验。统一检查、隔离 Neon 迁移、Linux 基线与 PR 交付见[TESTING](../TESTING.md)。
+迁移位于 `database/blog`（`0002`–`0004` 清理继承、`0005` 独立页面、`0006`–`0009` 历史政策/名称迁移不可当通用 seed 重放、`0010` 统一翻译表）。Worker 绑定 `IMAGE_SERVICE`、`AI_SERVICE`、`BLOG_SETTINGS`、`BLOG_PUBLIC` 与 `hasbai.xyz`/`blog.hasbai.xyz`；Workers Builds 在 `apps/blog` 执行 `pnpm build`。交付与隔离分支检查见 [TESTING](../TESTING.md)。
