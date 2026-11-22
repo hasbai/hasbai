@@ -89,14 +89,18 @@ it('streams provider reasoning separately from prose without waiting for complet
 });
 
 it('accepts tool deltas omitting index/id, usage-only chunks, model role and EOF [DONE] without double newline',async()=>{
- const sse = [
+ const makeResponse = () => new Response([
   'data: ' + JSON.stringify({ choices: [{ delta: { role: 'model', tool_calls: [{ type: 'function', function: { name: 'update_state', arguments: '{"patch":{"scene":"北港"}}' } }] }, finish_reason: 'stop' }] }),
   'data: ' + JSON.stringify({ id: 'u', model: 'gemini', usage: { prompt_tokens: 10, completion_tokens: 4 } }),
   'data: [DONE]',
- ].join('\n\n');
- vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(sse, { headers: { 'Content-Type': 'text/event-stream' } })));
- const events = await collect(inferRoleplay(env, 'u', 'r', { messages, tools: AGENT_TOOLS }, signal()));
- expect(events.at(-1)).toEqual({ type: 'finish', reason: 'stop', calls: [{ id: 'call_0', type: 'function', function: { name: 'update_state', arguments: '{"patch":{"scene":"北港"}}' } }] });
+ ].join('\n\n'), { headers: { 'Content-Type': 'text/event-stream' } });
+ vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => makeResponse()));
+ const events1 = await collect(inferRoleplay(env, 'u', 'r', { messages, tools: AGENT_TOOLS }, signal()));
+ const finish1 = events1.at(-1) as { type: 'finish'; reason: string; calls: Array<{ id: string; type: string; function: { name: string; arguments: string } }> };
+ expect(finish1).toEqual({ type: 'finish', reason: 'stop', calls: [{ id: expect.stringMatching(/^call_[a-f0-9-]+_0$/), type: 'function', function: { name: 'update_state', arguments: '{"patch":{"scene":"北港"}}' } }] });
+ const events2 = await collect(inferRoleplay(env, 'u', 'r', { messages, tools: AGENT_TOOLS }, signal()));
+ const finish2 = events2.at(-1) as typeof finish1;
+ expect(finish2.calls[0].id).not.toBe(finish1.calls[0].id);
 });
 
 it('allocates distinct indices when multiple indexless tool calls arrive in separate chunks',async()=>{

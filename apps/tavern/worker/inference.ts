@@ -102,7 +102,7 @@ export async function* inferRoleplay(env: Env, username: string, requestId: stri
      const used = new Set(toolIds.values());
      for (const idx of seenIndices) {
       if (!toolIds.has(idx)) {
-       let id = `call_${idx}`;
+       let id = `call_${crypto.randomUUID().slice(0, 12)}_${idx}`;
        while (used.has(id)) id += '_';
        used.add(id);
        toolIds.set(idx, id);
