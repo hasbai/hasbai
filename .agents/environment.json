@@ -1,0 +1,3 @@
+{
+  "install": "if [ \"$(uname -s)\" = \"Linux\" ] && [ \"$(uname -m)\" = \"x86_64\" ] && command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then node scripts/cloud-dev.mjs run env CI=true pnpm install --frozen-lockfile; else CI=true node scripts/local-environment.mjs setup; fi"
+}
