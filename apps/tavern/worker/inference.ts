@@ -42,16 +42,37 @@ export async function* inferRoleplay(env: Env, username: string, requestId: stri
  // fragments are adapted before the provider parser, without rewriting argument strings.
  async function* compatible(response: Response) {
   let emitted = false;
-  const seenIndices = new Set<number>(), toolIds = new Map<number, string>();
+  const seenIndices = new Set<number>(), namedIndices = new Set<number>(), toolIds = new Map<number, string>();
+  let lastIndex: number | undefined;
+  const nextFreeIndex = () => {
+   let idx = 0;
+   while (seenIndices.has(idx) && idx <= 7) idx++;
+   return idx;
+  };
   const normalizeToolDeltas = (raw: unknown): unknown => {
    if (!Array.isArray(raw)) return raw;
-   return raw.map((d, pos) => {
+   return raw.map(d => {
     if (!d || typeof d !== 'object' || Array.isArray(d)) return d;
     const item = d as Record<string, unknown>;
-    if (item.index !== undefined) return item;
-    const matched = typeof item.id === 'string' && item.id ? [...toolIds.entries()].find(([, id]) => id === item.id)?.[0] : undefined;
-    const index = matched ?? (raw.length === 1 && tools.size <= 1 ? 0 : pos);
-    return { ...item, index };
+    const fn = item.function && typeof item.function === 'object' && !Array.isArray(item.function) ? item.function as { name?: unknown } : undefined;
+    const hasName = typeof fn?.name === 'string' && fn.name.length > 0;
+    const id = typeof item.id === 'string' && item.id ? item.id : undefined;
+    let index = item.index;
+    if (index === undefined) {
+     const matched = id ? [...toolIds.entries()].find(([, existing]) => existing === id)?.[0] : undefined;
+     if (matched !== undefined) index = matched;
+     else if (id) index = nextFreeIndex();
+     else if (lastIndex !== undefined && !(hasName && namedIndices.has(lastIndex))) index = lastIndex;
+     else index = nextFreeIndex();
+    }
+    if (Number.isSafeInteger(index) && Number(index) >= 0 && Number(index) <= 7) {
+     const idx = Number(index);
+     seenIndices.add(idx);
+     if (hasName) namedIndices.add(idx);
+     if (id) toolIds.set(idx, id);
+     lastIndex = idx;
+    }
+    return item.index === undefined ? { ...item, index } : item;
    });
   };
   for await (const raw of sseData(response.body!, combined)) {
@@ -66,18 +87,6 @@ export async function* inferRoleplay(env: Env, username: string, requestId: stri
    if (choice?.delta && typeof choice.delta.role === 'string' && choice.delta.role !== '' && choice.delta.role !== 'assistant') choice.delta.role = 'assistant';
    if (choice?.delta?.refusal) throw new InferenceError(null, 'content_filter', 'delta_refusal');
    const normalizedTools = normalizeToolDeltas(choice?.delta?.tool_calls);
-   if (Array.isArray(normalizedTools)) {
-    for (const d of normalizedTools) {
-     if (d && typeof d === 'object' && !Array.isArray(d)) {
-      const item = d as { index?: unknown; id?: unknown };
-      if (Number.isSafeInteger(item.index) && Number(item.index) >= 0 && Number(item.index) <= 7) {
-       const idx = Number(item.index);
-       seenIndices.add(idx);
-       if (typeof item.id === 'string' && item.id) toolIds.set(idx, item.id);
-      }
-     }
-    }
-   }
    try { tools.push(normalizedTools); } catch { throw new InferenceError(null, 'invalid_output', 'malformed_tool_delta'); }
    const finish = typeof choice?.finish_reason === 'string' ? choice.finish_reason.trim() : '';
    if (finish) {

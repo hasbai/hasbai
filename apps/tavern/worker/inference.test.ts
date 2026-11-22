@@ -99,6 +99,19 @@ it('accepts tool deltas omitting index/id, usage-only chunks, model role and EOF
  expect(events.at(-1)).toEqual({ type: 'finish', reason: 'stop', calls: [{ id: 'call_0', type: 'function', function: { name: 'update_state', arguments: '{"patch":{"scene":"北港"}}' } }] });
 });
 
+it('allocates distinct indices when multiple indexless tool calls arrive in separate chunks',async()=>{
+ vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response([
+  chunk({ tool_calls: [{ id: 'call_a', type: 'function', function: { name: 'search_memory', arguments: '{"query":' } }] }),
+  chunk({ tool_calls: [{ id: 'call_a', function: { arguments: '"钥匙"}' } }] }),
+  chunk({ tool_calls: [{ id: 'call_b', type: 'function', function: { name: 'update_state', arguments: '{"patch":{"scene":"北港"}}' } }] }, 'tool_calls'),
+ ])));
+ const events = await collect(inferRoleplay(env, 'u', 'r', { messages, tools: AGENT_TOOLS }, signal()));
+ expect(events.at(-1)).toEqual({ type: 'finish', reason: 'tool_calls', calls: [
+  { id: 'call_a', type: 'function', function: { name: 'search_memory', arguments: '{"query":"钥匙"}' } },
+  { id: 'call_b', type: 'function', function: { name: 'update_state', arguments: '{"patch":{"scene":"北港"}}' } },
+ ] });
+});
+
 it('classifies truncated streams, refusals, truncated tool length and invalid tool calls without misreporting unsupported',async()=>{
  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('data: {"choices":[{"delta":{"content":"半句"}}', { headers: { 'Content-Type': 'text/event-stream' } })));
  await expect(collect(inferRoleplay(env, 'u', 'r', { messages }, signal()))).rejects.toMatchObject({ reason: 'interrupted' });
