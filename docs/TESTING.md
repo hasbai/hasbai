@@ -1,10 +1,10 @@
 # 测试与交付
 
-财务及历史命令在 `apps/financial` 运行。根 `pnpm` 脚本默认代理财务。CI 由 `ci.yml` 按 `ci:*` 标签计划应用，并调用对应可复用 workflow。`packages/`、共享配置、共享脚本与 `.github/` 改动声明 `ci:all`。
+财务及历史命令在 `apps/financial` 运行。根 `pnpm` 脚本默认代理财务。线上 `ci.yml` 仅按 `ci:*` 标签调度对应前端应用的视觉 CI（`*-visual`），不再单独运行线上 `check` CI。
 
 ## 运行
 
-提交代码前，必须在本地完成受影响应用的全部非 Playwright 检查。检查失败时先修复，再开 PR 由 GitHub Actions 复验并执行完整 Playwright。修改前，在仓库根或容器内运行 `pnpm install --frozen-lockfile`。提交前统一运行 `git diff --check`。
+提交代码前，必须在本地完成受影响应用的全部 checks 与本地测试（含构建验证）。检查或测试失败时先在本地修复，不得跳过本地检查直接提交。修改前，在仓库根或容器内运行 `pnpm install --frozen-lockfile`。提交前统一运行 `git diff --check`。
 
 | 应用目录 | 本地提交前检查（不含完整 Playwright） |
 | --- | --- |
@@ -24,14 +24,22 @@
 
 主代理在本地完成修改与全部非 Playwright 检查，不拆分子任务或多轮复核。源码与环境未变且检查已通过时，不重复执行。大计划、重复失败与长任务保留 architect 审查要求。
 
-## 按需 PR 与自动合并
+## 按需 PR、Code Review 与合并请求
 
 只有代码变更必须走 PR。纯文档、skills 及不影响前端输出的数据库或维护脚本改动见 [直推](#直推)。
 
-- **声明 CI 范围**：由主代理运行 `gh pr create --label ci:<应用>` 手动声明 CI 范围。标签支持 `ci:financial`、`ci:blog`、`ci:zboard`、`ci:tavern`、`ci:images`、`ci:ai`、`ci:wechat` 或 `ci:all`（可传多个）。PR 描述必须写明跳过其余应用的理由。无 `ci:` 标签或手动 dispatch 默认运行全部应用。
-- **必需状态与自动合并**：仓库保护唯一必需状态为 `Hasbai CI`（`ci.yml` 的 `gate` job 核对计划内 `success`、计划外 `skipped`）。非 Draft PR 打开、重开或转为 Ready 后，`automerge.yml` 启用 `gh pr merge --auto --squash`。修改 `.github/workflows/` 的 PR 受 `GITHUB_TOKEN` 权限限制，CI 通过后改用 `gh pr merge <PR> --squash`。暂停自动合并时，使用 Draft 或 `--disable-auto`。
-- **PR 迭代与排查**：同功能修补与 CI 修复推至同一分支与 PR。合并后新修改另开 PR。检查状态时，只调用一次 `gh pr checks <PR>`，不得轮询。失败时只下载当前失败 job 日志与截图或 trace 一次并定位根因。无修改且无基础设施故障证据时，不得盲目重跑。
-- **合并后**：核验 `main` 合并 SHA、Cloudflare 自动构建提交、部署结果与线上版本。不得重跑 `main` 全量 CI。
+- **声明 CI 范围**：开 PR 时，由 Agent 自行判断修改是否实际涉及前端代码且会导致 UI 变化，严禁滥用标签扩大范围，也不得使用脚本、自动打标 workflow 或路径规则约束判断。
+  - **UI 会变**：使用 `gh pr create --label ci:<应用>`（可传多个）声明受影响前端应用；标签支持 `ci:financial`、`ci:blog`、`ci:zboard`、`ci:tavern`、`ci:images`、`ci:ai`；仅当共享变更确实影响全部前端 UI 时才用 `ci:all`。
+  - **UI 不变**：如纯后端、Worker、API、D1、`apps/wechat`、非 UI 重构、文档或配置改动，不打任何 `ci:*` 标签。PR 无 `ci:` 标签时，`ci.yml` 跳过全部 `*-visual` job 并直接通过 `Hasbai CI`；手动 `workflow_dispatch` 运行全部前端视觉 CI。
+  - PR 描述必须写明打标或不打标的判断依据。
+- **同一功能同一 PR**：同一功能的修改、补充、CI 修复与 Code Review 修复必须推至同一分支与同一个 PR，尽量不要反复开多个 PR。仅在合并后开启新功能或独立任务时另开 PR。
+- **必需状态与禁止自动合并**：仓库保护唯一必需状态为 `Hasbai CI`（`ci.yml` 的 `gate` job 核对计划内 `success`、计划外 `skipped`）。仓库不启用自动合并，Agent 不得开启 `--auto` 或自行执行 `gh pr merge`。
+- **等待 CI 与处理 Code Review**：项目已启用 GitHub 自动 Code Review。每次提交推送或新开 PR 后，按以下步骤完成验收：
+  1. 等待 `Hasbai CI` 与 GitHub 自动 Code Review 均完成（按合理间隔查看 checks 与 PR review 状态，避免高频空转；CI 失败时只下载当前失败 job 日志与截图或 trace 一次并定位根因，无修改且无基础设施故障证据时不得盲目重跑）。
+  2. 审阅全部 Code Review 意见与未解决会话，在本地完成必要修复并复跑 checks 与测试后推回同一 PR（产生新提交后重新等待 CI 与 Code Review）。
+  3. 确认问题已处理完毕后，对应点掉（resolve）所有 review conversation。
+  4. 确认 `Hasbai CI` 通过、自动 Code Review 完成且全部 conversation 已 resolve、无遗留错误后，再向用户汇报结果并请求合并。
+- **合并后**：用户完成合并后，核验 `main` 合并 SHA、Cloudflare 自动构建提交、部署结果与线上版本。不得重跑 `main` 全量 CI。
 
 ## 直推
 

@@ -4,25 +4,6 @@ on:
 permissions:
   contents: read
 jobs:
-  check:
-    name: ai-check
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/ai
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm check:visual-coverage
-      - run: pnpm typecheck
-      - run: pnpm test
-      - run: pnpm test:runtime
-      - run: pnpm build
   visual:
     name: ai-visual
     runs-on: ubuntu-24.04-arm
