@@ -45,6 +45,20 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* Keep keyboard focus on one contour, without an outer ring or gap. */
+@layer base {
+  :where(a, button, input, textarea, select, summary, [contenteditable="true"], [role="button"], [role="switch"]):focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: -2px;
+  }
+  :where([aria-invalid="true"]):focus-visible {
+    outline-color: var(--destructive);
+  }
+}
+[data-slot="input-group-control"]:focus-visible {
+  outline: none;
+}
+
 /* Shared interaction timing for every application. */
 @media (prefers-reduced-motion: no-preference) {
  :where(button,a,input,textarea,select,summary){transition-property:color,background-color,border-color,box-shadow,opacity;transition-duration:150ms;transition-timing-function:ease-out}

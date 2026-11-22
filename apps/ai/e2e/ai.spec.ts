@@ -44,12 +44,14 @@ test('ordinary user streams a reply and retains the prompt after cancellation',a
  await page.getByRole('button',{name:'新对话',exact:true}).click();await expect(page.getByRole('button',{name:'选择模型',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'发送',exact:true})).toBeDisabled();
 });
 test('model catalog groups cards by provider and closes by button escape and outside click',async({page},info)=>{
- await fixture(page);const trigger=page.getByRole('button',{name:'选择模型',exact:true});await trigger.click();
+ await fixture(page);const trigger=page.getByRole('button',{name:'选择模型',exact:true});
+ await trigger.focus();await expect(trigger).toHaveCSS('outline-offset','-2px');await expect(trigger).toHaveCSS('outline-width','2px');
+ await trigger.click();
  await expect(page.getByRole('dialog')).toBeVisible();await expect(page.locator('.provider-group')).toHaveCount(3);await expect(page.locator('.model-card')).toHaveCount(4);await shot(page,info,'model-catalog');
  await page.getByRole('button',{name:'关闭模型选择'}).click();await expect(page.getByRole('dialog')).toHaveCount(0);await expect(trigger).toBeFocused();
  await trigger.click();await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);
  await trigger.click();await page.mouse.click(2,2);await expect(page.getByRole('dialog')).toHaveCount(0);
- await trigger.click();await page.getByLabel('搜索模型').fill('main');await expect(page.locator('.model-card')).toHaveCount(1);await expect(page.getByText('32,768 tokens')).toBeVisible();await page.getByRole('button',{name:'使用此模型'}).click();await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.locator('.model-trigger')).toContainText('qwen3');
+ await trigger.click();const search=page.getByLabel('搜索模型');await search.focus();await expect(search).toHaveCSS('outline-style','none');await search.fill('main');await expect(page.locator('.model-card')).toHaveCount(1);await expect(page.getByText('32,768 tokens')).toBeVisible();await page.getByRole('button',{name:'使用此模型'}).click();await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.locator('.model-trigger')).toContainText('qwen3');
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
 test('admin manages route versions and explicitly deploys a rollback',async({page},info)=>{
