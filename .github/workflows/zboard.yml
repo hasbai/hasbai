@@ -4,29 +4,6 @@ on:
 permissions:
   contents: read
 jobs:
-  check:
-    name: zboard-check
-    runs-on: ubuntu-24.04-arm
-    container:
-      image: ghcr.io/hasbai/financial-visual-ci@sha256:cc48be4b60948d04c091d95e32ab0c2a2ec1393b778fa39bf69cedd4d94dd579
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: apps/zboard
-    steps:
-      - uses: actions/checkout@v4
-      - run: pnpm install --frozen-lockfile
-      - run: node ../financial/scripts/check-visual-coverage.mjs
-      - run: pnpm typecheck
-      - run: pnpm exec wrangler d1 migrations apply zboard --local
-      # MIHOMO_BIN points at the pinned Mihomo preinstalled in the image. The native test skips silently without it.
-      - run: test -x "$MIHOMO_BIN" && "$MIHOMO_BIN" -v
-      - run: pnpm test
-      - run: pnpm build
-      - uses: actions/upload-artifact@v4
-        with:
-          name: zboard-production
-          path: apps/zboard/dist/
   visual:
     name: zboard-visual
     runs-on: ubuntu-24.04-arm

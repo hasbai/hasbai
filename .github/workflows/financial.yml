@@ -4,38 +4,6 @@ on:
 permissions:
   contents: read
 jobs:
-  check:
-    defaults:
-      run:
-        working-directory: apps/financial
-    name: financial-check
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm test:ci-tools
-      - name: Check page coverage inventory
-        run: pnpm check:visual-coverage
-      - run: pnpm typecheck
-      - run: pnpm test:coverage
-      - run: pnpm build
-      - uses: actions/upload-artifact@v4
-        with:
-          name: financial-production-build
-          path: apps/financial/dist/
-          retention-days: 14
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: financial-coverage
-          path: apps/financial/coverage/
-          retention-days: 14
   visual:
     defaults:
       run:

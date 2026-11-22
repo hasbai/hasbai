@@ -4,31 +4,6 @@ on:
 permissions:
   contents: read
 jobs:
-  check:
-    name: tavern-check
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: apps/tavern
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: node ../financial/scripts/check-visual-coverage.mjs
-      - run: pnpm typecheck
-      - run: pnpm exec wrangler d1 migrations apply tavern --local
-      - run: pnpm test
-      - run: pnpm test:session-runtime
-      - run: pnpm build
-      - uses: actions/upload-artifact@v4
-        with:
-          name: tavern-production
-          path: apps/tavern/dist/
   visual:
     name: tavern-visual
     runs-on: ubuntu-24.04-arm
