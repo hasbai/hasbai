@@ -16,7 +16,7 @@ export function isToolCapableFinish(reason?: string | null, hasToolCalls = false
  const normalized = reason?.trim().toLowerCase();
  if (!normalized) return false;
  if (normalized === 'tool_calls' || normalized === 'function_call' || normalized === 'tool_use') return true;
- return hasToolCalls && (normalized === 'stop' || normalized === 'end_turn');
+ return hasToolCalls && mapUpstreamFinishReason(normalized) === 'stop';
 }
 
 export function generationNotice(reason?: FinishReason | null): string {

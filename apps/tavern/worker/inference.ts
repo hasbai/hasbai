@@ -44,6 +44,7 @@ export async function* inferRoleplay(env: Env, username: string, requestId: stri
   let emitted = false;
   const seenIndices = new Set<number>(), namedIndices = new Set<number>(), toolIds = new Map<number, string>();
   let lastIndex: number | undefined;
+  let lastBatchIndices: number[] = [];
   const nextFreeIndex = () => {
    let idx = 0;
    while (seenIndices.has(idx) && idx <= 7) idx++;
@@ -51,7 +52,8 @@ export async function* inferRoleplay(env: Env, username: string, requestId: stri
   };
   const normalizeToolDeltas = (raw: unknown): unknown => {
    if (!Array.isArray(raw)) return raw;
-   return raw.map(d => {
+   const batchIndices: number[] = [];
+   const mapped = raw.map((d, pos) => {
     if (!d || typeof d !== 'object' || Array.isArray(d)) return d;
     const item = d as Record<string, unknown>;
     const fn = item.function && typeof item.function === 'object' && !Array.isArray(item.function) ? item.function as { name?: unknown } : undefined;
@@ -62,6 +64,7 @@ export async function* inferRoleplay(env: Env, username: string, requestId: stri
      const matched = id ? [...toolIds.entries()].find(([, existing]) => existing === id)?.[0] : undefined;
      if (matched !== undefined) index = matched;
      else if (id) index = nextFreeIndex();
+     else if (raw.length > 1 && !hasName && lastBatchIndices.length === raw.length) index = lastBatchIndices[pos];
      else if (lastIndex !== undefined && !(hasName && namedIndices.has(lastIndex))) index = lastIndex;
      else index = nextFreeIndex();
     }
@@ -71,9 +74,12 @@ export async function* inferRoleplay(env: Env, username: string, requestId: stri
      if (hasName) namedIndices.add(idx);
      if (id) toolIds.set(idx, id);
      lastIndex = idx;
+     batchIndices.push(idx);
     }
     return item.index === undefined ? { ...item, index } : item;
    });
+   if (batchIndices.length === raw.length) lastBatchIndices = batchIndices;
+   return mapped;
   };
   for await (const raw of sseData(response.body!, combined)) {
    if (raw === '[DONE]') { yield 'data: [DONE]\n\n'; break; }

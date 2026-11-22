@@ -112,6 +112,31 @@ it('allocates distinct indices when multiple indexless tool calls arrive in sepa
  ] });
 });
 
+it('preserves call identity across parallel indexless anonymous continuation chunks',async()=>{
+ vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response([
+  chunk({ tool_calls: [
+   { id: 'call_a', type: 'function', function: { name: 'search_memory', arguments: '{"query":' } },
+   { id: 'call_b', type: 'function', function: { name: 'update_state', arguments: '{"patch":' } },
+  ] }),
+  chunk({ tool_calls: [
+   { function: { arguments: '"钥匙"}' } },
+   { function: { arguments: '{"scene":"南塔"}}' } },
+  ] }, 'tool_calls'),
+ ])));
+ const events = await collect(inferRoleplay(env, 'u', 'r', { messages, tools: AGENT_TOOLS }, signal()));
+ expect(events.at(-1)).toEqual({ type: 'finish', reason: 'tool_calls', calls: [
+  { id: 'call_a', type: 'function', function: { name: 'search_memory', arguments: '{"query":"钥匙"}' } },
+  { id: 'call_b', type: 'function', function: { name: 'update_state', arguments: '{"patch":{"scene":"南塔"}}' } },
+ ] });
+});
+
+it('rejects truncated tool fragments on stop_sequence instead of silently discarding them',async()=>{
+ vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response([
+  chunk({ content: '正文。', tool_calls: [{ index: 0, id: 'c1', function: { name: 'update_state', arguments: '{"patch":' } }] }, 'stop_sequence'),
+ ])));
+ await expect(collect(inferRoleplay(env, 'u', 'r', { messages, tools: AGENT_TOOLS }, signal()))).rejects.toMatchObject({ reason: 'invalid_output' });
+});
+
 it('classifies truncated streams, refusals, truncated tool length and invalid tool calls without misreporting unsupported',async()=>{
  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('data: {"choices":[{"delta":{"content":"半句"}}', { headers: { 'Content-Type': 'text/event-stream' } })));
  await expect(collect(inferRoleplay(env, 'u', 'r', { messages }, signal()))).rejects.toMatchObject({ reason: 'interrupted' });
