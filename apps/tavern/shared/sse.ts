@@ -15,7 +15,17 @@ export async function* sseData(stream: ReadableStream<Uint8Array>, signal?: Abor
         const data = block.split('\n').filter(l => l.startsWith('data:')).map(l => l.slice(5).replace(/^ /, '')).join('\n');
         if (data) yield data;
       }
-      if (done) { if (buffer.trim()) throw new Error('流式响应被截断'); break; }
+      if (done) {
+        const rest = buffer.trim();
+        if (rest) {
+          const lines = rest.split('\n').map(l => l.trim()).filter(Boolean);
+          if (lines.every(l => l.startsWith(':'))) break;
+          const data = lines.filter(l => l.startsWith('data:')).map(l => l.slice(5).replace(/^ /, '')).join('\n');
+          if (data === '[DONE]' && lines.every(l => l.startsWith('data:') || l.startsWith(':'))) { yield '[DONE]'; break; }
+          throw new Error('流式响应被截断');
+        }
+        break;
+      }
     }
   } finally { signal?.removeEventListener('abort', abort); await reader.cancel().catch(() => {}); reader.releaseLock(); }
 }

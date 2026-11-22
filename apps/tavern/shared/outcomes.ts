@@ -1,4 +1,24 @@
 import type { FinishReason } from './types';
+
+export function mapUpstreamFinishReason(reason?: string | null): FinishReason {
+ const normalized = reason?.trim().toLowerCase();
+ if (!normalized) return 'interrupted';
+ if (normalized === 'stop' || normalized === 'end_turn' || normalized === 'stop_sequence') return 'stop';
+ if (normalized === 'length' || normalized === 'max_tokens' || normalized === 'model_context_window_exceeded') return 'length';
+ if (['content_filter', 'safety', 'recitation', 'prohibited_content', 'spii', 'blocklist', 'refusal', 'sensitive'].includes(normalized)) return 'content_filter';
+ if (normalized === 'malformed_function_call') return 'invalid_output';
+ if (normalized === 'error') return 'upstream';
+ if (normalized === 'abort' || normalized === 'canceled' || normalized === 'cancelled') return 'interrupted';
+ return 'unsupported';
+}
+
+export function isToolCapableFinish(reason?: string | null, hasToolCalls = false): boolean {
+ const normalized = reason?.trim().toLowerCase();
+ if (!normalized) return false;
+ if (normalized === 'tool_calls' || normalized === 'function_call' || normalized === 'tool_use') return true;
+ return hasToolCalls && (normalized === 'stop' || normalized === 'end_turn');
+}
+
 export function generationNotice(reason?: FinishReason | null): string {
  switch(reason){
   case 'invalid_output': return '模型输出异常，未提交剧情状态';

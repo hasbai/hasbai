@@ -938,3 +938,27 @@ it('persists appearance settings separately for new and existing sessions',async
  expect((await call('/api/sessions/'+s.id,'PATCH',{settings:{...value,backgroundOpacity:65}})).status).toBe(200);
  detail=await(await call('/api/sessions/'+s.id)).json() as typeof detail;expect(detail.session.settings).toMatchObject({characterBackground:true,backgroundOpacity:65});
 });
+
+it('reports invalid_output instead of unsupported when model tool validation fails',async()=>{
+ const {s}=await seed();
+ aiRun.mockResolvedValueOnce(tool('update_state',{patch:{goals:{g1:{task:'送货',actor:'character',status:'completed',progress:'完成',pauseReason:null,completionEvidence:'并不存在的原句'}}}}));
+ const wire=await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'核查'})).text();await Promise.all(work);
+ expect(wire).toContain('模型输出异常，未提交剧情状态');
+ expect(wire).not.toContain('模型返回了不支持的结束类型');
+ expect(terminal(wire)).toMatchObject({status:'error',finishReason:'invalid_output',candidates:[]});
+});
+
+it('normalizes provider finish aliases and executes stop-terminated compat tool calls',async()=>{
+ const {s}=await seed();
+ aiRun
+  .mockResolvedValueOnce(new Response('data: '+JSON.stringify({choices:[{delta:{tool_calls:[{type:'function',function:{name:'update_state',arguments:'{"patch":{"scene":"南塔"}}'}}]},finish_reason:'stop'}]})+'\n\ndata: [DONE]',{headers:{'Content-Type':'text/event-stream'}}))
+  .mockResolvedValueOnce(new Response('data: '+JSON.stringify({choices:[{delta:{content:'到了南塔。'},finish_reason:'end_turn'}]})+'\n\ndata: [DONE]\n\n',{headers:{'Content-Type':'text/event-stream'}}))
+  .mockResolvedValueOnce(candidateCompletion(['推门进去。','环顾四周。','先观察。']));
+ const first=await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'前往南塔'})).text();await Promise.all(work);
+ expect(terminal(first)).toMatchObject({status:'completed',finishReason:'stop',content:'到了南塔。',candidates:['推门进去。','环顾四周。','先观察。']});
+ for(const [upstream,expected] of [['max_tokens','length'],['SAFETY','content_filter'],['error','upstream'],['abort','interrupted']] as const){
+  aiRun.mockResolvedValueOnce(completion('片段',upstream));
+  const wire=await(await call('/api/sessions/'+s.id+'/generate','POST',{requestId:crypto.randomUUID(),content:'继续 '+upstream})).text();await Promise.all(work);
+  expect(terminal(wire)).toMatchObject({status:'error',finishReason:expected});
+ }
+});

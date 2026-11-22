@@ -87,3 +87,29 @@ it('streams provider reasoning separately from prose without waiting for complet
  push(chunk({reasoning_content:'已知事实。'}));push(chunk({content:'她点点头。'},'stop'));controller.close();
  const rest=await collect(stream);expect(rest).toContainEqual({type:'reasoning',text:'已知事实。'});expect(rest.filter(e=>e.type==='text')).toEqual([{type:'text',text:'她点点头。'}]);
 });
+
+it('accepts tool deltas omitting index/id, usage-only chunks, model role and EOF [DONE] without double newline',async()=>{
+ const sse = [
+  'data: ' + JSON.stringify({ choices: [{ delta: { role: 'model', tool_calls: [{ type: 'function', function: { name: 'update_state', arguments: '{"patch":{"scene":"北港"}}' } }] }, finish_reason: 'stop' }] }),
+  'data: ' + JSON.stringify({ id: 'u', model: 'gemini', usage: { prompt_tokens: 10, completion_tokens: 4 } }),
+  'data: [DONE]',
+ ].join('\n\n');
+ vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(sse, { headers: { 'Content-Type': 'text/event-stream' } })));
+ const events = await collect(inferRoleplay(env, 'u', 'r', { messages, tools: AGENT_TOOLS }, signal()));
+ expect(events.at(-1)).toEqual({ type: 'finish', reason: 'stop', calls: [{ id: 'call_0', type: 'function', function: { name: 'update_state', arguments: '{"patch":{"scene":"北港"}}' } }] });
+});
+
+it('classifies truncated streams, refusals, truncated tool length and invalid tool calls without misreporting unsupported',async()=>{
+ vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('data: {"choices":[{"delta":{"content":"半句"}}', { headers: { 'Content-Type': 'text/event-stream' } })));
+ await expect(collect(inferRoleplay(env, 'u', 'r', { messages }, signal()))).rejects.toMatchObject({ reason: 'interrupted' });
+
+ vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response([chunk({ refusal: '无法回答' }, 'stop')])));
+ await expect(collect(inferRoleplay(env, 'u', 'r', { messages }, signal()))).rejects.toMatchObject({ reason: 'content_filter' });
+
+ vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response([chunk({ content: '半句', tool_calls: [{ index: 0, id: 'c1', function: { name: 'update_state', arguments: '{"patch":' } }] }, 'length')])));
+ const lengthEvents = await collect(inferRoleplay(env, 'u', 'r', { messages, tools: AGENT_TOOLS }, signal()));
+ expect(lengthEvents.at(-1)).toEqual({ type: 'finish', reason: 'length', calls: [] });
+
+ vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response([chunk({ tool_calls: [{ index: 0, id: 'broken', function: { name: 'search_memory', arguments: '{' } }] }, 'tool_calls')])));
+ await expect(collect(inferRoleplay(env, 'u', 'r', { messages, tools: AGENT_TOOLS }, signal()))).rejects.toMatchObject({ reason: 'invalid_output' });
+});

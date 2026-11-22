@@ -110,3 +110,10 @@ it('assembles nullable optional tool fields without losing earlier identity or a
 it('retains an initially empty index until later fields complete it and preserves null in JSON arguments',()=>{
  const stream=new ToolCallStream();stream.push([{index:1,id:null,type:null,function:{name:null,arguments:null}}]);expect(stream.size).toBe(1);expect(()=>stream.finish()).toThrow();stream.push([{index:1,id:'later',type:'function',function:{name:'update_state',arguments:'{"patch":{"facts":{"钥匙":null}}}'}}]);stream.push([{index:1,id:null,type:null,function:{name:null,arguments:null}}]);expect(stream.finish()).toEqual([{id:'later',type:'function',function:{name:'update_state',arguments:'{"patch":{"facts":{"钥匙":null}}}'}}]);
 });
+
+it('retains earlier tool id and ignores empty continuation type strings',()=>{
+ const stream=new ToolCallStream();
+ stream.push([{index:0,id:'call-1',type:'function',function:{name:'update_state',arguments:'{"patch":'}}]);
+ stream.push([{index:0,id:'',type:'',function:{name:'',arguments:'{"scene":"北港"}}'}}]);
+ expect(stream.finish()).toEqual([{id:'call-1',type:'function',function:{name:'update_state',arguments:'{"patch":{"scene":"北港"}}'}}]);
+});

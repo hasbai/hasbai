@@ -1,6 +1,7 @@
 import { splitOoc } from '../shared/commands';
 import { telegramDialogue } from '../shared/telegram-input';
 import { SUMMARY_TASK } from '../shared/instructions';
+import { mapUpstreamFinishReason } from '../shared/outcomes';
 import { buildPrompt, estimateTokens, type PromptMessage } from '../shared/prompt';
 import { SAMPLING_TEMPLATES, type Book, type JsonObject, type Message, type Settings } from '../shared/types';
 import { inferRoleplay, InferenceError } from './inference';
@@ -147,7 +148,8 @@ export async function summarizeWithModel(env: Env, username: string, requestId: 
   throw error;
  }
  if (signal.aborted) throw new Error('会话压缩已停止');
- if (finish === 'length') throw new Error('会话压缩达到长度上限');
- if (finish !== 'stop') throw new Error('会话压缩未完成');
+ const mapped = mapUpstreamFinishReason(finish);
+ if (mapped === 'length') throw new Error('会话压缩达到长度上限');
+ if (mapped !== 'stop') throw new Error('会话压缩未完成');
  return text;
 }
