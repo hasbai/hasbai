@@ -1,235 +1,84 @@
 # Tavern 架构与产品契约
 
-开发边界与按需入口见[README](README.md)；本页源码路径相对 `apps/tavern`。当前发布/真实模型的证据限制见[PROGRESS](PROGRESS.md)，辅助图解见[ARCHITECTURE.html](ARCHITECTURE.html)。
+边界与路由见[README](README.md)，当前证据限制见[PROGRESS](PROGRESS.md)，辅助图解见[ARCHITECTURE.html](ARCHITECTURE.html)；源码相对 `apps/tavern`。
 
 ## 产品与范围
 
-Telegram 与浏览器共用会话 Agent。
-Saki 角色卡、账号绑定与消息中台契约见 [MESSAGING](MESSAGING.md)。
+Telegram 与浏览器共用同一会话 Agent（渠道契约见 [MESSAGING](MESSAGING.md)）。
 
 | 页面 | 可执行功能 |
 | --- | --- |
-| 角色库 | 搜索已安装角色，导入 JSON/PNG/CHARX。创建与已有角色使用同一可编辑表单，支持头像、立绘上传与 AI 生成。查看来源、导出原卡、删除、选择开场白开始对话 |
-| 发现 | 输入关键词、选择公开来源。按热度/近期热门/发布或更新时间/评分排序，选择分类与自定义标签。分页、查看作者/源页面、安装角色；安装相同内容去重，不自动覆盖本地编辑 |
-| 世界书 | 独立 JSON 导入/导出、查看编辑原文、条目数量、启用/停用，给会话选择世界书；内嵌角色书自动生效 |
-| 对话 | 会话列表、角色与用户 persona。右侧用户气泡、无气泡角色正文、单行自动伸展输入、圆形发送/停止、回答末尾操作。持久化历史、重试、重新生成、任意历史消息编辑、删除和重生成，原会话内截断后续、导出 JSONL、删除会话 |
-| 关于 | 从设置进入；按阶段展示架构与可编辑提示词。登录用户可改个人系统提示；管理员可改应用提示词 |
-| 设置 | 对话模型（平台自动发现）、默认关闭思考、采样参数、用户名称/persona、系统提示、主题；模型路由由服务端固定，不接受客户端覆盖 |
+| 角色库 | 搜索已安装角色、导入 JSON/PNG/CHARX；创建与编辑共用表单（头像/立绘上传与 AI 生成）；查看来源、导出原卡、删除、选开场白开聊 |
+| 发现 | 关键词与公开来源搜索（Chub 默认，支持排序/分类/标签；TheatreLM 仅支持关键词与原序），分页、查看作者/源页、内容去重安装 |
+| 世界书 | 独立 JSON 导入/导出、编辑原文、启停并绑定会话（内嵌角色书自动生效） |
+| 对话 | 会话列表、右侧用户气泡/无气泡角色正文、单行自伸展输入、发送/停止、末尾复制/编辑/重生成（截断后续不建分支）、导出 JSONL、删除 |
+| 关于 | 按阶段展示架构与提示词编辑（普通用户改个人系统提示；管理员改应用提示词） |
+| 设置 | 模型（平台目录）、思考开关与采样参数、persona、系统提示、主题、背景立绘开关/透明度 |
 
-当前不执行外来 JS/Lua、正则替换脚本或扩展工具，不提供多人群聊、语音或全量 SillyTavern 插件兼容。图像生成用于角色头像和立绘。未知扩展和资源留在原始卡及导出中；兼容导入不等于执行全部扩展。不会提供伪造角色推荐、示例历史、评分或人数。只有 e2e 独立夹具有合成内容。
-
-## Agent 操作
-
-编辑保留修改后的目标消息，删除移除目标消息；两者都删除后续消息。
-重生成支持历史用户消息和角色回复，在原会话中替换后续剧情。
-新操作不创建消息分支，编辑不自动推理。
-
-执行记录持久化在当前 DO，正文流同步发布事件。
-工具输入与结果、Director 输出和失败原因可展开。
-压缩仅显示执行结果。
-刷新读取同一记录，未知阶段不伪装为“正在构思”。
-
-输入框内右侧显示上下文占用百分比，包含当前草稿。
-点击后向上弹出用量与容量，数值格式为 `8,250 / 32,768 tokens`。
-容量来自服务端发现；未知容量显示 `—`。
-不显示快捷键、估算措辞、压缩计数或上下文组成说明。
-
-聊天页按可见视口高度与偏移布局。
-消息历史与会话列表分别滚动，页面本身不滚动。
-
-移动端进入具体对话后，底部导航与占位一同隐藏。
-返回会话列表或删除当前会话后恢复导航。
-输入区保留底部安全区；软键盘展开时贴合可见视口。
-桌面折叠按钮位于主导航；收起后保留窄导航入口。
-
-点击输入框显示命令，可用键盘上下选择、Escape 关闭。
-`/compress`、`/status` 支持直接点击和独立文本发送。
-点击命令保留已有草稿，状态命令不调用模型。
-`/ooc 指令` 占一行，后续行可填写普通对白并一并发送。
-原始输入保留；OOC 不作为剧情事实、状态证据或摘要源。
+不执行外来 JS/Lua、正则脚本或 ST 扩展工具（未知扩展保留在原卡导出），不提供群聊、语音或虚构推荐/评分/示例历史。
 
 ## 架构与边界
 
-`apps/tavern`：Svelte 5/Vite SPA，复用 `@hasbai/ui` Luma、Lucide 与 `@hasbai/auth` 统一配置。Worker `tavern` 负责 JWT、D1/R2、搜索适配器、Prompt 和推理。域名 `tavern.hasbai.xyz`。
+`apps/tavern`：Svelte 5 / Vite SPA（`@hasbai/ui` Luma、Lucide、`@hasbai/auth`）；Worker `tavern`（`tavern.hasbai.xyz`）负责 JWT、D1/R2、搜索适配器、Prompt 与推理。
 
 ```mermaid
 flowchart LR
   Browser[浏览器 SPA] -->|Auth0 JWT| Worker[Tavern Worker]
   Worker --> DO[每用户会话 SQLite DO]
   DO --> SDK[AI SDK streamText]
-    SDK --> AI[统一 AI Worker]
-    AI --> Gateway
+  SDK --> AI[统一 AI Worker]
   Worker --> DB[(D1 目录 / 角色 / 世界书 / 设置)]
   Worker --> Files[(私有 R2 tavern)]
   Worker --> Sources[公开角色源]
   Worker -->|AI_SERVICE| AI
   AI -->|模型 ID / dynamic-rp| Gateway[AI Gateway default]
-  Gateway --> Model[路由配置中的模型]
 ```
 
-JWT 和本人/全站管理授权遵循[AUTHORIZATION](../AUTHORIZATION.md)。会话持久化、迁移与删除以[AGENT](AGENT.md#do与迁移一致性)为唯一详细契约。
-
-D1 公共 source_catalog/source_releases 保存固定版本目录，只有完整同步后原子切换，不包含私人数据。私人 D1 表包括以下对象。characters 保存完整卡 JSON、摘要、来源、原文件 key、头像与立绘 image ID、内容 hash。worldbooks 保存原始书 JSON 与启用状态。
-
-sessions 保存会话目录、可靠世界书引用与迁移占用哨兵。messages 只读保留迁移前原文，settings 保存用户 persona 和生成参数。
-
-会话角色快照、设置、有效线性消息、摘要与生成占用由每会话SQLite DO统一管理；旧 D1 原文按 AGENT 的惰性迁移契约保留。已安装角色删除不删除既有会话快照。R2 原文件私有，头像与立绘由图床统一管理，通过 R2 自定义域名公开直连，不自动加载角色扩展资源；发现页只显示经过HTTPS/固定头像域校验的公开Chub缩略图。
-
-编辑角色库不会自动修改已有会话。
-`PATCH /api/sessions/:id` 可通过 `characterId` 显式更新角色快照。
-角色须属于同一账号，生成期间拒绝更新。
-更新保留历史、状态、摘要和会话设置，并同步 D1 目录。
-
-导入大小限制、PNG chunk 长度/CRC、ZIP 条目数量/未压缩总量/路径遍历验证在解析前执行。CHARX 支持 card.json 与内嵌主头像，原压缩包完整保留可下载；资源脚本不执行。远端安装 URL 只由适配器构造、固定 HTTPS 主机，重定向逐跳校验，有限时与响应大小。HTML 永远转义；聊天按纯文本显示角色动作和对白，链接不自动触发抓取。
+- **授权与存储**：JWT 与本人/管理员边界见 [AUTHORIZATION](../AUTHORIZATION.md)；DO 持久化、惰性迁移与删除契约见 [AGENT](AGENT.md#do与迁移一致性)。D1 `source_catalog`/`source_releases` 原子切换公开目录；私人表存 `characters`、`worldbooks`、`sessions`、`messages`（旧迁移来源）与 `settings`。修改角色库不自动改动已有会话，可用 `PATCH /api/sessions/:id` 传 `characterId` 显式更新（生成中拒绝）。
+- **导入与输入安全**：解析前校验文件大小、PNG chunk/CRC、ZIP 条目数/未压总量/路径遍历；远端安装 URL 仅适配器构造固定 HTTPS 主机且逐跳校验重定向。聊天纯文本转义 HTML，不自动抓取链接。
 
 ## 角色卡与世界书
 
-创建与已有角色使用同一可编辑表单，点开即可修改。字段按基本信息、人物设定、开场与对白分组，作者与高级设定折叠。保留来源、导出、删除与开场选择。
-
-打开弹窗聚焦容器，不自动选中输入框。
-开场选择使用紧凑选项与独立正文预览，无横向轮播。
-单开场直接预览；多个开场默认随机，也可指定。
-取消不创建会话，失败保留选择。
-
-内容保留滚动操作并隐藏滚动条，分组与底部不使用分隔线。取消不保存；从表单开始对话时先保存当前角色和图片引用，再使用选定开场白创建会话。会话创建失败保留表单与开场选择。
-
-用户可手写，或填写角色构想后点击 AI 生成。生成结果可修改或撤销，保存失败保留草稿。编辑仅覆盖发生变化的字段，保留 V1/V2/V3、内嵌世界书、资源与未知扩展。
-
-头像和立绘各自支持上传、生成、预览和替换。
-上传支持 PNG、JPEG、WebP，最大 5 MB，服务端检查签名。
-POST/PATCH multipart 接受 `card`、`avatar`、`portrait` 和对应的 `avatarImageId`、`portraitImageId`。
-JSON 编辑请求也接受图片 ID，旧 JSON 请求保持兼容。
-
-图片统一存入[图床](../images/README.md)，酒馆 D1 仅保存引用。
-角色图片直连 `media.hasbai.xyz`，该域名绑定 R2 `image`。
-Cloudflare 原生 `/cdn-cgi/image/` 固定输出 WebP。
-头像使用 160×160，立绘限制在 1024×1536 内。
-
-读取不经过酒馆或图床 Worker，不携带 JWT。
-CSP 放行该图片域名，生成预览和保存后使用同一地址。
-旧图片 API 仅将已有图片引用重定向到直连地址。
-Cloudflare 边缘缓存一年，浏览器缓存一天；错误响应不缓存。
-替换图片使用新 ID，避免沿用旧缓存。
-
-原卡导出保留导入时内容。旧头像迁入图床后清理原图片副本。
-删除角色、保存失败或撤销编辑不删除图床资产。
-
-`POST /api/characters/avatar/generate` 固定使用 Flare。
-`POST /api/characters/portrait/generate` 固定使用 Sunburst。
-两者通过图床服务绑定调用，携带原用户 JWT，返回已存储图片的 ID 和 URL。
-关闭表单取消请求并丢弃迟到结果，已完成图片仍可在图床管理。
-
-`POST /api/characters/generate` 验证本人 JWT 与账户 username，使用平台默认对话模型，metadata task 为 `character-generation`。输入为 `{brief,draft}`，输出为 `{card}`，不写 D1/R2。使用 strict CCv2 JSON Schema（固定版本、完整字段、禁止额外属性），可靠 stop 后再次严格校验并经 `parseCard` 检查。
-
-拒绝、工具调用、截断、非法结构或上游错误明确失败，不补模板、不重试。姓名及作者/版本/备注/高级指令保留用户填写值，不虚构署名。生成期间锁定表单，关闭取消请求并丢弃迟到回填；生成或保存失败保留输入。
-
-`system_prompt` 的 `{{original}}` 合并用户系统提示；`post_history_instructions` 的该占位替换为空，保留角色卡其余文本；`{{char}}`/`{{user}}`/`<char>`/`<user>` 支持，V3 nickname 优先。creator_notes、标签、来源不进入 Prompt。
-
-支持 V2/V3 book 与 SillyTavern entries 对象导入；每个条目只插入一次。禁用不触发、constant 常驻、主关键词与 selective 副关键词逻辑、scan_depth、case_sensitive、priority、insertion_order、before/after_char，递归扫描有迭代上限。公开语料的散文世界书转换为常驻条目，不推断原数据未定义的关键词。正则与复杂 ST 扩展保留但不执行，解析输出能力状态。输入估算、容量发现、超限压缩和缓存以[Agent 上下文契约](AGENT.md#上下文与摘要)为准。
+- **表单与图片**：创建/编辑/生成共享表单；开场选择使用紧凑预览与随机/指定选项。头像与立绘上传支持 PNG/JPEG/WebP（≤ 5 MB），生成经 `IMAGE_SERVICE` 存图床（头像 `gpt-image-2.5-flare`，立绘 `gpt-image-2.5-sunburst`；取消或删卡不删图床资产）。图片统一经 `media.hasbai.xyz/cdn-cgi/image/` 输出 WebP（头像 160×160、立绘 ≤ 1024×1536；边缘缓存 1 年、浏览器 1 天，替换用新 ID）。
+- **角色卡生成**：`POST /api/characters/generate` 用平台默认模型 + strict CCv2 JSON Schema（`task=character-generation`）生成草稿，可靠 `stop` 且 `parseCard` 通过后回填（不补模板、不重试），保留用户填写姓名与作者等元信息。
+- **宏与世界书**：`system_prompt` 的 `{{original}}` 合并用户系统提示（`post_history_instructions` 置空），支持 `{{char}}`/`{{user}}`/`<char>`/`<user>`（V3 nickname 优先）；`creator_notes`/标签/来源不进 Prompt。支持 V2/V3 book 与 ST entries 导入（支持禁用、constant、主/副关键词、`scan_depth`、`case_sensitive`、`priority`、`insertion_order`、`before/after_char`、有限递归；TheatreLM 散文书转常驻）。上下文估算与压缩见 [上下文与摘要](AGENT.md#上下文与摘要)。
 
 ## 生成、重试与编辑
 
-发送使用 UUID requestId，所有会话操作通过每会话 DO。
-正常正文实时发送增量，并写入私有恢复检查点；停止真正取消上游。停止 API 支持 requestId，可在首个响应前停止；现有 generationId 停止保持兼容。
-外层原生透传响应流，浏览器断连后 DO 继续生成和保存。
-
-重新进入会话可恢复生成状态及最终结果。
-输出异常保留原稿并报错，不发起修订或续写。
-中断和不可靠终态保存实际部分正文，刷新/重复 UUID 不再次推理。
-流式展示、检查、状态事务及恢复规则见[AGENT](AGENT.md#正文流式展示与检查)。
-
-历史操作在原会话截断后续消息。
-显示最新生成结果，Prompt/state 使用有效成功版本。
-来源未变的摘要保留，受影响摘要失效。旧 `continue:true` 请求返回400；length 保存部分正文并结束为错误。正常正文后独立 Director 的协议和失败隔离见[MODELS](MODELS.md#续聊候选内容与-ui)。
+`POST /api/sessions/:id/generate` 使用 UUID `requestId` 与每会话 DO，外层原生透传 SSE，断连后 DO 后台继续生成并保存；编辑/删除截断原会话后续消息并失效受影响摘要（`continue:true` 返回 400）。流式展示、检查与恢复见 [正文流式契约](AGENT.md#正文流式展示与检查)；独立 Director 见 [MODELS](MODELS.md#续聊候选内容与-ui)。
 
 ## 应用提示词
 
-Cloudflare KV 绑定 `PROMPTS`，使用 `dialogue-v3`。
-字段与默认值在 `shared/prompts.ts`。
-正文写作和事实边界合入 `systemTemplate`。
-`tools` 仅保存工具使用指导，工具及参数说明也可编辑。
-候选、压缩和角色创作分别使用完整的可编辑文本。
-运行不再追加不可编辑的行为规则。
-
-工具名称、参数类型、必填项和响应 schema 由代码定义。
-
-`GET /api/prompts` 返回配置及管理员权限。
-`PUT /api/prompts` 需要 `tavern.all:all`。
-保存返回写入内容；失败保留页面草稿。
-
-v3 缺失时，读取并转换 `dialogue-v2`，不写回旧配置。
-转换保留旧模板、正文、候选、摘要和创作文本。
-原固定规则合入对应可编辑字段。
-新旧配置都缺失才使用默认值；损坏或读取失败报错。
-
-每回合读取一次配置，正文、工具、摘要和 Director 共用快照。
-投影指纹包含文本和工具定义，编辑后旧投影失效。
-KV 使用自身缓存，保存后逐步传播。
-[Cloudflare KV 一致性](https://developers.cloudflare.com/kv/concepts/how-kv-works/)
-
-合并模板只用于默认系统提示和主动恢复默认。
-已保存的个人提示和会话快照保留原文，作为自定义覆盖。
-不为旧提示隐式补回正文规则。
-普通用户可改个人系统提示；管理员可改全部应用提示词。
-个人保存先读取最新设置，再仅更新系统提示。
-
-关于页只展示架构、消息顺序与提示词编辑区。
-关于页和架构须同步维护，见[开发入口](README.md#同步维护)。
+Cloudflare KV `PROMPTS` 使用 `dialogue-v3`（缺失时兼容读取 `dialogue-v2` 转换但不写回；正文写作和事实边界已合入 `systemTemplate`，`tools` 存工具指导，候选/压缩/创作分别独立可编辑，运行不追加隐藏规则）。`GET /api/prompts` 登录可读，`PUT /api/prompts` 需 `tavern.all:all`；每回合读取一次并在正文、工具、摘要与 Director 间共用快照（指纹变化使旧投影失效）。普通用户改个人系统提示需先读最新设置再更新。关于页须同步维护（见[同步维护](README.md#同步维护)）。
 
 ## 对话与发现 UI
 
-- 遵守[共享交互反馈](../DESIGN.md#组件与交互)。酒馆禁止焦点边框和光圈，保留悬浮、按下、选中反馈及键盘操作。页面和前台操作共用顶部加载条，后台会话轮询不触发；等待内容使用骨架，保存和安装使用控件图标。
-- 桌面外壳填满视口。折叠按钮保留窄主导航，隐藏会话列表，动画遵守减少动态效果偏好；隐藏区域不可聚焦。折叠保留草稿、阅读位置和生成状态，移动端会话列表显示底栏，具体对话隐藏底栏。
-- 复用北极小站雪花 SVG，不生成另一套品牌标识。
-- Chub 默认来源，排序和 tags 传上游后再分页；TheatreLM 原始字段缺少热度/日期/分类，仅开放关键词与原目录顺序，不能伪造指标。公开目录损坏名称隔离，不改私人安装与历史。
-- Enter 发送、Shift+Enter 换行；IME 组合中及 keyCode229 不发送。流式增量、候选展开、输入伸缩和同会话刷新保持阅读位置，用户自行滚动，切会话才初始化到最新。
-- 最大 740px 阅读列，右侧用户气泡、无气泡角色正文；正文不重复角色姓名与头像；顶部显示角色头像，移动端同样可见。44px 圆形发送/停止，输入单行起步至 200px 后内部滚动；回答末尾提供复制/编辑/重新生成，保留草稿和停止。
-- 不把默认约 300–600 字的写作提示当应用硬上限。普通失败保留输入，移动、深色、长对话、持久中断和键盘路径在 manifest 登记。
-
-会话保存 `character_id`，关联本人角色库中的头像与立绘。读取图片不改变角色文本快照。
-D1 0011 按本人和完整卡片匹配回填旧关联；旧 DO 首次加载时同步关联。
-角色删除或图片缺失时，头像回退为名字首字，背景留空。
-
-全局设置提供新会话默认背景，当前会话可单独保存。
-`characterBackground` 默认关闭；`backgroundOpacity` 默认 20，范围 0–100。
-立绘位于消息区底层，固定在阅读视口，不拦截滚动或点击。
-
-执行记录按服务端顺序展示。正文的处理、思考与生成状态位于正文上方。
-Director 及其后续压缩记录位于正文下方，随后显示候选。
+- 遵守[共享交互反馈](../DESIGN.md#组件与交互)，酒馆禁用焦点边框与光圈（保留悬浮/按下/选中与键盘可达），按钮触控 ≥ 44px；顶部加载条不用于后台轮询或正文流。复用北极小站雪花 SVG。
+- 聊天页按 `VisualViewport` 布局：消息与会话列表各自滚动；移动端进具体对话隐藏底栏，保留安全区。桌面折叠按钮位于主导航，保留草稿/阅读位置/生成状态。
+- 阅读列最大 740px：右侧用户气泡、无气泡角色正文、顶部头像（支持全局/会话背景立绘，`characterBackground` 默认关、`backgroundOpacity` 默认 20）；44px 圆形发送/停止按钮；单行输入伸展至 200px，支持 `Enter` 发送、`Shift+Enter` 换行及中文 IME 保护，点击输入显示 `/compress`、`/status`、`/ooc` 命令；右下角显上下文占用 `%`（含草稿，点击显示 `用量 / 容量 tokens`）。
+- 流式增量与候选不抢焦点、不强制滚底；执行记录按服务端顺序位于正文上/下方，随后显示最多 3 张候选按钮。
 
 ## API 清单
 
-- GET/PUT /api/prompts：登录读取、管理员更新全站应用提示词。
-- GET /health：service 与 Worker version，不含配置或密钥。
-- POST /api/characters/generate {brief,draft}：生成可编辑 CCv2 草稿；
-- POST /api/characters/{avatar|portrait}/generate {prompt}：调用图床生成并保存，返回图片引用。
-- GET/POST /api/characters；GET/PATCH/DELETE /api/characters/:id；GET /api/characters/:id/export；GET /api/characters/:id/{avatar|portrait}。
-- GET /api/discover?q=&source=&page=&sort=&tags=；POST /api/install {source,id}；固定适配器，不提供任意 URL 代理。
-- GET/POST /api/worldbooks；PATCH/DELETE /api/worldbooks/:id；GET /api/worldbooks/:id/export。
-- GET/POST /api/sessions；GET/DELETE /api/sessions/:id；PATCH /api/sessions/:id 配置及可选 characterId。
-- POST /api/sessions/:id/generate；POST /api/sessions/:id/stop；POST /api/sessions/:id/command；PATCH /api/sessions/:id/messages；DELETE /api/sessions/:id/messages；GET /api/sessions/:id/export。
-- GET/PUT /api/settings；GET /api/models。
-- GET /api/messaging/telegram；POST /api/messaging/telegram/codes；POST /api/messaging/telegram/bind。
-- DELETE /api/messaging/telegram/:id；GET /api/messaging/telegram/:id/status；POST /api/messaging/telegram/:id/resolve。
-- POST /api/messaging/telegram/commands：管理员同步固定 Bot 菜单；详情见 [MESSAGING](MESSAGING.md)。
+- `GET /health`、`GET/PUT /api/prompts`、`GET/PUT /api/settings`、`GET /api/models`
+- `POST /api/characters/generate`、`POST /api/characters/{avatar|portrait}/generate`、`GET/POST /api/characters`、`GET/PATCH/DELETE /api/characters/:id`、`GET /api/characters/:id/export`、`GET /api/characters/:id/{avatar|portrait}`
+- `GET /api/discover`、`POST /api/install`
+- `GET/POST /api/worldbooks`、`PATCH/DELETE /api/worldbooks/:id`、`GET /api/worldbooks/:id/export`
+- `GET/POST /api/sessions`、`GET/PATCH/DELETE /api/sessions/:id`、`POST /api/sessions/:id/{generate|stop|command}`、`PATCH/DELETE /api/sessions/:id/messages`、`GET /api/sessions/:id/export`
+- `GET /api/messaging/telegram`、`POST /api/messaging/telegram/{codes|bind|commands}`、`DELETE /api/messaging/telegram/:id`、`GET /api/messaging/telegram/:id/status`、`POST /api/messaging/telegram/:id/resolve`（详情见 [MESSAGING](MESSAGING.md)）
 
 ## 规范与公开来源
 
-| 来源 | 契约与实现边界 |
+| 来源 | 契约与边界 |
 | --- | --- |
-| [CCv2](https://github.com/malfoyslastname/character-card-spec-v2/blob/main/spec_v2.md)、[CCv3](https://github.com/kwaroran/character-card-spec-v3/blob/main/SPEC_V3.md) | JSON/PNG/CHARX、未知扩展与原卡导出；creator_notes 不进入模型提示 |
-| [SillyTavern World Info](https://docs.sillytavern.app/usage/core-concepts/worldinfo/) | 关键词、常驻、扫描深度、递归与排序，不执行全部 ST 扩展 |
-| [TheatreLM 目录](https://huggingface.co/datasets/G-reen/TheatreLM-v2.1-Characters) | 固定 revision `eb8597aec4e3e114b2d28b86c3e2496dd48c5af3`，worlds.json 完整 hash/5011 行校验，9 条损坏名称隔离后 5002 可用；CC-BY-2.0 署名、版本与转换标记随卡保存 |
-| [Chub](https://docs.chub.ai/docs/the-basics/character-creation) | 固定适配器、真实排序/标签与标准 PNG 下载，不绕过访问保护；上游可用性单独验收 |
-| [RisuRealm API](https://realm.risuai.net/help/api)、[CharaVault](https://charavault.net/) | 首版未依赖 Risu 的未文档化搜索或需访问验证的 CharaVault；历史探针结果见交付记录 |
-| [AI Gateway 统一 API](https://developers.cloudflare.com/ai-gateway/usage/chat-completion/) | `worker/gateway.ts` 的 `runRoleplay` 经 `AI_SERVICE` 调用统一 AI Worker，model 为会话所选逻辑 ID；模型目录与校验见 MODELS，完整日志与单次调用约束见 MODELS |
+| [CCv2](https://github.com/malfoyslastname/character-card-spec-v2/blob/main/spec_v2.md)、[CCv3](https://github.com/kwaroran/character-card-spec-v3/blob/main/SPEC_V3.md) | JSON/PNG/CHARX、未知扩展与原卡导出 |
+| [SillyTavern World Info](https://docs.sillytavern.app/usage/core-concepts/worldinfo/) | 关键词、常驻、扫描深度、递归与排序 |
+| [TheatreLM 目录](https://huggingface.co/datasets/G-reen/TheatreLM-v2.1-Characters) | 固定 revision `eb8597aec4e3e114b2d28b86c3e2496dd48c5af3`（5011 行校验、隔离 9 条损坏名后 5002 可用，保留 CC-BY-2.0 署名） |
+| [Chub](https://docs.chub.ai/docs/the-basics/character-creation) | 固定适配器、排序/标签与标准 PNG 下载（不绕过保护） |
+| [AI Gateway 统一 API](https://developers.cloudflare.com/ai-gateway/usage/chat-completion/) | 经 `AI_SERVICE` 调用统一 AI Worker（目录与日志契约见 [MODELS](MODELS.md)） |
 
-目录先全量校验再原子切换 release，安装只从服务端同步内容读取，不相信客户端传回角色定义。上表固定版本与数量为目录版本数据，外部来源当前可用性不能由历史探针外推。
+（注：首版未接入 RisuRealm 未文档化搜索或需访问验证的 CharaVault。）
 
 ## 运行与兼容资源
 
-前端 5176；应用目录 `pnpm exec wrangler dev --port 8787` 启动独立 API，Vite 开发代理。Wrangler 配置 Worker、D1、私有 R2 和 SQLite `SESSIONS` binding，兼容日期保留 `2026-10-03`。
-
-`pnpm --filter tavern test:session-runtime` 使用 Wrangler 所带真实 workerd/SQLite 的隔离 harness，验证导入、停止、回放、线性编辑、重启、故障恢复和删除。harness 使用其固定 runtime 支持的兼容日期，不打包进生产；模型是夹具，不能当真实推理验收。
-
-Workers Builds 的 rootDirectory `/`、build `pnpm --filter tavern build`，生产 main；构建监控应用/共享包/workspace 路径。D1 0007/0008 兼容迁移与 DO 来源冻结与历史 seed 恢复以[AGENT](AGENT.md#do与迁移一致性)为准。检查与发布步骤仅在[TESTING](../TESTING.md)维护，不重复手动部署。
+本地前端 5176，独立 Worker API 8787（兼容日期 `2026-10-03`）；`pnpm --filter tavern test:session-runtime` 用真实 workerd/SQLite harness 验证会话生命周期（模型为夹具）。Workers Builds 从根运行 `pnpm --filter tavern build`，检查与交付见 [TESTING](../TESTING.md)。

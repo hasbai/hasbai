@@ -1,80 +1,39 @@
 # WeChat · 微信 Bot 会话服务
 
-`apps/wechat` 是无界面 Worker，域名 `wechat.hasbai.xyz`。它按 [openclaw-weixin 协议摘要](https://github.com/Tencent/openclaw-weixin/blob/main/docs/protocol_zh_CN.md)接入 iLink Bot，持久保存会话，并通过 MCP 提供工具。
-该协议摘要描述客户端行为，不是已验证的服务端契约。字段按可选处理，真实行为以首次联调为准。
+`apps/wechat` 是无界面 Worker（`wechat.hasbai.xyz`），按 [openclaw-weixin 协议摘要](https://github.com/Tencent/openclaw-weixin/blob/main/docs/protocol_zh_CN.md)接入 iLink Bot 并通过 MCP 提供会话能力（协议摘要仅作客户端参考，字段按可选处理）。
 
-## 身份与权限
+## 身份、隔离与持久化
 
-MCP 入口 `POST /mcp` 验证共享 audience 的用户 JWT，并要求原生权限 `wechat.all:all`（仅授予既有 `superadmin`）。规则见 [AUTHORIZATION](../AUTHORIZATION.md)。
-数据按 Auth0 `sub` 隔离：每个用户一个 Durable Object，工具不接受 owner 参数。
-`GET /health` 匿名可用，其余路径返回 404。
+- `POST /mcp` 验证共享 audience 用户 JWT 并要求 `wechat.all:all`（仅授予 `superadmin`，见 [AUTHORIZATION](../AUTHORIZATION.md)）。`GET /health` 匿名可用，其余路径返回 404。
+- 按 Auth0 `sub` 隔离每用户一个 SQLite Durable Object `WechatOwner`（不使用 KV，避免最终一致与无原子游标更新）：
+  - `accounts`：Bot 凭据、`get_updates_buf` 游标、启停、退避与暂停状态
+  - `logins`：扫码登录状态（10 分钟过期）
+  - `peers`：联系人最新 `context_token` 与可回复状态
+  - `messages`：收发消息（`(bot_id, wx_message_id)` 与 `(bot_id, client_id)` 唯一；每 Bot 保留 30 天内最多 20000 条）
+- 游标与消息同事务提交，仅服务端返回非空游标时前进；移除账号清空其全部数据。
 
-## 持久化
+## 轮询与发送
 
-每个用户一个 SQLite Durable Object `WechatOwner`，保存：
-
-| 表 | 内容 |
-| --- | --- |
-| `accounts` | Bot 凭据、`get_updates_buf` 游标、启停、退避与暂停状态 |
-| `logins` | 进行中的扫码登录（10 分钟过期） |
-| `peers` | 每个联系人的最新 `context_token` 与可回复状态 |
-| `messages` | 收发消息；`(bot_id, wx_message_id)`、`(bot_id, client_id)` 唯一 |
-
-游标与消息在同一事务写入，仅在服务端返回非空游标时前进。重启、部署或对象被回收后，轮询从已保存游标继续。
-保留 30 天且每个 Bot 最多 20000 条。移除账号会删除其全部数据。
-不使用 KV：KV 最终一致、无原子读改写、无 alarm，无法保证游标、去重和单一轮询者。
-
-## 轮询
-
-DO alarm 驱动长轮询，不依赖 Cron。每次 alarm 先设置 90 秒看门狗，再轮询最多 45 秒，最后按最早到期时间重设 alarm；没有启用的账号时删除 alarm。
-- `ret` 或 `errcode` 为 `-14`：暂停一小时；连续两次则 `needs_relogin` 为真，需重新扫码。
-- 网络、HTTP 或其他业务错误：指数退避，上限 300 秒，成功后清零。
-- 客户端超时视为空结果。
-- 轮询期间账号被移除或重新登录时，丢弃该次结果。
-- 64 位消息 ID 以字符串保存。
-
-服务端返回的 `baseurl`、`redirect_host` 仅在 `https` 且属于 `weixin.qq.com` 时采用，Bot token 不会发往其他主机。请求不跟随重定向。
-
-## 发送
-
-回复必须使用该联系人最新的 `context_token`；没有则拒绝，不主动发起。同一 `client_id` 重试不会重复发送。
-网络失败时结果记为 `unknown`，不自动重发，应先读取消息确认。当前不支持群发送和媒体。
-入站媒体仅保存类型与描述，CDN 密钥与下载参数被剔除。
+- **长轮询**：由 DO alarm 驱动（无 Cron），每次设 90 秒看门狗、轮询最多 45 秒并重设下次 alarm（无启用账号时删除）。`ret`/`errcode` 为 `-14` 暂停一小时（连续两次置 `needs_relogin`）；其他错误指数退避至 300 秒；客户端超时视为空；轮询期间账号移除或重登则丢弃结果。64 位消息 ID 存字符串。
+- **主机安全**：`baseurl` / `redirect_host` 仅采用 `https` 且属于 `weixin.qq.com`，不跟随重定向。
+- **发送约束**：仅支持使用联系人最新 `context_token` 回复私聊文本（无 token 拒绝、不支持群发与媒体；入站媒体剔除 CDN 密钥仅存描述）。同一 `client_id` 重试不重复发送；网络失败记为 `unknown`，需先读消息再决定是否重发。
 
 ## MCP 工具
 
 | 工具 | 说明 |
 | --- | --- |
-| `wechat_login_start` / `wechat_login_poll` | 获取二维码内容；轮询扫码结果（含验证码） |
-| `wechat_list_accounts` / `wechat_account_status` | 账号与轮询状态，不返回凭据 |
-| `wechat_list_conversations` | 会话列表与 `can_reply` |
-| `wechat_read_messages` | 按 `after_id` 增量读取，客户端保存 `next_after_id` |
+| `wechat_login_start` / `wechat_login_poll` | 获取二维码 URL 与轮询扫码结果（含验证码） |
+| `wechat_list_accounts` / `wechat_account_status` | 账号与轮询状态（不返回凭据） |
+| `wechat_list_conversations` | 会话列表与 `can_reply`（`before_last_message_at` 翻页，同毫秒可能跳过） |
+| `wechat_read_messages` | 按 `after_id` 增量读取，返回 `next_after_id` |
 | `wechat_send_text` | 回复私聊文本 |
 | `wechat_set_polling` | 暂停或恢复接收 |
-| `wechat_logout` | 删除账号与全部数据，需 `confirm_account_id` |
+| `wechat_logout` | 删除账号及全部数据（需 `confirm_account_id`） |
 
-消息文本来自第三方，工具说明将其标为数据而非指令。
+工具说明已标注第三方消息为数据而非指令；同一 Bot 仅应有单一轮询消费者。
 
-## 配置与核验
+## 配置、验证与发布
 
-`wrangler.jsonc` 的变量 `ILINK_BASE_URL`、`ILINK_CLIENT_VERSION`、`ILINK_BOT_AGENT` 不含机密，无 Worker secret。
-本地检查（在 `apps/wechat`）：`pnpm typecheck`、`pnpm test`、`pnpm test:runtime`（真实 workerd、DO alarm、重启恢复）、`pnpm build`。
-`wechat_list_conversations` 用 `before_last_message_at` 翻页，同一毫秒的会话可能被跳过。
-同一个 Bot 只应有一个消费者；其他客户端同时读取会争抢游标。
-
-2026-11-09 已对真实服务端验证（仅获取二维码并查询一次状态，未登录任何账号）：
-- 服务端接受 `ILINK_CLIENT_VERSION=2.4.8` 与 `bot_agent=Hasbai`。
-- `qrcode_img_content` 是 `liteapp.weixin.qq.com` 的 URL，不是图片；`wechat_login_start` 原样返回为 `qrcode_content`，由调用方生成二维码或在手机微信打开。
-- 新二维码的状态为 `wait`。
-
-仍待首次真实登录后记录：`-14` 是否可恢复、`context_token` 有效期、`binded_redirect` 含义。联调只记录账号 ID 与状态，不记录凭据。
-
-## 发布
-
-在 Cloudflare 登记 Workers Builds 后，合并到 `main` 才会自动部署：
-
-```sh
-python3 apps/wechat/scripts/setup-builds.py < token-file
-```
-
-脚本从标准输入读取 Cloudflare 用户级 API Token，创建 Worker 资源和 `main` 构建触发器，不部署版本。路径过滤为 `apps/wechat/**`、`packages/**` 及 workspace 文件。
+- `wrangler.jsonc` 变量 `ILINK_BASE_URL`、`ILINK_CLIENT_VERSION`、`ILINK_BOT_AGENT` 不含机密，无 Worker secret。
+- **已验证（2026-11-09）**：真实服务端接受 `ILINK_CLIENT_VERSION=2.4.8` 与 `bot_agent=Hasbai`，`wechat_login_start` 原样返回 `liteapp.weixin.qq.com` 二维码 URL，初始状态为 `wait`。待首次真实登录后补录：`-14` 恢复、`context_token` 有效期、`binded_redirect` 含义。
+- 本地检查见 [TESTING](../TESTING.md)（`pnpm typecheck`、`test`、`test:runtime`、`build`）。Workers Builds 首次登记可从 stdin 传令牌执行 `python3 apps/wechat/scripts/setup-builds.py < token-file`。
