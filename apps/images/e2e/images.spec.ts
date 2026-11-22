@@ -19,7 +19,13 @@ async function fixture(page:Page,mode='ready'){
 }
 test('image library models generation rename search and theme',async({page})=>{
  await fixture(page);await expect(page.getByRole('img')).toHaveCount(4);await expect(page.getByLabel('生成模型')).toHaveValue('gpt-image-2.5-flare');await expect(page).toHaveScreenshot('images-library.png',{fullPage:true});
- await page.getByLabel('生成模型').selectOption('gpt-image-2.5-sunburst');await page.getByLabel('图片描述',{exact:true}).fill('夜色中的港口');const request=page.waitForRequest(r=>r.url().endsWith('/api/generate'));await page.getByRole('button',{name:'生成图片',exact:true}).click();expect((await request).postDataJSON()).toEqual({prompt:'夜色中的港口',model:'gpt-image-2.5-sunburst'});await expect(page.getByText('已生成并保存')).toBeVisible();
+ const prompt=page.getByLabel('图片描述',{exact:true});
+ const restingShadow=await prompt.evaluate(el=>getComputedStyle(el).boxShadow);
+ await prompt.focus();
+ await expect(prompt).toHaveCSS('outline-offset','-2px');
+ await expect(prompt).toHaveCSS('outline-width','2px');
+ await expect(prompt).toHaveCSS('box-shadow',restingShadow);
+ await page.getByLabel('生成模型').selectOption('gpt-image-2.5-sunburst');await prompt.fill('夜色中的港口');const request=page.waitForRequest(r=>r.url().endsWith('/api/generate'));await page.getByRole('button',{name:'生成图片',exact:true}).click();expect((await request).postDataJSON()).toEqual({prompt:'夜色中的港口',model:'gpt-image-2.5-sunburst'});await expect(page.getByText('已生成并保存')).toBeVisible();
  await page.getByRole('link',{name:'查看 港城的雨夜',exact:true}).first().click();await expect(page).toHaveURL(/\/library\//);await expect(page.getByRole('heading',{name:'港城的雨夜',exact:true})).toBeVisible();await expect(page).toHaveScreenshot('images-detail.png',{fullPage:true});
  await page.getByRole('button',{name:'重命名',exact:true}).click();await expect(page.getByRole('dialog')).toBeVisible();await page.getByLabel('图片名称',{exact:true}).fill('港城 · 雨夜');await expect(page.getByRole('dialog')).toHaveScreenshot('images-rename.png',{stylePath:new URL('./dialog-snapshot.css',import.meta.url).pathname});await page.getByRole('button',{name:'保存',exact:true}).click();await expect(page.getByRole('heading',{name:'港城 · 雨夜',exact:true})).toBeVisible();
  await page.getByRole('button',{name:'切换深色模式'}).click();await expect(page).toHaveScreenshot('images-dark.png',{fullPage:true});

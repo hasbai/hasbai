@@ -61,9 +61,6 @@
   body { @apply bg-background text-foreground font-sans; margin: 0; }
   button, a { touch-action: manipulation; }
   button:not(:disabled), a { cursor: pointer; }
-  a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, [contenteditable]:focus-visible {
-    outline: 2px solid var(--ring); outline-offset: 4px;
-  }
   [data-slot="button"], [data-slot="input"], [data-slot="select-trigger"] { min-height: 44px; }
   input, textarea, select { font-size: 16px; }
 }

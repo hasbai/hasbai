@@ -44,7 +44,6 @@
   :global(.prose .markdown-diagram svg) { display: block; width: 100%; height: 360px; }
   :global(.prose .markdown-diagram .diagram-controls) { display: flex; justify-content: end; gap: .5em; margin-bottom: .5em; }
   :global(.prose .diagram-controls button) { border: 1px solid var(--border); border-radius: .3em; padding: .2em .6em; font: inherit; font-size: .8em; cursor: pointer; }
-  :global(.prose .diagram-controls button:focus-visible) { outline: 2px solid currentColor; outline-offset: 2px; }
   :global(.prose .diagram-error) { color: var(--destructive, #df5555); font-size: .875em; }
   :global(.prose .footnotes) { border-top: 1px solid var(--border); margin-top: 2em; font-size: .875em; }
   :global(.prose .footnotes h2) { font-size: 1em; }
