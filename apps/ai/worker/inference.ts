@@ -37,23 +37,14 @@ export async function inference(env: Env, task: AITask, input: Record<string, un
     'cf-aig-metadata': JSON.stringify(logMetadata).replace(/[^\x00-\x7f]/g, c => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0')),
   };
   if (path.startsWith('custom-') || model.startsWith('custom-')) headers['cf-aig-byok-alias'] = 'default';
-  const abort = new AbortController();
   const response = await fetch(`https://gateway.ai.cloudflare.com/v1/${env.CLOUDFLARE_ACCOUNT_ID}/${gateway}/${path}`, {
-    method: 'POST', redirect: 'manual', signal: AbortSignal.any([signal, abort.signal]), headers, body: JSON.stringify({...input, model}),
+    method: 'POST', redirect: 'manual', signal, headers, body: JSON.stringify({...input, model}),
   });
-  // Preserve streaming, upstream status and the headers used by inference metrics.
+  // Preserve streaming, upstream status and metric headers with native zero-copy passthrough.
   const outgoing = new Headers();
   for (const name of ['content-type', 'cf-aig-log-id', 'cf-aig-event-id', 'retry-after']) {
     const value = response.headers.get(name); if (value) outgoing.set(name, value);
   }
   outgoing.set('Cache-Control', 'no-store');
-  const reader = response.body?.getReader();
-  const stream = reader ? new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      try {const next = await reader.read(); if (next.done) controller.close(); else controller.enqueue(next.value);}
-      catch (error) {abort.abort(); controller.error(error);}
-    },
-    async cancel(reason) {abort.abort(reason); await reader.cancel(reason);},
-  }) : null;
-  return new Response(stream, {status: response.status, headers: outgoing});
+  return new Response(response.body, {status: response.status, headers: outgoing});
 }

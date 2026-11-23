@@ -1,4 +1,5 @@
 import { CHARACTER_RESPONSE_FORMAT, generatedCharacterCard, validateCharacterDraft } from '../shared/character-draft';
+import { mapUpstreamFinishReason } from '../shared/outcomes';
 import { body, HttpError } from './http';
 import { inferRoleplay } from './inference';
 import { modelInput } from './models';
@@ -29,7 +30,7 @@ export async function generateCharacter(request: Request, env: Env, username: st
    else if(event.type==='finish'){if(event.calls.length)throw Error('模型未生成角色卡，请重试');reason=event.reason;}
   }
   signal.throwIfAborted();
-  if (reason !== 'stop') throw Error('角色卡生成未完成，请重试');
+  if (mapUpstreamFinishReason(reason) !== 'stop') throw Error('角色卡生成未完成，请重试');
   let card: JsonObject;
   try { card = generatedCharacterCard(JSON.parse(text)); } catch { throw Error('生成的角色卡格式无效，请重试'); }
   const data = card.data as JsonObject;

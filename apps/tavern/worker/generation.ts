@@ -11,7 +11,7 @@ import { parseBook, parseCard } from '../shared/cards';
 import {LoreIndex,embeddings} from './lore';
 import { buildPrompt, stateMessage, type PromptMessage } from '../shared/prompt';
 import { ConversationContext, summarizeWithModel, explicitContextLimit, contextLimit, validSummary } from './context';
-import { generationNotice } from '../shared/outcomes';
+import { generationNotice, isToolCapableFinish, mapUpstreamFinishReason } from '../shared/outcomes';
 import type { FinishReason, Message } from '../shared/types';
 import { HttpError, json } from './http';
 import { settings, currentMessages, message, ownedBooks } from './store';
@@ -75,7 +75,7 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
   await owns();store.start(assistantId,regenerate?undefined:userMessage,{id:assistantId,role:'assistant',content:'',status:'pending',ordinal:assistantOrdinal,requestId,createdAt:messageTime+1},before,target?.id);ready=true;
  }catch(error){clearInterval(stopWatcher);abort.abort();try{store.release(assistantId);}finally{await onSettled(assistantId);}if(error instanceof Error&&error.message.includes('上下文上限'))throw new HttpError(400,error.message);throw error;}
  const sourceHistory=structuredClone([...conversation.history,...(conversation.options.currentInput?[conversation.options.currentInput]:[])]);let checkpoint=conversation.summary?JSON.stringify(conversation.summary):null;
- let disconnected=false;let output='';let finishReason:FinishReason='interrupted';let model='';let gatewayLogId:string|null=null;let metrics=new InferenceMetrics();let firstModelStarted:number|null=null;let modelRequests=0;let firstBodyAt:number|null=null;let candidates:string[]=[];let parser=new CandidateStream(candidateDelimiter());let parserFinished=false;let candidateOutcome='not-started';let candidateError='';let bodyModel='';let bodyGatewayLogId:string|null=null;let bodyFinishedAt:number|null=null;let candidateStartedAt:number|null=null;let candidateFirstAt:number|null=null;let candidateFinishedAt:number|null=null;let bodyRequests=0;let director:DirectorAgent|undefined;let synopsisRequests=0;let synopsisSource='not-started';let synopsisCovered=0;let synopsisMetrics:ReturnType<InferenceMetrics['snapshot']>|null=null;let synopsisGatewayLogId:string|null=null;let synopsisModel='';let synopsisElapsedMs=0;let directorStartedAt:number|null=null;let bodyMetrics:ReturnType<InferenceMetrics['snapshot']>|null=null;
+ let disconnected=false;let output='';let finishReason:FinishReason='interrupted';let lastUpstreamReason:string|undefined;let failureDetail:string|undefined;let model='';let gatewayLogId:string|null=null;let metrics=new InferenceMetrics();let firstModelStarted:number|null=null;let modelRequests=0;let firstBodyAt:number|null=null;let candidates:string[]=[];let parser=new CandidateStream(candidateDelimiter());let parserFinished=false;let candidateOutcome='not-started';let candidateError='';let bodyModel='';let bodyGatewayLogId:string|null=null;let bodyFinishedAt:number|null=null;let candidateStartedAt:number|null=null;let candidateFirstAt:number|null=null;let candidateFinishedAt:number|null=null;let bodyRequests=0;let director:DirectorAgent|undefined;let synopsisRequests=0;let synopsisSource='not-started';let synopsisCovered=0;let synopsisMetrics:ReturnType<InferenceMetrics['snapshot']>|null=null;let synopsisGatewayLogId:string|null=null;let synopsisModel='';let synopsisElapsedMs=0;let directorStartedAt:number|null=null;let bodyMetrics:ReturnType<InferenceMetrics['snapshot']>|null=null;
 
  let transport!:TransformStreamDefaultController<Uint8Array>,ending=false;
  const stream=new TransformStream<Uint8Array,Uint8Array>({start(controller){transport=controller;}});
@@ -129,33 +129,35 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
     for await(const event of inferenceProgress('body',{messages:prompt.messages,tools,tool_choice:'auto',...modelInput(opts)})){
      if(event.type==='observation'){metrics.observe(event.value);if(typeof event.value.model==='string')model=event.value.model;gatewayLogId=event.logId;}
      else if(event.type==='text'){requestOutput+=event.text;output+=parser.push(event.text);if(Date.now()-draftSavedAt>=1000){await checkpointDraft();draftSavedAt=Date.now();}await streamOutput();}
-     else if(event.type==='finish'){upstreamReason=event.reason;calls=event.calls;}
+     else if(event.type==='finish'){upstreamReason=event.reason;lastUpstreamReason=event.reason;calls=event.calls;}
     }
    }catch(error){
     if(!(error instanceof InferenceError))throw error;
-    finishReason=error.reason;gatewayLogId=error.logId;await errorFeedback(env,capability,error.value).catch(()=>{});streamLimit=contextLimit(error.value);if(!streamLimit||error.hasToolFragments)throw error;
+    finishReason=error.reason;failureDetail=error.detail;gatewayLogId=error.logId;await errorFeedback(env,capability,error.value).catch(()=>{});streamLimit=contextLimit(error.value);if(!streamLimit||error.hasToolFragments)throw error;
    }
    await checkpointDraft();
    if(streamLimit){if(output.length||calls.length)throw new Error('生成途中上下文超限');conversation.contextTokens=streamLimit;const before=prompt.estimatedTokens;await conversation.compress();prompt=await conversation.fit(conversation.options,toolTranscript);if(prompt.estimatedTokens>=before)throw new Error('会话压缩未缩短输入');await saveSummary();await publishContext();continue;}
-   if(upstreamReason==='tool_calls'){
-    finishReason='unsupported';
-    if(!calls.length)throw new Error('工具调用为空');
+   if(isToolCapableFinish(upstreamReason,calls.length>0)){
+    if(!calls.length){finishReason='unsupported';failureDetail='empty_tool_calls';throw new Error('工具调用为空');}
+    finishReason='invalid_output';failureDetail='tool_execution';
     for(const call of calls)await report('tool',call.id,'running',call.function.name,undefined,{arguments:call.function.arguments});
     agent.observeOutput(output);agent.validate(calls);const recalled=new Map();
-    for(const call of calls)if(call.function.name==='search_memory'){const args=JSON.parse(call.function.arguments);if(typeof args.query==='string')recalled.set(args.query,await lore.search(args.query));}
-    await owns();const results=agent.execute(calls,recalled);if(!store.saveSteps(assistantId,agent.steps))throw new Error('生成已停止');
+    for(const call of calls)if(call.function.name==='search_memory'){const args=JSON.parse(call.function.arguments);if(typeof args.query==='string'){finishReason='upstream';failureDetail='lore_search';recalled.set(args.query,await lore.search(args.query));finishReason='invalid_output';failureDetail='tool_execution';}}
+    await owns();const results=agent.execute(calls,recalled);
+    finishReason='upstream';failureDetail='tool_persist';
+    if(!store.saveSteps(assistantId,agent.steps))throw new Error('生成已停止');
     for(const step of agent.steps.filter(step=>calls.some(call=>call.id===step.call.id)))await report('tool',step.call.id,'completed',step.call.function.name,step.result,{arguments:step.call.function.arguments});
     const toolMessage:PromptMessage={role:'assistant',content:requestOutput};
     toolMessage.tool_calls=calls;
     const additions:PromptMessage[]=[toolMessage,...results];
     if(storyAtStart&&!toolTranscript.length)toolTranscript.push({role:'assistant',content:output.slice(0,storyAtStart)});toolTranscript.push(...additions);prompt=conversation.extend(prompt,additions);
-    if(prompt.needsCompression){if(output.length){finishReason='upstream';throw Error('工具后上下文超限');}prompt=await conversation.fit(conversation.options,toolTranscript);}await saveSummary();continue;
+    if(prompt.needsCompression){if(output.length){finishReason='upstream';throw Error('工具后上下文超限');}prompt=await conversation.fit(conversation.options,toolTranscript);}await saveSummary();failureDetail=undefined;continue;
    }
-   if(calls.length)throw new Error('工具终态无效');
+   if(calls.length){finishReason='invalid_output';failureDetail='invalid_tool_terminal';throw new Error('工具终态无效');}
    const parsed=parser.finish();parserFinished=true;output+=parsed.body;await streamOutput();
    if(abort.signal.aborted)throw new Error('aborted');
-   finishReason=upstreamReason==='stop'?'stop':upstreamReason==='length'?'length':upstreamReason==='content_filter'?'content_filter':upstreamReason?'unsupported':'interrupted';
-   if(finishReason!=='stop')throw new Error('incomplete');
+   finishReason=mapUpstreamFinishReason(upstreamReason);
+   if(finishReason!=='stop'){failureDetail=upstreamReason?'upstream_finish':'missing_finish';throw new Error('incomplete');}
    if(!output.trim()){finishReason='empty';throw new Error('empty');}
    bodyFinishedAt=Date.now();bodyModel=model;bodyGatewayLogId=gatewayLogId;bodyMetrics=metrics.snapshot();
    const latestInput=[...sourceHistory].reverse().find(m=>m.role==='user')?.content??'';
@@ -233,7 +235,7 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
      store.settleActivities(assistantId,status==='aborted'?'stopped':'error',failure||'运行中断');
      if(!parserFinished)output+=parser.finish().body;
      if(store.owns(assistantId))store.saveDraft(assistantId,output);saved=store.finish(assistantId,output,status,finishReason,candidates,agent.state,storyProjection);}finally{await onSettled(assistantId);}
-    console.info({event:'generation_outcome',messageId:assistantId,requestId,gatewayLogId,finishReason:saved?.finish_reason,status:saved?.status,model,modelRequests,metricsScope:director?.requests?'last-candidate-request':synopsisRequests?'last-synopsis-request':'last-body-request',...phaseMetrics,firstBodyMs:firstBodyAt===null?null:firstBodyAt-started,modelFirstBodyMs:firstBodyAt===null||firstModelStarted===null?null:firstBodyAt-firstModelStarted,promptBudget:prompt.budget,estimatedInputTokens:prompt.estimatedTokens,chars:output.length,bodyModel,bodyGatewayLogId,bodyRequests,candidateRequests:director?.requests??0,synopsisRequests,synopsisSource,synopsisCovered,synopsisMetricsScope:'last-synopsis-request',synopsisMetrics,synopsisGatewayLogId,synopsisElapsedMs,directorFirstMs:candidateFirstAt===null||directorStartedAt===null?null:candidateFirstAt-directorStartedAt,bodyMetricsScope:'last-body-request',bodyMetrics,bodyCompleteMs:bodyFinishedAt===null?null:bodyFinishedAt-started,candidateFirstMs:candidateFirstAt===null||candidateStartedAt===null?null:candidateFirstAt-candidateStartedAt,candidateElapsedMs:candidateFinishedAt===null||candidateStartedAt===null?null:candidateFinishedAt-candidateStartedAt,directorContextRebuilds:director?.rebuilds??0,directorEstimatedInputTokens:director?.prompt().estimatedTokens??null,directorIncludedMessages:director?.prompt().includedMessages??null,directorStoryCondensed:director?.prompt().condensed??false,candidateOutcome,candidateCount:saved?.candidates_json?JSON.parse(saved.candidates_json).length:0,elapsedMs:Date.now()-started});
+    console.info({event:'generation_outcome',messageId:assistantId,requestId,gatewayLogId,finishReason:saved?.finish_reason,status:saved?.status,...(lastUpstreamReason!==undefined?{upstreamReason:lastUpstreamReason}:{}),...(failureDetail?{failureDetail}:{}),model,modelRequests,metricsScope:director?.requests?'last-candidate-request':synopsisRequests?'last-synopsis-request':'last-body-request',...phaseMetrics,firstBodyMs:firstBodyAt===null?null:firstBodyAt-started,modelFirstBodyMs:firstBodyAt===null||firstModelStarted===null?null:firstBodyAt-firstModelStarted,promptBudget:prompt.budget,estimatedInputTokens:prompt.estimatedTokens,chars:output.length,bodyModel,bodyGatewayLogId,bodyRequests,candidateRequests:director?.requests??0,synopsisRequests,synopsisSource,synopsisCovered,synopsisMetricsScope:'last-synopsis-request',synopsisMetrics,synopsisGatewayLogId,synopsisElapsedMs,directorFirstMs:candidateFirstAt===null||directorStartedAt===null?null:candidateFirstAt-directorStartedAt,bodyMetricsScope:'last-body-request',bodyMetrics,bodyCompleteMs:bodyFinishedAt===null?null:bodyFinishedAt-started,candidateFirstMs:candidateFirstAt===null||candidateStartedAt===null?null:candidateFirstAt-candidateStartedAt,candidateElapsedMs:candidateFinishedAt===null||candidateStartedAt===null?null:candidateFinishedAt-candidateStartedAt,directorContextRebuilds:director?.rebuilds??0,directorEstimatedInputTokens:director?.prompt().estimatedTokens??null,directorIncludedMessages:director?.prompt().includedMessages??null,directorStoryCondensed:director?.prompt().condensed??false,candidateOutcome,candidateCount:saved?.candidates_json?JSON.parse(saved.candidates_json).length:0,elapsedMs:Date.now()-started});
     // Terminal frames are bounded and must not retain the generation while a reader is paused.
     if(!disconnected&&!leaseLost){if(failure)transport.enqueue(frame({type:'error',message:failure}));transport.enqueue(frame({type:'done',message:message(saved!)}));}
    }finally{ending=true;clearInterval(stopWatcher);request.signal.removeEventListener('abort',onDisconnect);try{transport.terminate();}catch{/* The reader may already have cancelled. */}}

@@ -87,3 +87,71 @@ it('streams provider reasoning separately from prose without waiting for complet
  push(chunk({reasoning_content:'已知事实。'}));push(chunk({content:'她点点头。'},'stop'));controller.close();
  const rest=await collect(stream);expect(rest).toContainEqual({type:'reasoning',text:'已知事实。'});expect(rest.filter(e=>e.type==='text')).toEqual([{type:'text',text:'她点点头。'}]);
 });
+
+it('accepts tool deltas omitting index/id, usage-only chunks, model role and EOF [DONE] without double newline',async()=>{
+ const makeResponse = () => new Response([
+  'data: ' + JSON.stringify({ choices: [{ delta: { role: 'model', tool_calls: [{ type: 'function', function: { name: 'update_state', arguments: '{"patch":{"scene":"北港"}}' } }] }, finish_reason: 'stop' }] }),
+  'data: ' + JSON.stringify({ id: 'u', model: 'gemini', usage: { prompt_tokens: 10, completion_tokens: 4 } }),
+  'data: [DONE]',
+ ].join('\n\n'), { headers: { 'Content-Type': 'text/event-stream' } });
+ vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => makeResponse()));
+ const events1 = await collect(inferRoleplay(env, 'u', 'r', { messages, tools: AGENT_TOOLS }, signal()));
+ const finish1 = events1.at(-1) as { type: 'finish'; reason: string; calls: Array<{ id: string; type: string; function: { name: string; arguments: string } }> };
+ expect(finish1).toEqual({ type: 'finish', reason: 'stop', calls: [{ id: expect.stringMatching(/^call_[a-f0-9-]+_0$/), type: 'function', function: { name: 'update_state', arguments: '{"patch":{"scene":"北港"}}' } }] });
+ const events2 = await collect(inferRoleplay(env, 'u', 'r', { messages, tools: AGENT_TOOLS }, signal()));
+ const finish2 = events2.at(-1) as typeof finish1;
+ expect(finish2.calls[0].id).not.toBe(finish1.calls[0].id);
+});
+
+it('allocates distinct indices when multiple indexless tool calls arrive in separate chunks',async()=>{
+ vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response([
+  chunk({ tool_calls: [{ id: 'call_a', type: 'function', function: { name: 'search_memory', arguments: '{"query":' } }] }),
+  chunk({ tool_calls: [{ id: 'call_a', function: { arguments: '"钥匙"}' } }] }),
+  chunk({ tool_calls: [{ id: 'call_b', type: 'function', function: { name: 'update_state', arguments: '{"patch":{"scene":"北港"}}' } }] }, 'tool_calls'),
+ ])));
+ const events = await collect(inferRoleplay(env, 'u', 'r', { messages, tools: AGENT_TOOLS }, signal()));
+ expect(events.at(-1)).toEqual({ type: 'finish', reason: 'tool_calls', calls: [
+  { id: 'call_a', type: 'function', function: { name: 'search_memory', arguments: '{"query":"钥匙"}' } },
+  { id: 'call_b', type: 'function', function: { name: 'update_state', arguments: '{"patch":{"scene":"北港"}}' } },
+ ] });
+});
+
+it('preserves call identity across parallel indexless anonymous continuation chunks',async()=>{
+ vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response([
+  chunk({ tool_calls: [
+   { id: 'call_a', type: 'function', function: { name: 'search_memory', arguments: '{"query":' } },
+   { id: 'call_b', type: 'function', function: { name: 'update_state', arguments: '{"patch":' } },
+  ] }),
+  chunk({ tool_calls: [
+   { function: { arguments: '"钥匙"}' } },
+   { function: { arguments: '{"scene":"南塔"}}' } },
+  ] }, 'tool_calls'),
+ ])));
+ const events = await collect(inferRoleplay(env, 'u', 'r', { messages, tools: AGENT_TOOLS }, signal()));
+ expect(events.at(-1)).toEqual({ type: 'finish', reason: 'tool_calls', calls: [
+  { id: 'call_a', type: 'function', function: { name: 'search_memory', arguments: '{"query":"钥匙"}' } },
+  { id: 'call_b', type: 'function', function: { name: 'update_state', arguments: '{"patch":{"scene":"南塔"}}' } },
+ ] });
+});
+
+it('rejects truncated tool fragments on stop_sequence instead of silently discarding them',async()=>{
+ vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response([
+  chunk({ content: '正文。', tool_calls: [{ index: 0, id: 'c1', function: { name: 'update_state', arguments: '{"patch":' } }] }, 'stop_sequence'),
+ ])));
+ await expect(collect(inferRoleplay(env, 'u', 'r', { messages, tools: AGENT_TOOLS }, signal()))).rejects.toMatchObject({ reason: 'invalid_output' });
+});
+
+it('classifies truncated streams, refusals, truncated tool length and invalid tool calls without misreporting unsupported',async()=>{
+ vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('data: {"choices":[{"delta":{"content":"半句"}}', { headers: { 'Content-Type': 'text/event-stream' } })));
+ await expect(collect(inferRoleplay(env, 'u', 'r', { messages }, signal()))).rejects.toMatchObject({ reason: 'interrupted' });
+
+ vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response([chunk({ refusal: '无法回答' }, 'stop')])));
+ await expect(collect(inferRoleplay(env, 'u', 'r', { messages }, signal()))).rejects.toMatchObject({ reason: 'content_filter' });
+
+ vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response([chunk({ content: '半句', tool_calls: [{ index: 0, id: 'c1', function: { name: 'update_state', arguments: '{"patch":' } }] }, 'length')])));
+ const lengthEvents = await collect(inferRoleplay(env, 'u', 'r', { messages, tools: AGENT_TOOLS }, signal()));
+ expect(lengthEvents.at(-1)).toEqual({ type: 'finish', reason: 'length', calls: [] });
+
+ vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response([chunk({ tool_calls: [{ index: 0, id: 'broken', function: { name: 'search_memory', arguments: '{' } }] }, 'tool_calls')])));
+ await expect(collect(inferRoleplay(env, 'u', 'r', { messages, tools: AGENT_TOOLS }, signal()))).rejects.toMatchObject({ reason: 'invalid_output' });
+});

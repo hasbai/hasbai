@@ -1,4 +1,5 @@
 import { estimateTokens, type PromptMessage } from '../shared/prompt';
+import { mapUpstreamFinishReason } from '../shared/outcomes';
 import { stateContext, type StoryState } from './agent';
 import { contextLimit } from './context';
 import { InferenceMetrics } from './metrics';
@@ -58,7 +59,7 @@ export class DirectorAgent {
    }
    await owns();
    if(limit){this.contextTokens=limit;if(!await this.compact(rebuild))throw Error('Director上下文未缩短');continue;}
-   if(reason!=='stop'){this.outcome='incomplete';this.error='Director 未正常完成：'+(reason??'连接中断');return [];}
+   if(mapUpstreamFinishReason(reason)!=='stop'){this.outcome='incomplete';this.error='Director 未正常完成：'+(reason??'连接中断');return [];}
    const choices=directorChoices(text);this.outcome='completed';return choices;
   }}catch(error){this.error=(error as Error).message;this.outcome=signal.aborted?'cancelled':'error';if(signal.aborted)throw error;return [];}
  }
