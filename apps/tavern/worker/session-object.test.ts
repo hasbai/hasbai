@@ -5,17 +5,19 @@ import {TavernSession,sessionName} from './session-object';
 import {SessionStore,SESSION_SCHEMA} from './session-store';
 import {ConversationContext} from './context';
 import {DEFAULT_SETTINGS} from '../shared/types';
+import {createTestDurableObjectState,createTestStorage} from './test-do-state';
 vi.mock('cloudflare:workers',()=>({DurableObject:class{constructor(public ctx:DurableObjectState,public env:Env){}}}));
-let db:DatabaseSync,env:Env,sqlDbs:Map<string,DatabaseSync>,objects:Map<string,TavernSession>,work:Promise<unknown>[],alarms:Map<string,number>;
+let db:DatabaseSync,env:Env,sqlDbs:Map<string,DatabaseSync>,kvMaps:Map<string,Map<string,unknown>>,objects:Map<string,TavernSession>,work:Promise<unknown>[],alarms:Map<string,number>;
 let intercept:((sql:string)=>Promise<void>|void)|undefined;
 let deleteStorage:((name:string)=>Promise<void>)|undefined;
 let readIntercept:((sql:string)=>Promise<void>|void)|undefined;
 function statement(query:string,values:unknown[]=[]):D1PreparedStatement{return {bind:(...v:unknown[])=>statement(query,v),first:async()=>{await readIntercept?.(query);return db.prepare(query).get(...values as never[])??null;},all:async()=>({results:db.prepare(query).all(...values as never[])}),run:async()=>{await intercept?.(query);return {meta:{changes:Number(db.prepare(query).run(...values as never[]).changes)}};}} as D1PreparedStatement;}
-function storage(name:string){let sql=sqlDbs.get(name);if(!sql){sql=new DatabaseSync(':memory:');sqlDbs.set(name,sql);}const sqlite=sql;return {sql:{exec:(query:string,...values:unknown[])=>{if(query.includes(';')){sqlite.exec(query);return {toArray:()=>[]};}const rows=sqlite.prepare(query).all(...values as never[]);return {toArray:()=>rows};}},transactionSync:<T>(fn:()=>T)=>{sqlite.exec('BEGIN');try{const result=fn();sqlite.exec('COMMIT');return result;}catch(error){sqlite.exec('ROLLBACK');throw error;}},setAlarm:async(time:number)=>{alarms.set(name,time);},deleteAll:async()=>{await deleteStorage?.(name);for(const row of sqlite.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all())sqlite.exec('DROP TABLE "'+row.name+'"');alarms.delete(name);}} as unknown as DurableObjectStorage;}
-function target(owner='owner',id='s'){const name=sessionName(owner,id);let object=objects.get(name);if(!object){object=new TavernSession({storage:storage(name),waitUntil:(p:Promise<unknown>)=>work.push(p)} as unknown as DurableObjectState,env);objects.set(name,object);}return object;}
+function ensureDb(name:string){let sql=sqlDbs.get(name);if(!sql){sql=new DatabaseSync(':memory:');sqlDbs.set(name,sql);}let kv=kvMaps.get(name);if(!kv){kv=new Map();kvMaps.set(name,kv);}return {sql,kv};}
+function storage(name:string){const {sql,kv}=ensureDb(name);return createTestStorage(sql,name,{kv,alarms,onDeleteAll:(n)=>deleteStorage?.(n)});}
+function target(owner='owner',id='s'){const name=sessionName(owner,id);let object=objects.get(name);if(!object){const {sql,kv}=ensureDb(name);object=new TavernSession(createTestDurableObjectState(sql,name,{kv,alarms,onDeleteAll:(n)=>deleteStorage?.(n),waitUntil:(p:Promise<unknown>)=>work.push(p)}),env);objects.set(name,object);}return object;}
 async function invoke(method:Parameters<TavernSession['invoke']>[2],data:Record<string,unknown>={},owner='owner',id='s'){return JSON.parse(await target(owner,id).invoke(owner,id,method,data));}
 function seed(id='s',owner='owner'){db.prepare('INSERT INTO sessions(id,owner,title,character_json,character_name,settings_json,created_at,updated_at,summary_json) VALUES(?,?,?,?,?,?,?,?,?)').run(id,owner,'旅店',JSON.stringify({name:'岚',first_mes:'你好'}),'岚',JSON.stringify(DEFAULT_SETTINGS),1,2,'historical-checkpoint');db.prepare("INSERT INTO messages(id,session_id,role,content,status,ordinal,created_at,finish_reason,candidates_json) VALUES(?,?,'assistant','旧正文','completed',0,3,'stop',?)").run('m-'+id,id,'["问问往事。"]');}
-beforeEach(()=>{db=new DatabaseSync(':memory:');for(const name of readdirSync(new URL('../migrations/',import.meta.url)).filter(n=>n.endsWith('.sql')).sort())db.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'));sqlDbs=new Map();objects=new Map();work=[];alarms=new Map();intercept=undefined;deleteStorage=undefined;env={PROMPTS:{get:async()=>null},DB:{prepare:statement,batch:async(stmts:D1PreparedStatement[])=>{db.exec('BEGIN');try{const result=[];for(const stmt of stmts)result.push(await stmt.run());db.exec('COMMIT');return result;}catch(error){db.exec('ROLLBACK');throw error;}}},SESSIONS:{getByName:(name:string)=>{const [owner,id]=JSON.parse(name);return target(owner,id);}}} as unknown as Env;});
+beforeEach(()=>{db=new DatabaseSync(':memory:');for(const name of readdirSync(new URL('../migrations/',import.meta.url)).filter(n=>n.endsWith('.sql')).sort())db.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'));sqlDbs=new Map();kvMaps=new Map();objects=new Map();work=[];alarms=new Map();intercept=undefined;deleteStorage=undefined;env={PROMPTS:{get:async()=>null},DB:{prepare:statement,batch:async(stmts:D1PreparedStatement[])=>{db.exec('BEGIN');try{const result=[];for(const stmt of stmts)result.push(await stmt.run());db.exec('COMMIT');return result;}catch(error){db.exec('ROLLBACK');throw error;}}},SESSIONS:{getByName:(name:string)=>{const [owner,id]=JSON.parse(name);return target(owner,id);}}} as unknown as Env;});
 afterEach(async()=>{await Promise.allSettled(work);db.close();for(const sqlite of sqlDbs.values())sqlite.close();});
 it('converts Telegram source records in place on load and clears only derived context across restarts',async()=>{
  seed();const raw=JSON.stringify({speaker:{id:12,name:'@alice'},text:'第一行\n/ooc 普通正文'});
@@ -202,8 +204,33 @@ it('upgrades existing SQLite media relationships from D1 without changing messag
  sql.prepare('INSERT INTO sessions(id,owner,title,character_json,character_name,settings_json,book_ids_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)').run('s','owner','旧标题','{"name":"岚"}','岚',JSON.stringify(DEFAULT_SETTINGS),'[]',1,2);
  sql.prepare("INSERT INTO session_meta(id) VALUES('s')").run();
  sql.prepare("INSERT INTO messages(id,session_id,role,content,status,ordinal,created_at) VALUES('persisted','s','assistant','DO 正文','completed',0,3)").run();
- objects.set(name,new TavernSession({storage:legacy,waitUntil:(p:Promise<unknown>)=>work.push(p)} as unknown as DurableObjectState,env));
+ objects.set(name,new TavernSession(createTestDurableObjectState(sql,name,{kv:kvMaps.get(name),alarms,onDeleteAll:(n)=>deleteStorage?.(n),waitUntil:(p:Promise<unknown>)=>work.push(p)}),env));
  expect(db.prepare("SELECT character_id FROM sessions WHERE id='s'").get()?.character_id).toBe('card');
  const first=(await invoke('read')).value;expect(sql.prepare("SELECT character_id FROM sessions WHERE id='s'").get()?.character_id).toBe('card');expect(first.session.characterId).toBe('card');expect(first.messages[0].content).toBe('DO 正文');
  objects.delete(name);expect((await invoke('read')).value).toEqual(first);
+});
+
+it('creates Pi Durable and Lifecycle tables during generation and wipes all tables and alarms on remove',async()=>{
+ seed();
+ Object.assign(env,{AI_SERVICE:{fetch:async(url:string,init?:RequestInit)=>{
+  if(String(url).endsWith('/internal/models'))return Response.json({data:[{id:'dynamic/rp',provider:'dynamic',name:'默认',type:'chat',target:'qwen',context_tokens:16384}]});
+  const body=JSON.parse(String(init?.body??'{}')) as {response_format?:unknown};
+  const content=body.response_format?JSON.stringify({choices:['下一步一','下一步二','下一步三']}):'Pi 正文回复。';
+  return new Response('data: '+JSON.stringify({choices:[{delta:{content},finish_reason:'stop'}]})+'\n\ndata: [DONE]\n\n',{headers:{'Content-Type':'text/event-stream'}});
+ }}});
+ const wire=await(await target().fetch(new Request('https://session/generate',{method:'POST',headers:{'X-Tavern-Owner':'owner','X-Tavern-Session':'s','X-Tavern-Username':'test','Content-Type':'application/json'},body:JSON.stringify({requestId:crypto.randomUUID(),content:'问候'})}))).text();
+ await Promise.all(work);
+ expect(wire).toContain('Pi 正文回复。');
+ const name=sessionName('owner','s'),sqlite=sqlDbs.get(name)!;
+ const tables=sqlite.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(r=>String((r as {name:string}).name));
+ expect(tables.some(t=>t.startsWith('pi_'))).toBe(true);
+ expect(tables).toContain('cf_agents_jobs');
+ expect((await invoke('remove')).ok).toBe(true);
+ expect(sqlite.prepare("SELECT count(*) n FROM sqlite_master WHERE type='table'").get()?.n).toBe(0);
+ expect(alarms.has(name)).toBe(false);
+ expect((await invoke('read')).status).toBe(404);
+ expect((await target().fetch(new Request('https://session/generate',{method:'POST',headers:{'X-Tavern-Owner':'owner','X-Tavern-Session':'s','X-Tavern-Username':'test','Content-Type':'application/json'},body:JSON.stringify({requestId:crypto.randomUUID(),content:'复活'})}))).status).toBe(404);
+ await target().alarm();
+ expect(sqlite.prepare("SELECT count(*) n FROM sqlite_master WHERE type='table'").get()?.n).toBe(0);
+ expect(alarms.has(name)).toBe(false);
 });

@@ -26,7 +26,7 @@ export default {async fetch(request,env){const d=await request.json(),stub=env.S
 if(d.method==='generate')return stub.fetch(new Request('https://session/generate',{method:'POST',headers:{'X-Tavern-Owner':'evaluation','X-Tavern-Session':d.id,'X-Tavern-Username':'agent-evaluation','Content-Type':'application/json'},body:JSON.stringify(d.data)}));
 if(d.method==='probe')return Response.json(await stub.probe(d.id,d.data.query));
 return new Response(await stub.invoke('evaluation',d.id,d.method,d.data??{}),{headers:{'Content-Type':'application/json'}});}};`;
-const bundled=await build({stdin:{contents:source,resolveDir:appRoot,sourcefile:'evaluation.ts',loader:'ts'},bundle:true,write:false,format:'esm',platform:'browser',target:'es2022',external:['cloudflare:workers'],nodePaths:[join(root,'node_modules')]});
+const bundled=await build({stdin:{contents:source,resolveDir:appRoot,sourcefile:'evaluation.ts',loader:'ts'},bundle:true,write:false,format:'esm',platform:'browser',target:'es2022',external:['cloudflare:workers','node:*'],nodePaths:[join(root,'node_modules')]});
 const requests=[],rounds=[],embeddingRequests=[],resources=new Set(['main','cache-other']);let active={id:'setup',session:'main'},runtime;
 const metadata={scenario:scenario.name,fixture:scenario,bundleSHA256:createHash('sha256').update(bundled.outputFiles[0].text).digest('hex'),ref:snapshot??execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim(),workingTree:!snapshot,startedAt:new Date().toISOString(),settings:scenario.settings};
 const save=()=>{writeFileSync(join(out,'results.json'),JSON.stringify({metadata,rounds,requests,embeddingRequests},null,2)+'\n');};

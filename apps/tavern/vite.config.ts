@@ -17,5 +17,9 @@ export default defineConfig(({ mode }) => ({
           },
         }
       : undefined,
-  test: { include: ["worker/**/*.test.ts", "shared/**/*.test.ts"], environment: "node" },
+  test: {
+    include: ["worker/**/*.test.ts", "shared/**/*.test.ts"],
+    environment: "node",
+    server: { deps: { inline: ["agents"] } },
+  },
 }));

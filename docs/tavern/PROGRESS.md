@@ -5,7 +5,7 @@
 ## 已实现
 
 - **产品与存储**：已实现角色库与世界书导入导出、Chub 与 TheatreLM 搜卡安装、角色与图片 AI 生图及图床直连。也已实现线性历史编辑/删除/重生成、Telegram 消息中台接入与 Saki 切换。持久层包含每会话 SQLite DO、状态事务、`goals`、`search_memory`、`read_memory`、超限压缩与 DO 删除清空。
-- **推理与提示词**：已接入 AI SDK `streamText`，经 `AI_SERVICE` 调用统一 AI Worker。正文支持实时流式透传（已修复 `exceededCpu`）与前缀复用加独立 `DirectorAgent` 三候选。KV `dialogue-v3` 可编辑应用提示词与关于页同步已落地。
+- **推理与提示词**：已接入 Cloudflare Agents SDK（`Lifecycle` + `PiHarness`）、`@earendil-works/pi-durable` 与 `@earendil-works/pi-ai`，经 `AI_SERVICE` 调用统一 AI Worker。正文支持实时流式透传（已修复 `exceededCpu`）与前缀复用加独立 `DirectorAgent` 三候选。KV `dialogue-v3` 可编辑应用提示词与关于页同步已落地。
 
 ## 关键实测与历史证据索引
 
