@@ -26,7 +26,7 @@ Telegram 与浏览器共用会话入口（见 [MESSAGING](MESSAGING.md)）。每
 
 ## Prompt 与模型投影
 
-- 正文、Director、压缩与角色生成经 `worker/inference.ts` 调用固定 catalog 版本的 Vercel AI SDK `streamText`。`tool` 不设 `execute`，`maxRetries:0`，`streamRetries:0`。系统保留原始请求、工具顺序、usage、timings 与 HTTP 日志 ID，不引入 Cloudflare Agents SDK。
+- 正文代理经 `worker/pi-agent.ts` 接入 Cloudflare Agents SDK（`Lifecycle` + `PiHarness`）与 `@earendil-works/pi-durable`（按序执行 `search_memory`、`read_memory`、`update_state` 工具并经 `GenerationTask.afterResponse` 整批校验）。底层推理与 Director、压缩、角色生成均经 `worker/inference.ts` 的 `@earendil-works/pi-ai` 自定义 Provider 调用 `AI_SERVICE`，不自动重试（`retry.maxRetries: 0`）并关闭 Pi 内置摘要（`compaction.enabled: false`），保留原始请求、工具顺序、usage、timings 与 HTTP 日志 ID。
 - **提示词与消息结构**：应用提示词见 [应用提示词](ARCHITECTURE.md#应用提示词)，角色宏见 [角色卡与世界书](ARCHITECTURE.md#角色卡与世界书)。首条 `system` 包含用户提示、角色卡、世界书与工具指导。其后依次为已校验 checkpoint、完整近期剧情、当前确认 `state`（空则省略，纯数据不加指令）与末尾用户本轮原文。
 - 跨轮模型投影从有效剧情与已校验 checkpoint 重建（格式版本或来源指纹变更即失效）。投影不保存 wire 中的旧 state、提醒或协议片段。Telegram 入站按 `username: content` 格式化，OOC 控制行保持独立。progress RPC 只按 owner、session 与 requestId 返回持久草稿。
 - 同轮保留真实 `tool_calls` 与结果，不加假 user 提醒。正文 `length` 或输出检查失败时，保留实际内容并报错，不自动续写或修订。Director 复用本轮真实 wire，不把阶段任务写入正文记忆。
@@ -48,7 +48,7 @@ Telegram 与浏览器共用会话入口（见 [MESSAGING](MESSAGING.md)）。每
 ## DO与迁移一致性
 
 - Worker 验签后，按 `owner + session` 路由每会话 SQLite DO。D1 存目录、角色、世界书、设置与旧迁移来源，R2 存私有原件。惰性迁移在 D1 原子设 `storage_backend=do` 与永久 `generation_id=do:<sessionId>` 哨兵后，逐字段导入 DO（失败留来源重试，0007 与 0008 兼容）。切换后只写 DO，并通过 `revision`、`synced_revision` 与 alarm 幂等同步 D1 目录。
-- **删除契约**：删除先持久标记清理意图与重试 alarm。确认 D1 删除标记并释放绑定后，`await deleteAll` 清空 SQLite 与 alarm 再返回。生成或收尾中拒绝删除。构造函数不建表，已删除对象的旧请求不得重建或复活（参考 [SQLite deleteAll](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/#deleteall)）。
+- **删除契约**：删除先持久标记清理意图与重试 alarm。确认 D1 删除标记并释放绑定后，先按需 `lifecycle.dispose()` 释放 Pi 资源，再 `await deleteAll` 清空 SQLite（含 `pi_*` 与 `cf_agents_jobs`）与 alarm，随后 `lifecycle.disableAlarms()` 再返回。生成或收尾中拒绝删除。构造函数不建表，已删除对象的旧请求与 `alarm()` 不调用 `lifecycle.alarm()` 或重建复活（参考 [SQLite deleteAll](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/#deleteall)）。
 - **并发与中止**：初始化消息与 before 快照同事务提交。模型 `await` 期间不持有 `blockConcurrencyWhile`，可以执行 `stop`。停流优先释放等待背压写入，先存终态释放占用，再入队最多 `error` 与 `done` 两帧。兼容日期 `2026-10-03` 支持标准 `TransformStream` 与 DO `waitUntil` 保活规则。
 
 ## 长程与缓存评测

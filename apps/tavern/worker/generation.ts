@@ -8,19 +8,20 @@ import { inferRoleplay, InferenceError } from './inference';
 import { DirectorAgent, DIRECTOR_RESPONSE_FORMAT, directorTask } from './director';
 import { InferenceMetrics } from './metrics';
 import { parseBook, parseCard } from '../shared/cards';
-import {LoreIndex,embeddings} from './lore';
+import { LoreIndex, embeddings } from './lore';
 import { buildPrompt, stateMessage, type PromptMessage } from '../shared/prompt';
 import { ConversationContext, summarizeWithModel, explicitContextLimit, contextLimit, validSummary } from './context';
-import { generationNotice, isToolCapableFinish, mapUpstreamFinishReason } from '../shared/outcomes';
+import { generationNotice } from '../shared/outcomes';
 import type { FinishReason, Message } from '../shared/types';
 import { HttpError, json } from './http';
 import { settings, currentMessages, message, ownedBooks } from './store';
 import type { SessionStore } from './session-store';
 import { recallRequested, draftProblems } from './narrative';
-import { AgentTurn, contentHash, stableJson, stateContext, storyMessages, type ToolCall, type ModelProjection } from './agent';
+import { AgentTurn, contentHash, stableJson, stateContext, storyMessages, type ModelProjection } from './agent';
+import { TavernPiRuntime, type ActiveBodyTurn } from './pi-agent';
 export { explicitContextLimit } from './context';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
-export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext,'waitUntil'>,owner:string,id:string,data:Record<string,unknown>,username:string,store:SessionStore,onSettled:(id:string)=>Promise<void> = async()=>{},onClaim:(id:string,abort:AbortController)=>void = ()=>{},beforeClaim:()=>void=()=>{}) {
+export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext,'waitUntil'>,owner:string,id:string,data:Record<string,unknown>,username:string,store:SessionStore,onSettled:(id:string)=>Promise<void> = async()=>{},onClaim:(id:string,abort:AbortController)=>void = ()=>{},beforeClaim:()=>void=()=>{},pi:TavernPiRuntime = new TavernPiRuntime(env)) {
  const started=Date.now();
  const requestId=String(data.requestId??'');if(!UUID.test(requestId))throw new HttpError(400,'请求 ID 无效');
  const initial=store.get();
@@ -94,16 +95,18 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
  const onDisconnect=()=>{if(ending||disconnected)return;disconnected=true;try{transport.terminate();}catch{/* The reader may already have cancelled. */}};request.signal.addEventListener('abort',onDisconnect,{once:true});if(request.signal.aborted)onDisconnect();void writer.closed.catch(onDisconnect);
  report=async(kind,key,status,title,result,input)=>{const value:AgentActivity={id:assistantId+':'+key,messageId:assistantId,ordinal:store.findMessage(assistantId)!.ordinal,kind,title,status,result,input,createdAt:Date.now()};const previous=store.activities().find(a=>a.id===value.id);if(previous){value.createdAt=previous.createdAt;value.input??=previous.input;}store.activity(value);if(!disconnected&&!ending)try{transport.enqueue(frame({type:'activity',activity:value}));}catch{onDisconnect();}};
  const publishContext=async(usage:ContextUsage=contextUsage(conversation))=>{if(!disconnected)try{transport.enqueue(frame({type:'context',context:usage}));}catch{onDisconnect();}};
+ const publishProgress=(target:GenerationProgress['target'],phase:GenerationProgress['phase']|null,text?:string)=>{
+  if(!disconnected&&!ending)try{transport.enqueue(frame({type:'progress',messageId:assistantId,target,phase,...(text?{text}:{})}));}catch{onDisconnect();}
+ };
  // Progress is display-only and never waits for the browser or writes token-by-token to SQLite.
  async function* inferenceProgress(target:GenerationProgress['target'],input:Parameters<typeof inferRoleplay>[3]) {
   let phase:GenerationProgress['phase']='prefill';
-  const progress=(text?:string,finished=false)=>{if(!disconnected&&!ending)try{transport.enqueue(frame({type:'progress',messageId:assistantId,target,phase:finished?null:phase,...(text?{text}:{})}));}catch{onDisconnect();}};
-  progress();
+  publishProgress(target,phase);
   try{for await(const event of inferRoleplay(env,username,requestId,input,abort.signal)){
-   if(event.type==='reasoning'){phase='reasoning';progress(event.text);}
-   else if(event.type==='text'&&phase!=='generation'){phase='generation';progress();}
+   if(event.type==='reasoning'){phase='reasoning';publishProgress(target,phase,event.text);}
+   else if(event.type==='text'&&phase!=='generation'){phase='generation';publishProgress(target,phase);}
    yield event;
-  }}finally{progress(undefined,true);}
+  }}finally{publishProgress(target,null);}
  }
  const work=(async()=>{
   let status:Message['status']='completed';let failure='';
@@ -114,51 +117,72 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
    const saveSummary=async()=>{await owns();if(conversation.summary?.covered.includes(assistantId))return;checkpoint=conversation.summary?JSON.stringify(conversation.summary):null;const saved=store.saveSummary(assistantId,checkpoint);if(!saved){abort.abort();throw new Error('生成已停止');}if(conversation.contextTokens!==null)await recordFeedback(env,capability,{contextLimit:conversation.contextTokens});};
    await saveSummary();
    const checkpointDraft=async()=>{await owns();if(!store.saveDraft(assistantId,output))throw Error('生成已停止');};
-   const attemptPrefix=structuredClone(prompt.messages);let draftSavedAt=0;let streamedUntil=0;
-   const streamOutput=async()=>{
-    const delta=output.slice(streamedUntil),end=output.length;
-    if(delta){firstBodyAt??=Date.now();await send({type:'delta',text:delta});streamedUntil=end;}
-   };
-   for(;;){
-   await owns();const storyAtStart=output.length;let requestOutput='';let calls:ToolCall[]=[];
-   finishReason='upstream';
-   firstModelStarted??=Date.now();modelRequests++;bodyRequests++;metrics=new InferenceMetrics();
-   finishReason='interrupted';
-   let upstreamReason:string|undefined;let streamLimit:number|undefined;
+   const attemptPrefix=structuredClone(prompt.messages);
+   const userInputText=regenerate?(conversation.options.currentInput?.content??''):text;
+   let requestOutput='';
    try{
-    for await(const event of inferenceProgress('body',{messages:prompt.messages,tools,tool_choice:'auto',...modelInput(opts)})){
-     if(event.type==='observation'){metrics.observe(event.value);if(typeof event.value.model==='string')model=event.value.model;gatewayLogId=event.logId;}
-     else if(event.type==='text'){requestOutput+=event.text;output+=parser.push(event.text);if(Date.now()-draftSavedAt>=1000){await checkpointDraft();draftSavedAt=Date.now();}await streamOutput();}
-     else if(event.type==='finish'){upstreamReason=event.reason;lastUpstreamReason=event.reason;calls=event.calls;}
-    }
+    const bodyResult=await pi.runBodyTurn(username,{
+     requestId,
+     assistantId,
+     userText:userInputText,
+     opts,
+     capability,
+     conversation,
+     prompt,
+     tools,
+     agent,
+     lore,
+     store,
+     toolTranscript,
+     toolPrompts:texts,
+     abort,
+     owns,
+     saveSummary,
+     publishContext,
+     checkpointDraft:async(currentOutput)=>{
+      output=currentOutput;
+      await checkpointDraft();
+     },
+     send,
+     report,
+     publishProgress:(phase,delta)=>publishProgress('body',phase,delta),
+    });
+    output=bodyResult.output;
+    requestOutput=bodyResult.requestOutput;
+    prompt=bodyResult.prompt;
+    parser=bodyResult.parser;
+    parserFinished=bodyResult.parserFinished;
+    lastUpstreamReason=bodyResult.upstreamReason;
+    finishReason=bodyResult.finishReason;
+    failureDetail=bodyResult.failureDetail;
+    model=bodyResult.model;
+    gatewayLogId=bodyResult.gatewayLogId;
+    metrics=bodyResult.metrics;
+    firstModelStarted=bodyResult.firstModelStarted;
+    firstBodyAt=bodyResult.firstBodyAt;
+    modelRequests=bodyResult.modelRequests;
+    bodyRequests=bodyResult.bodyRequests;
    }catch(error){
-    if(!(error instanceof InferenceError))throw error;
-    finishReason=error.reason;failureDetail=error.detail;gatewayLogId=error.logId;await errorFeedback(env,capability,error.value).catch(()=>{});streamLimit=contextLimit(error.value);if(!streamLimit||error.hasToolFragments)throw error;
+    const state=(error as Error & {turnState?:ActiveBodyTurn}).turnState;
+    if(state){
+     output=state.output;
+     requestOutput=state.requestOutput;
+     prompt=state.prompt;
+     parser=state.parser;
+     parserFinished=state.parserFinished;
+     lastUpstreamReason=state.upstreamReason;
+     finishReason=state.finishReason;
+     failureDetail=state.failureDetail;
+     model=state.model;
+     gatewayLogId=state.gatewayLogId;
+     metrics=state.metrics;
+     firstModelStarted=state.firstModelStarted;
+     firstBodyAt=state.firstBodyAt;
+     modelRequests=state.modelRequests;
+     bodyRequests=state.bodyRequests;
+    }
+    throw error;
    }
-   await checkpointDraft();
-   if(streamLimit){if(output.length||calls.length)throw new Error('生成途中上下文超限');conversation.contextTokens=streamLimit;const before=prompt.estimatedTokens;await conversation.compress();prompt=await conversation.fit(conversation.options,toolTranscript);if(prompt.estimatedTokens>=before)throw new Error('会话压缩未缩短输入');await saveSummary();await publishContext();continue;}
-   if(isToolCapableFinish(upstreamReason,calls.length>0)){
-    if(!calls.length){finishReason='unsupported';failureDetail='empty_tool_calls';throw new Error('工具调用为空');}
-    finishReason='invalid_output';failureDetail='tool_execution';
-    for(const call of calls)await report('tool',call.id,'running',call.function.name,undefined,{arguments:call.function.arguments});
-    agent.observeOutput(output);agent.validate(calls);const recalled=new Map();
-    for(const call of calls)if(call.function.name==='search_memory'){const args=JSON.parse(call.function.arguments);if(typeof args.query==='string'){finishReason='upstream';failureDetail='lore_search';recalled.set(args.query,await lore.search(args.query));finishReason='invalid_output';failureDetail='tool_execution';}}
-    await owns();const results=agent.execute(calls,recalled);
-    finishReason='upstream';failureDetail='tool_persist';
-    if(!store.saveSteps(assistantId,agent.steps))throw new Error('生成已停止');
-    for(const step of agent.steps.filter(step=>calls.some(call=>call.id===step.call.id)))await report('tool',step.call.id,'completed',step.call.function.name,step.result,{arguments:step.call.function.arguments});
-    const toolMessage:PromptMessage={role:'assistant',content:requestOutput};
-    toolMessage.tool_calls=calls;
-    const additions:PromptMessage[]=[toolMessage,...results];
-    if(storyAtStart&&!toolTranscript.length)toolTranscript.push({role:'assistant',content:output.slice(0,storyAtStart)});toolTranscript.push(...additions);prompt=conversation.extend(prompt,additions);
-    if(prompt.needsCompression){if(output.length){finishReason='upstream';throw Error('工具后上下文超限');}prompt=await conversation.fit(conversation.options,toolTranscript);}await saveSummary();failureDetail=undefined;continue;
-   }
-   if(calls.length){finishReason='invalid_output';failureDetail='invalid_tool_terminal';throw new Error('工具终态无效');}
-   const parsed=parser.finish();parserFinished=true;output+=parsed.body;await streamOutput();
-   if(abort.signal.aborted)throw new Error('aborted');
-   finishReason=mapUpstreamFinishReason(upstreamReason);
-   if(finishReason!=='stop'){failureDetail=upstreamReason?'upstream_finish':'missing_finish';throw new Error('incomplete');}
-   if(!output.trim()){finishReason='empty';throw new Error('empty');}
    bodyFinishedAt=Date.now();bodyModel=model;bodyGatewayLogId=gatewayLogId;bodyMetrics=metrics.snapshot();
    const latestInput=[...sourceHistory].reverse().find(m=>m.role==='user')?.content??'';
    const problems=draftProblems(output,committedBase.filter(m=>m.role==='assistant'&&m.status==='completed').map(m=>m.content),recallRequested(latestInput));
@@ -221,8 +245,6 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
    }catch(error){candidateOutcome='error';candidateError=(error as Error).message;if(abort.signal.aborted)throw error;candidates=[];}
    candidateFinishedAt=Date.now();
    await report('director','director',candidateOutcome==='completed'?'completed':'error','Director · 下一步',{candidates,outcome:candidateOutcome,output:director?.rawOutput??'',...((candidateError||director?.error)?{error:candidateError||director?.error}:{})});
-   break;
-   }
   }catch{if(candidateStartedAt!==null)candidateOutcome=abort.signal.aborted?abortReason:'error';if(abort.signal.aborted)finishReason=abortReason;else if(finishReason==='stop')finishReason='upstream';status=['stopped','disconnected','timeout'].includes(finishReason)?'aborted':'error';failure=generationNotice(finishReason);}
   finally{
    if(candidateStartedAt!==null)candidateFinishedAt??=Date.now();
@@ -249,6 +271,5 @@ export async function generate(request:Request,env:Env,ctx:Pick<ExecutionContext
 export async function errorFeedback(env:Env,capability:Capability,value:unknown) {
  if(!value||typeof value!=='object')return;const v=value as {model?:unknown;error?:{model?:unknown;message?:unknown};message?:unknown};
  const actualModel=typeof v.model==='string'?v.model:typeof v.error?.model==='string'?v.error.model:undefined;
- const text=typeof v.error?.message==='string'?v.error.message:typeof v.message==='string'?v.message:'';
  const limit=contextLimit(value);if(limit)await recordFeedback(env,capability,{model:actualModel,contextLimit:limit});
 }

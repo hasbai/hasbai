@@ -25,8 +25,8 @@ Telegram 与浏览器共用同一会话 Agent（渠道契约见 [MESSAGING](MESS
 flowchart LR
   Browser[浏览器 SPA] -->|Auth0 JWT| Worker[Tavern Worker]
   Worker --> DO[每用户会话 SQLite DO]
-  DO --> SDK[AI SDK streamText]
-  SDK --> AI[统一 AI Worker]
+  DO --> PI[Pi Harness & Pi AI]
+  PI --> AI[统一 AI Worker]
   Worker --> DB[(D1 目录 / 角色 / 世界书 / 设置)]
   Worker --> Files[(私有 R2 tavern)]
   Worker --> Sources[公开角色源]

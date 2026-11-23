@@ -388,7 +388,7 @@
     {
       "id": "about",
       "kind": "screenshot",
-      "description": "AI SDK 对话流程、上下文顺序、精简行为规则、检索与原文读取说明；浅色和深色。",
+      "description": "Pi Agent 对话流程、上下文顺序、精简行为规则、检索与原文读取说明；浅色和深色。",
       "evidence": [
         {
           "spec": "e2e/tavern.spec.ts",

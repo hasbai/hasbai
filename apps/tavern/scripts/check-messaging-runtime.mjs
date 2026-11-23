@@ -36,7 +36,7 @@ export default {async fetch(request,env){const d=await request.json(),stub=env.M
  if(d.method==='view')return Response.json(JSON.parse(await env.SESSIONS.getByName(JSON.stringify(['owner','session'])).invoke('owner','session','read')).value);
  return Response.json(await stub.step());
 }};`;
-const bundle=await build({stdin:{contents:source,resolveDir:root,sourcefile:'messaging-runtime.ts',loader:'ts'},bundle:true,write:false,format:'esm',platform:'browser',target:'es2022',external:['cloudflare:workers']});
+const bundle=await build({stdin:{contents:source,resolveDir:root,sourcefile:'messaging-runtime.ts',loader:'ts'},bundle:true,write:false,format:'esm',platform:'browser',target:'es2022',external:['cloudflare:workers','node:*']});
 const options={modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-10-03',compatibilityFlags:['nodejs_compat','enable_request_signal'],durableObjects:{SESSIONS:{className:'RuntimeSession',useSQLite:true},MESSAGE_INBOX:{className:'RuntimeInbox',useSQLite:true}},resourcePersistencePath:persist,kvNamespaces:{PROMPTS:'test-prompts'},d1Databases:{DB:'test'},bindings:{AIG_GATEWAY_ID:'default',TELEGRAM_BOT_TOKEN:'fixture-only',TELEGRAM_BOT_USERNAME:'saki_main_bot'}};
 let runtime=new Miniflare(convertV4MiniflareOptions(options));
 async function call(method,data={}){const response=await runtime.dispatchFetch('https://test',{method:'POST',body:JSON.stringify({method,...data})});assert.equal(response.status,200);return response.json();}

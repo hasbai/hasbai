@@ -155,3 +155,25 @@ it('classifies truncated streams, refusals, truncated tool length and invalid to
  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response([chunk({ tool_calls: [{ index: 0, id: 'broken', function: { name: 'search_memory', arguments: '{' } }] }, 'tool_calls')])));
  await expect(collect(inferRoleplay(env, 'u', 'r', { messages, tools: AGENT_TOOLS }, signal()))).rejects.toMatchObject({ reason: 'invalid_output' });
 });
+
+it('aborts upstream inference when the consumer exits the iterator early',async()=>{
+ let upstreamSignal: AbortSignal | undefined;
+ let cancelled = false;
+ const encoder = new TextEncoder();
+ vi.stubGlobal('fetch', vi.fn((_url: unknown, init?: RequestInit) => {
+  upstreamSignal = init?.signal ?? undefined;
+  return Promise.resolve(new Response(new ReadableStream({
+   start(controller) {
+    controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"第一段"}}]}\n\n'));
+   },
+   cancel() {
+    cancelled = true;
+   },
+  }), { headers: { 'Content-Type': 'text/event-stream' } }));
+ }));
+ for await (const event of inferRoleplay(env, 'u', 'r', { messages }, signal())) {
+  if (event.type === 'text') break;
+ }
+ expect(upstreamSignal?.aborted).toBe(true);
+ await vi.waitFor(() => expect(cancelled).toBe(true));
+});
