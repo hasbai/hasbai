@@ -439,7 +439,18 @@ export async function* inferRoleplay(
   waiting = undefined;
   wake?.();
  };
+ const controller = new AbortController();
+ const onOuterAbort = () => {
+  controller.abort(signal.reason);
+  notify();
+ };
+ if (signal.aborted) {
+  controller.abort(signal.reason);
+ } else {
+  signal.addEventListener('abort', onOuterAbort, { once: true });
+ }
  const push = (event: InferenceEvent) => {
+  if (controller.signal.aborted) return;
   queue.push(event);
   notify();
  };
@@ -462,9 +473,7 @@ export async function* inferRoleplay(
 
  const models = createModels();
  models.setProvider(provider);
- const piStream = models.stream(model, { messages: [] }, { signal });
- const onAbort = () => notify();
- signal.addEventListener('abort', onAbort, { once: true });
+ const piStream = models.stream(model, { messages: [] }, { signal: controller.signal });
 
  void piStream.result().finally(() => {
   settled = true;
@@ -474,7 +483,7 @@ export async function* inferRoleplay(
  try {
   for (;;) {
    while (queue.length) yield queue.shift()!;
-   if (signal.aborted) throw failure ?? new InferenceError(null, 'interrupted', 'aborted');
+   if (controller.signal.aborted) throw failure ?? new InferenceError(null, 'interrupted', 'aborted');
    if (settled) break;
    await new Promise<void>((resolve) => { waiting = resolve; });
   }
@@ -483,7 +492,9 @@ export async function* inferRoleplay(
   if (!finishMeta) throw new InferenceError(null, 'interrupted', 'missing_finish_reason');
   yield { type: 'finish', reason: finishMeta.upstreamReason, calls: finishMeta.rawCalls };
  } finally {
-  signal.removeEventListener('abort', onAbort);
+  signal.removeEventListener('abort', onOuterAbort);
+  if (!settled && !controller.signal.aborted) controller.abort('iterator_closed');
+  queue.length = 0;
  }
 }
 
