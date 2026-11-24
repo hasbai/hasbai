@@ -7,13 +7,18 @@
  const labels={running:'运行中',completed:'已完成',error:'失败',stopped:'已停止'};
  const icons={body:MessageCircle,director:Clapperboard,tool:Wrench,compression:Layers3,status:Info};
  function format(value:unknown):string{if(typeof value==='string'){try{return JSON.stringify(JSON.parse(value),null,2);}catch{return value;}}return JSON.stringify(value,null,2)??'';}
+ function hasDetails(activity:AgentActivity):boolean{return activity.input!==undefined||activity.result!==undefined||!!activity.error;}
 </script>
 {#if visible.length||progress}<div class="agent-activities" aria-label="Agent 执行记录">
  {#each visible as activity(activity.id)}{@const Icon=icons[activity.kind]}
  {#if activity.kind==='compression'}
   <div class="agent-activity" data-kind="compression" data-status={activity.status}>
-   <div class="compression-line" role="status"><Layers3 size={15} aria-hidden="true"/><span>{activity.title}</span><span class="activity-status">{#if activity.status==='running'}<LoaderCircle class="activity-spinner" size={13} aria-hidden="true"/>{:else if activity.status==='completed'}<CircleCheck size={13} aria-hidden="true"/>{:else}<CircleAlert size={13} aria-hidden="true"/>{/if}<span class="sr-only">{labels[activity.status]}</span></span></div>
-   {#if activity.error}<p role="status">{activity.error}</p>{/if}
+   <div class="activity-line" role="status"><Layers3 size={15} aria-hidden="true"/><span>{activity.title}</span><span class="activity-status">{#if activity.status==='running'}<LoaderCircle class="activity-spinner" size={13} aria-hidden="true"/>{:else if activity.status==='completed'}<CircleCheck size={13} aria-hidden="true"/>{:else}<CircleAlert size={13} aria-hidden="true"/>{/if}<span class="sr-only">{labels[activity.status]}</span></span></div>
+   {#if activity.error}<p class="activity-error" role="status">{activity.error}</p>{/if}
+  </div>
+ {:else if !hasDetails(activity)}
+  <div class="agent-activity" data-status={activity.status}>
+   <div class="activity-line"><Icon size={15} aria-hidden="true"/><span>{activity.title}</span><span class="activity-status">{#if activity.status==='running'}<LoaderCircle class="activity-spinner" size={13} aria-hidden="true"/>{:else if activity.status==='completed'}<CircleCheck size={13} aria-hidden="true"/>{:else}<CircleAlert size={13} aria-hidden="true"/>{/if}<span class="sr-only">{labels[activity.status]}</span></span></div>
   </div>
  {:else}
   <details class="agent-activity" data-status={activity.status}>
@@ -23,12 +28,15 @@
  {/if}
  {/each}
  {#if progress}
-  <details class="agent-activity" data-status="running" data-phase={progress.phase}>
-   <summary><ChevronRight class="activity-chevron" size={14} aria-hidden="true"/><LoaderCircle class="activity-spinner" size={15} aria-hidden="true"/><span role="status">{phases[progress.phase]}</span>{#if progress.target==='director'}<span class="activity-status">Director</span>{/if}</summary>
-   <div class="activity-result">{#if progress.reasoning}<pre aria-label="思考过程">{progress.reasoning}</pre>{:else}<span>{phases[progress.phase]}</span>{/if}</div>
-  </details>
+  {#if progress.reasoning}
+   <details class="agent-activity" data-status="running" data-phase={progress.phase}>
+    <summary><ChevronRight class="activity-chevron" size={14} aria-hidden="true"/><LoaderCircle class="activity-spinner" size={15} aria-hidden="true"/><span role="status">{phases[progress.phase]}</span>{#if progress.target==='director'}<span class="activity-status">Director</span>{/if}</summary>
+    <div class="activity-result"><pre aria-label="思考过程">{progress.reasoning}</pre></div>
+   </details>
+  {:else}
+   <div class="agent-activity" data-status="running" data-phase={progress.phase}>
+    <div class="activity-line"><LoaderCircle class="activity-spinner" size={15} aria-hidden="true"/><span role="status">{phases[progress.phase]}</span>{#if progress.target==='director'}<span class="activity-status">Director</span>{/if}</div>
+   </div>
+  {/if}
  {/if}
 </div>{/if}
-<style>
- .compression-line{display:flex;align-items:center;gap:7px;min-height:44px}
-</style>

@@ -3,9 +3,15 @@ import type { ModelOption, Settings } from '../shared/types';
 import { boundedBody, HttpError } from './http';
 
 const TTL = 60 * 60 * 1000;
+export const DEFAULT_CONTEXT_TOKENS = 32768;
 export type Capability = { contextTokens: number | null; source: string; checkedAt: number; inputRatio: number; modelId?: string };
 const unknown: Capability = { contextTokens: null, source: 'unknown', checkedAt: 0, inputRatio: 1.2 };
 type CatalogModel = { id: string; name: string; type: string; provider?: string; target?: string; context_tokens?: number };
+
+function defaultContextTokens(env: Env): number {
+ const configured = Number((env as unknown as { CONTEXT_TOKENS?: string }).CONTEXT_TOKENS);
+ return Number.isSafeInteger(configured) && configured >= 1024 ? configured : DEFAULT_CONTEXT_TOKENS;
+}
 
 async function catalog(env: Env): Promise<CatalogModel[]> {
  if (!env.AI_SERVICE) throw new HttpError(503, 'AI 服务未配置');
@@ -22,14 +28,15 @@ async function catalog(env: Env): Promise<CatalogModel[]> {
 /** Context size comes from the discovered catalog; explicit upstream errors can only lower it. It never gates routing. */
 export async function capabilities(env: Env, _ctx: Pick<ExecutionContext, 'waitUntil'>, modelId = 'dynamic/rp'): Promise<Capability> {
  const entry = (await catalog(env).catch(() => [])).find(m => m.id === modelId);
- return capability(env, entry?.target ?? modelId, entry?.context_tokens);
+ return capability(env, entry?.target ?? modelId, entry?.context_tokens, defaultContextTokens(env));
 }
-async function capability(env: Env, key: string, contextTokens?: number): Promise<Capability> {
+async function capability(env: Env, key: string, contextTokens?: number, fallback?: number): Promise<Capability> {
  const cached = await env.DB.prepare('SELECT value_json,expires_at FROM model_capabilities WHERE id=?').bind(key).first<{value_json: string; expires_at: number}>();
  const feedback = cached && cached.expires_at > Date.now() ? JSON.parse(cached.value_json) as Capability : undefined;
  const limit = feedback?.source === 'upstream:limit' && Number.isSafeInteger(feedback.contextTokens) ? feedback.contextTokens : null;
  if (limit !== null && (contextTokens === undefined || limit < contextTokens)) return {...feedback!, modelId: key};
  if (contextTokens !== undefined) return {contextTokens, source: 'catalog:context', checkedAt: Date.now(), inputRatio: unknown.inputRatio, modelId: key};
+ if (fallback !== undefined) return {contextTokens: fallback, source: 'default:context', checkedAt: Date.now(), inputRatio: unknown.inputRatio, modelId: key};
  return {...unknown, modelId: key};
 }
 export async function modelOptions(env: Env, ctx: Pick<ExecutionContext, 'waitUntil'>): Promise<ModelOption[]> {
@@ -48,7 +55,7 @@ export function modelInput(settings: Settings) {
 /** Explicit upstream capacity is cached; generation compresses history before retrying. */
 export async function recordFeedback(env: Env, capability: Capability, feedback: { model?: string; contextLimit?: number }) {
  const limit = feedback.contextLimit;
- if (!Number.isSafeInteger(limit) || limit! < 1024 || (capability.contextTokens !== null && limit! >= capability.contextTokens)) return;
+ if (!Number.isSafeInteger(limit) || limit! < 1024 || (capability.contextTokens !== null && limit! >= capability.contextTokens && (capability.source !== 'default:context' || limit === capability.contextTokens))) return;
  const value: Capability = { ...capability, contextTokens: limit!, source: 'upstream:limit', checkedAt: Date.now() };
  await env.DB.prepare("INSERT INTO model_capabilities(id,value_json,expires_at) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET value_json=json_set(excluded.value_json,'$.contextTokens',min(coalesce(json_extract(value_json,'$.contextTokens'),?),?)),expires_at=excluded.expires_at").bind(capability.modelId ?? 'dynamic/rp',JSON.stringify(value),Date.now()+TTL,limit,limit).run();
 }

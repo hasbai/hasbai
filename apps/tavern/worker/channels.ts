@@ -20,7 +20,7 @@ async function channelConfiguration(env:Env,user:User,data:Record<string,unknown
  const base=await userSettings(env,user.sub);
  // A group never inherits a browser persona or a private system prompt.
  const opts=settings({...DEFAULT_SETTINGS,modelId:base.modelId,thinkingEnabled:base.thinkingEnabled,reasoningEffort:base.reasoningEffort,temperature:base.temperature,topP:base.topP,topK:base.topK,frequencyPenalty:base.frequencyPenalty,presencePenalty:base.presencePenalty,userName:'Telegram 成员',persona:'',systemPrompt:'以角色身份参与 Telegram 对话。每条消息按“发言人: 正文”呈现，缩进内容是续行或回复引用。只回复当前交流，不代写其他成员。直接写回复正文，不添加发言人标签或为定位回复对象而 @成员。'});
- return {owner:user.sub,username,character_json:JSON.stringify(raw),character_name:card.name,settings_json:JSON.stringify(opts)};
+ return {owner:user.sub,username,character_id:card.id,character_json:JSON.stringify(raw),character_name:card.name,settings_json:JSON.stringify(opts)};
 }
 export async function channelCode(env:Env,user:User,data:Record<string,unknown>){
  if(data.kind!=='private'&&data.kind!=='group')throw new HttpError(400,'请选择私聊或群聊');
@@ -43,13 +43,13 @@ export async function bindChannel(env:Env,m:TelegramMessage,value:string,kind:'p
  }
  return createChannel(env,m,code,code.hash);
 }
-async function createChannel(env:Env,m:TelegramMessage,configuration:Pick<Code,'owner'|'username'|'character_json'|'character_name'|'settings_json'>,hash:string|null=null){
+async function createChannel(env:Env,m:TelegramMessage,configuration:Pick<Code,'owner'|'username'|'character_json'|'character_name'|'settings_json'>&{character_id?:string|null},hash:string|null=null){
  const code=configuration,key=telegramThread(m),prior=await env.DB.prepare('SELECT * FROM channel_routes WHERE thread_key=?').bind(key).first<ChannelRoute>();
  if(prior)throw new HttpError(409,prior.owner===code.owner?'此会话已有绑定，请在酒馆设置中解绑后重试':'此会话已有绑定');
  const id=crypto.randomUUID(),sessionId=crypto.randomUUID(),now=Date.now();
  const result=await env.DB.batch([
   env.DB.prepare('INSERT INTO channel_routes(id,thread_key,chat_id,thread_id,owner,username,session_id,created_at) SELECT ?,?,?,?,?,?,?,? WHERE (? IS NULL OR EXISTS(SELECT 1 FROM channel_codes WHERE hash=? AND expires_at>?)) AND (? IS NOT NULL OR EXISTS(SELECT 1 FROM telegram_accounts WHERE user_id=? AND owner=?)) AND NOT EXISTS(SELECT 1 FROM telegram_accounts WHERE user_id=? AND owner!=?)').bind(id,key,m.chat.id,m.message_thread_id??0,code.owner,code.username,sessionId,now,hash,hash,now,hash,m.from.id,code.owner,m.from.id,code.owner),
-  env.DB.prepare("INSERT INTO sessions(id,owner,title,character_json,character_name,settings_json,created_at,updated_at,storage_backend,generation_id,generation_until) SELECT ?,?,?,?,?,?,?,?,'do',?,? WHERE EXISTS(SELECT 1 FROM channel_routes WHERE id=?)").bind(sessionId,code.owner,code.character_name+' · Telegram',code.character_json,code.character_name,code.settings_json,now,now,'do:'+sessionId,Number.MAX_SAFE_INTEGER,id),
+  env.DB.prepare("INSERT INTO sessions(id,owner,title,character_json,character_name,settings_json,created_at,updated_at,storage_backend,generation_id,generation_until,character_id) SELECT ?,?,?,?,?,?,?,?,'do',?,?,? WHERE EXISTS(SELECT 1 FROM channel_routes WHERE id=?)").bind(sessionId,code.owner,code.character_name+' · Telegram',code.character_json,code.character_name,code.settings_json,now,now,'do:'+sessionId,Number.MAX_SAFE_INTEGER,code.character_id??null,id),
   env.DB.prepare('INSERT INTO telegram_accounts(user_id,owner,username) SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM channel_routes WHERE id=?) ON CONFLICT(user_id) DO UPDATE SET username=excluded.username WHERE telegram_accounts.owner=excluded.owner').bind(m.from.id,code.owner,code.username,id),
   ...(hash?[env.DB.prepare('DELETE FROM channel_codes WHERE hash=? AND EXISTS(SELECT 1 FROM channel_routes WHERE id=?)').bind(hash,id)]:[])
  ]);
