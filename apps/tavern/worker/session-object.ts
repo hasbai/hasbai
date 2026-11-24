@@ -1,3 +1,4 @@
+import { Lifecycle, type LifecycleJobContext, type LifecycleJobOutcome } from 'agents/lifecycle';
 import { directCommand } from '../shared/commands';
 import type { AgentActivity, ContextUsage } from '../shared/types';
 import { sessionContext, contextUsage } from './session-context';
@@ -10,6 +11,7 @@ import { currentMessages, getSession, message, ownedBooks, session, settings, us
 import { generate } from './generation';
 import { validateModel, modelInput } from './models';
 import { parseCard, string } from '../shared/cards';
+import { TavernPiRuntime } from './pi-agent';
 
 export const sessionName=(owner:string,id:string)=>JSON.stringify([owner,id]);
 export const sessionStub=(env:Env,owner:string,id:string)=>(env.SESSIONS as DurableObjectNamespace<TavernSession>).getByName(sessionName(owner,id));
@@ -21,11 +23,34 @@ export class TavernSession extends DurableObject<Env> {
  private removed?:{owner:string;id:string};
  private recoveryId?:string;
  private active?:{requestId:string;id:string;abort:AbortController};
- constructor(ctx:DurableObjectState,env:Env){super(ctx,env);}
+ readonly pi:TavernPiRuntime;
+ readonly lifecycle:Lifecycle<Env>;
+ constructor(ctx:DurableObjectState,env:Env){
+  super(ctx,env);
+  this.pi=new TavernPiRuntime(env);
+  this.lifecycle=new Lifecycle(this).use(this.pi.harness);
+ }
  private hasSchema(){return this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='sessions'").toArray().length>0;}
+ private hasLifecycleTable(){return this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='cf_agents_jobs'").toArray().length>0;}
  /** A settled task must not require object eviction to recover an uncommitted turn. */
  private recoverIdle(store:SessionStore){if(!this.active&&this.recoveryId){store.recover(this.recoveryId);this.recoveryId=undefined;}}
  private available(store:SessionStore){if(this.removed||this.store!==store||store.deleted())throw new HttpError(404,'会话不存在');}
+ async onStart():Promise<void>{
+  const store=this.store;
+  if(!store||this.removed||store.deleted())return;
+  const meta=store.syncState();
+  if(meta.revision!==meta.synced_revision){
+   await this.lifecycle.jobs.push({id:'sync',fn:'syncDirectory',time:Date.now()+1000,singleflight:true});
+  }
+ }
+ async onJob({job}:LifecycleJobContext):Promise<LifecycleJobOutcome>{
+  if(job.fn!=='syncDirectory'||this.removed||this.store?.deleted())return;
+  try{await this.sync();}catch{return {rescheduleAt:Date.now()+10000};}
+ }
+ async onAlarm():Promise<void>{
+  if(this.removed||this.store?.deleted())return;
+  try{await this.sync();}catch{await this.scheduleSync();}
+ }
  private async load(owner:string,id:string):Promise<SessionStore>{
   if(this.removed)throw new HttpError(404,'会话不存在');
   if(this.store){if(this.store.id!==id||this.store.directory()?.owner!==owner||this.store.deleted())throw new HttpError(404,'会话不存在');this.recoverIdle(this.store);return this.store;}
@@ -57,13 +82,22 @@ export class TavernSession extends DurableObject<Env> {
   })();
   try{return await this.loading;}finally{this.loading=undefined;}
  }
- private async scheduleSync(){if(!this.removed)await this.ctx.storage.setAlarm(Date.now()+1000);}
+ private async scheduleSync(){
+  if(this.removed)return;
+  if(!this.store?.deleted()&&(this.lifecycle.isStarted()||this.hasLifecycleTable())){
+   await this.lifecycle.jobs.push({id:'sync',fn:'syncDirectory',time:Date.now()+1000,singleflight:true});
+   return;
+  }
+  await this.ctx.storage.setAlarm(Date.now()+1000);
+ }
  /** Keep the retry alarm until the final atomic deletion also removes it. */
  private async purge(store:SessionStore){
   const row=store.directory();
   const result=await this.env.DB.prepare("UPDATE sessions SET deleted_at=COALESCE(deleted_at,?),book_ids_json='[]' WHERE id=? AND owner=? AND storage_backend='do'").bind(Date.now(),row.id,row.owner).run();
   if(!result.meta.changes)throw new Error('会话删除同步失败');
+  if(this.lifecycle.isStarted())await this.lifecycle.dispose();
   await this.ctx.storage.deleteAll();
+  await this.lifecycle.disableAlarms();
   this.removed={owner:row.owner,id:row.id};this.store=undefined;this.loading=undefined;
  }
  /** Directory writes are serialized, and their revision stays durable until D1 acknowledges it. */
@@ -83,6 +117,8 @@ export class TavernSession extends DurableObject<Env> {
  async alarm(){
   if(this.removed)return;
   if(!this.store){if(!this.hasSchema())return;const row=this.ctx.storage.sql.exec<SessionRow & Record<string,SqlStorageValue>>('SELECT * FROM sessions LIMIT 1').toArray()[0];if(!row)return;const stored=new SessionStore(this.ctx.storage,row.id);if(stored.deleted())this.store=stored;else await this.load(row.owner,row.id);}
+  if(this.store?.deleted()){try{await this.sync();}catch{await this.ctx.storage.setAlarm(Date.now()+10000);}return;}
+  if(this.hasLifecycleTable()){await this.lifecycle.alarm();return;}
   try{await this.sync();}catch{await this.ctx.storage.setAlarm(Date.now()+10000);}
  }
  private async resolveCharacterMedia(owner:string,row:SessionRow){
@@ -208,7 +244,7 @@ export class TavernSession extends DurableObject<Env> {
    const owner=request.headers.get('X-Tavern-Owner')??'',id=request.headers.get('X-Tavern-Session')??'',username=decodeURIComponent(request.headers.get('X-Tavern-Username')??'');
    const store=await this.load(owner,id),data=await body(request);this.available(store);if(this.mutating)throw new HttpError(409,'会话状态已改变，请重试');
    if(directCommand(string(data.content)))return json(await this.command(owner,id,{...data,username}));
-   return await generate(request,this.env,this.ctx,owner,id,data,username,store,(id)=>this.settled(id),(assistantId,abort)=>{this.active={requestId:String(data.requestId),id:assistantId,abort};},()=>{this.available(store);if(this.mutating)throw new HttpError(409,'会话状态已改变，请重试');});
+   return await generate(request,this.env,this.ctx,owner,id,data,username,store,(id)=>this.settled(id),(assistantId,abort)=>{this.active={requestId:String(data.requestId),id:assistantId,abort};},()=>{this.available(store);if(this.mutating)throw new HttpError(409,'会话状态已改变，请重试');},this.pi);
   }catch(e){if(e instanceof HttpError)return json({message:e.message},e.status);throw e;}
  }
 }

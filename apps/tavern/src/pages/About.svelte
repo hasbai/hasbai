@@ -22,7 +22,7 @@
  const systemParts=['用户系统提示词 + 角色卡 system_prompt','用户 persona','世界书 before_char','角色描述','角色性格','初始场景','世界书 after_char','示例对白','角色卡 post_history_instructions','工具使用指导','历史摘要'];
  const stagePrompts:Record<Stage,PromptKey[]>={character:['character'],body:['systemTemplate'],tools:['tools',...TOOL_PROMPT_KEYS],director:['director'],summary:['summaryTask']};
  const promptRole=(key:PromptKey)=>TOOL_PROMPT_KEYS.includes(key as typeof TOOL_PROMPT_KEYS[number])?'tools':key==='director'||key==='summaryTask'?'user':'system';
- const journey=[{icon:MessageSquare,title:'你的输入',subtitle:'浏览器 / Telegram 文本 → Worker',detail:undefined},{icon:Database,title:'会话与记忆',subtitle:'每会话 SQLite DO',detail:undefined},{icon:Layers3,title:'上下文与模型',subtitle:'AI SDK → AI Gateway',detail:'通过 ai.hasbai.xyz 使用所选模型，默认 rp 动态路由'},{icon:Sparkles,title:'正文与下一步',subtitle:'执行记录 → 流式正文 → Director',detail:undefined}];
+ const journey=[{icon:MessageSquare,title:'你的输入',subtitle:'浏览器 / Telegram 文本 → Worker',detail:undefined},{icon:Database,title:'会话与记忆',subtitle:'每会话 SQLite DO',detail:undefined},{icon:Layers3,title:'上下文与模型',subtitle:'Pi Agent → AI Gateway',detail:'通过 ai.hasbai.xyz 使用所选模型，默认 rp 动态路由'},{icon:Sparkles,title:'正文与下一步',subtitle:'执行记录 → 流式正文 → Director',detail:undefined}];
  trackLoading(()=>loading||saving||personalSaving);
 </script>
 
@@ -64,6 +64,7 @@
      {/if}
     {/if}
    </ol>
+   {#if stage==='summary'}<p class="muted">容量取自模型目录，未提供时默认按 32,768 tokens 兜底；超限或手动 /compress 时压缩已确认历史，原文与导出不变。</p>{/if}
    {#if stage==='director'}<p class="muted">超限时压缩已确认历史，保存摘要供后续正文复用。本轮输入、正文与候选任务保留。</p>{/if}
 
   </div>

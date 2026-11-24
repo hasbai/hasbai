@@ -17,12 +17,15 @@
     "eval:agent": "node scripts/evaluate-agent.mjs --live --embeddings"
   },
   "dependencies": {
-    "@ai-sdk/openai-compatible": "catalog:",
+    "@earendil-works/chord": "catalog:",
+    "@earendil-works/pi-ai": "catalog:",
+    "@earendil-works/pi-durable": "catalog:",
+    "@earendil-works/pi-schema": "catalog:",
     "@hasbai/auth": "workspace:*",
     "@hasbai/ui": "workspace:*",
     "@lucide/svelte": "catalog:",
     "@tailwindcss/vite": "catalog:",
-    "ai": "catalog:",
+    "agents": "catalog:",
     "fflate": "catalog:",
     "jose": "catalog:",
     "svelte": "catalog:",
