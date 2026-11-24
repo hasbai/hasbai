@@ -209,6 +209,27 @@ it('upgrades existing SQLite media relationships from D1 without changing messag
  const first=(await invoke('read')).value;expect(sql.prepare("SELECT character_id FROM sessions WHERE id='s'").get()?.character_id).toBe('card');expect(first.session.characterId).toBe('card');expect(first.messages[0].content).toBe('DO 正文');
  objects.delete(name);expect((await invoke('read')).value).toEqual(first);
 });
+it('resolves character media by owner fallback when character_id is missing or edited',async()=>{
+ seed();
+ db.prepare("INSERT INTO characters(id,owner,name,description,creator,tags_json,card_json,format,original_key,original_filename,content_hash,created_at,avatar_image_id,portrait_image_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run('foreign','other','岚','','','[]','{"name":"岚"}','V2','k1','a.json','h1',1,'foreign-avatar','foreign-portrait');
+ db.prepare("INSERT INTO characters(id,owner,name,description,creator,tags_json,card_json,format,original_key,original_filename,content_hash,created_at,avatar_image_id,portrait_image_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run('own','owner','岚','','','[]','{"name":"岚","description":"新版"}','V2','k2','a.json','h2',2,'own-avatar','own-portrait');
+ const result=await invoke('read');
+ expect(result.value.session).toMatchObject({avatarImageId:'own-avatar',portraitImageId:'own-portrait'});
+ expect((await invoke('update',{title:'已保存'})).value).toMatchObject({avatarImageId:'own-avatar',portraitImageId:'own-portrait'});
+});
+it('inherits global portrait background for legacy sessions without overriding explicit session values',async()=>{
+ Object.assign(env,{AI_SERVICE:{fetch:async()=>Response.json({data:[{id:'dynamic/rp',name:'rp',type:'chat'}]})}});
+ const legacySettings={...DEFAULT_SETTINGS} as Record<string,unknown>;
+ delete legacySettings.characterBackground;
+ delete legacySettings.backgroundOpacity;
+ db.prepare('INSERT INTO sessions(id,owner,title,character_json,character_name,settings_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)').run('legacy','owner','旧会话',JSON.stringify({name:'岚'}),'岚',JSON.stringify(legacySettings),1,2);
+ db.prepare('INSERT INTO settings(owner,settings_json) VALUES(?,?)').run('owner',JSON.stringify({...DEFAULT_SETTINGS,characterBackground:true,backgroundOpacity:42}));
+ const inherited=await invoke('read',{},'owner','legacy');
+ expect(inherited.value.session.settings).toMatchObject({characterBackground:true,backgroundOpacity:42});
+ expect((await invoke('update',{settings:{...DEFAULT_SETTINGS,characterBackground:false,backgroundOpacity:15}},'owner','legacy')).ok).toBe(true);
+ const explicit=await invoke('read',{},'owner','legacy');
+ expect(explicit.value.session.settings).toMatchObject({characterBackground:false,backgroundOpacity:15});
+});
 
 it('creates Pi Durable and Lifecycle tables during generation and wipes all tables and alarms on remove',async()=>{
  seed();

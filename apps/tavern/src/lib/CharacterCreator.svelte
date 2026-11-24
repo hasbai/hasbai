@@ -87,16 +87,18 @@
    <div class="creator-section-heading"><UserRound size={18} aria-hidden="true"/><h2>基本信息</h2></div>
    <div class="creator-identity">
     <div class="creator-avatar">{#if previews.avatar}<img src={previews.avatar} alt="角色头像" width="80" height="80"/>{:else if character}<Avatar imageId={character.avatarImageId} name={character.name}/>{:else}<UserRound size={28} aria-hidden="true"/>{/if}</div>
-    <div class="field"><label for="character-name">角色名称</label><Input id="character-name" bind:value={draft.name}/></div>
+    <div class="creator-identity-main">
+     <div class="field"><label for="character-name">角色名称</label><Input id="character-name" bind:value={draft.name}/></div>
+     <div class="creator-avatar-actions"><label class="image-upload"><Upload size={16} aria-hidden="true"/>上传头像<input type="file" accept="image/png,image/jpeg,image/webp" aria-label="上传头像" onchange={event=>uploadImage(event,'avatar')}/></label><Button type="button" variant="outline" disabled={locked||![imagePrompt,draft.name,draft.description].some(text=>text.trim())} onclick={()=>generateImage('avatar')}><span aria-hidden="true">{#if generatingImage==='avatar'}<Spinner/>{:else}<Sparkles size={16}/>{/if}</span>AI 生成头像</Button>{#if images.avatar}<Button type="button" variant="ghost" onclick={()=>images={...images,avatar:undefined}}>撤销头像</Button>{/if}</div>
+    </div>
    </div>
-   <div class="creator-images">
-    {#each imageKinds as {kind,label}}
-     <section class="creator-image"><h3>{label}</h3>
-      {#if kind==='portrait'}<div class="creator-portrait">{#if previews.portrait||character?.portraitImageId}<img src={previews.portrait||characterImageUrl(character!.portraitImageId!,'portrait')} alt="角色立绘" decoding="async"/>{:else}<span>尚无立绘</span>{/if}</div>{/if}
-      <div class="creator-avatar-actions"><label class="image-upload"><Upload size={16} aria-hidden="true"/>上传{label}<input type="file" accept="image/png,image/jpeg,image/webp" aria-label={`上传${label}`} onchange={event=>uploadImage(event,kind)}/></label><Button type="button" variant="outline" disabled={locked||![imagePrompt,draft.name,draft.description].some(text=>text.trim())} onclick={()=>generateImage(kind)}><span aria-hidden="true">{#if generatingImage===kind}<Spinner/>{:else}<Sparkles size={16}/>{/if}</span>AI 生成{label}</Button>{#if images[kind]}<Button type="button" variant="ghost" onclick={()=>images={...images,[kind]:undefined}}>撤销{label}</Button>{/if}</div>
-     </section>
-    {/each}
-   </div>
+   <section class="creator-portrait-card">
+    <div class="creator-portrait">{#if previews.portrait||character?.portraitImageId}<img src={previews.portrait||characterImageUrl(character!.portraitImageId!,'portrait')} alt="角色立绘" decoding="async"/>{:else}<span>尚无立绘</span>{/if}</div>
+    <div class="creator-portrait-meta">
+     <h3>立绘</h3>
+     <div class="creator-avatar-actions"><label class="image-upload"><Upload size={16} aria-hidden="true"/>上传立绘<input type="file" accept="image/png,image/jpeg,image/webp" aria-label="上传立绘" onchange={event=>uploadImage(event,'portrait')}/></label><Button type="button" variant="outline" disabled={locked||![imagePrompt,draft.name,draft.description].some(text=>text.trim())} onclick={()=>generateImage('portrait')}><span aria-hidden="true">{#if generatingImage==='portrait'}<Spinner/>{:else}<Sparkles size={16}/>{/if}</span>AI 生成立绘</Button>{#if images.portrait}<Button type="button" variant="ghost" onclick={()=>images={...images,portrait:undefined}}>撤销立绘</Button>{/if}</div>
+    </div>
+   </section>
    <div class="field"><label for="image-prompt">图片描述</label><Input id="image-prompt" bind:value={imagePrompt} maxlength={1800} placeholder="留空时使用人物设定"/></div>
    <div class="field"><label for="character-tags">标签</label><Input id="character-tags" bind:value={tagText}/></div>
   </section>

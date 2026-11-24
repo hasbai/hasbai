@@ -25,11 +25,12 @@ it.each(['low','medium','high'] as const)('forwards selected %s effort only when
  expect(modelInput({...DEFAULT_SETTINGS,thinkingEnabled:true,reasoningEffort:effort})).toMatchObject({chat_template_kwargs:{enable_thinking:true},reasoning_effort:effort});
  expect(modelInput({...DEFAULT_SETTINGS,thinkingEnabled:false,reasoningEffort:effort})).toMatchObject({chat_template_kwargs:{enable_thinking:false},reasoning_effort:'none'});
 });
-it('resolves default to its target for context and treats unknown context as unknown', async () => {
+it('resolves default to its target for context and falls back to 32768 when context is unknown', async () => {
  expect(await capabilities(env,ctx,'default')).toMatchObject({contextTokens:32768,source:'catalog:context',modelId:'custom-main/qwen3'});
- expect(await capabilities(env,ctx,'custom-main/chat-b')).toMatchObject({contextTokens:null,source:'unknown',modelId:'custom-main/chat-b'});
+ expect(await capabilities(env,ctx,'custom-main/chat-b')).toMatchObject({contextTokens:32768,source:'default:context',modelId:'custom-main/chat-b'});
+ expect(await capabilities(env,ctx,'dynamic/rp')).toMatchObject({contextTokens:32768,source:'default:context',modelId:'dynamic/rp'});
  vi.mocked(env.AI_SERVICE.fetch).mockRejectedValue(new Error('down'));
- expect((await capabilities(env,ctx,'default')).contextTokens).toBeNull();
+ expect(await capabilities(env,ctx,'default')).toMatchObject({contextTokens:32768,source:'default:context',modelId:'default'});
 });
 it('uses explicit upstream limits without automatically retrying inference', async () => {
  expect(explicitContextLimit('maximum context length is 8192 tokens')).toBe(8192);expect(explicitContextLimit('you used 8192 prompt tokens')).toBeUndefined();
@@ -54,7 +55,11 @@ it('validates selections against the platform catalog and never falls back on di
  await expect(modelOptions(env,ctx)).rejects.toThrow('模型列表无效');
 });
 it('keeps context feedback keyed by upstream target, shared by default and the explicit model', async () => {
- const selected=await capabilities(env,ctx,'custom-main/chat-b');await recordFeedback(env,selected,{contextLimit:4096});
+ const selected=await capabilities(env,ctx,'custom-main/chat-b');
+ expect(selected).toMatchObject({contextTokens:32768,source:'default:context'});
+ await recordFeedback(env,selected,{contextLimit:65536});
+ expect((await capabilities(env,ctx,'custom-main/chat-b')).contextTokens).toBe(65536);
+ await recordFeedback(env,selected,{contextLimit:4096});
  expect((await capabilities(env,ctx,'custom-main/chat-b')).contextTokens).toBe(4096);
  expect((await capabilities(env,ctx,'default')).contextTokens).toBe(32768);
  await recordFeedback(env,await capabilities(env,ctx,'default'),{contextLimit:8192});

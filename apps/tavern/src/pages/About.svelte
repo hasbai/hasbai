@@ -64,6 +64,7 @@
      {/if}
     {/if}
    </ol>
+   {#if stage==='summary'}<p class="muted">容量取自模型目录，未提供时默认按 32,768 tokens 兜底；超限或手动 /compress 时压缩已确认历史，原文与导出不变。</p>{/if}
    {#if stage==='director'}<p class="muted">超限时压缩已确认历史，保存摘要供后续正文复用。本轮输入、正文与候选任务保留。</p>{/if}
 
   </div>

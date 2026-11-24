@@ -7,7 +7,7 @@ import { DurableObject } from 'cloudflare:workers';
 import { SessionStore, SESSION_SCHEMA } from './session-store';
 import { storyMessages } from './agent';
 import { body, HttpError, json } from './http';
-import { currentMessages, getSession, message, ownedBooks, session, settings, type CharacterRow, type MessageRow, type SessionRow } from './store';
+import { currentMessages, getSession, message, ownedBooks, session, settings, userSettings, type CharacterRow, type MessageRow, type SessionRow } from './store';
 import { generate } from './generation';
 import { validateModel, modelInput } from './models';
 import { parseCard, string } from '../shared/cards';
@@ -60,7 +60,9 @@ export class TavernSession extends DurableObject<Env> {
    this.ctx.storage.sql.exec(SESSION_SCHEMA);
    if(!this.ctx.storage.sql.exec("PRAGMA table_info(sessions)").toArray().some(column=>column.name==='character_id')){
     this.ctx.storage.sql.exec('ALTER TABLE sessions ADD COLUMN character_id TEXT');
-    this.ctx.storage.sql.exec('UPDATE sessions SET character_id=? WHERE id=?',directory.character_id??null,id);
+   }
+   if(directory.character_id){
+    this.ctx.storage.sql.exec('UPDATE sessions SET character_id=? WHERE id=? AND character_id IS NULL',directory.character_id,id);
    }
    const store=new SessionStore(this.ctx.storage,id);
    if(!store.exists()){
@@ -119,7 +121,21 @@ export class TavernSession extends DurableObject<Env> {
   if(this.hasLifecycleTable()){await this.lifecycle.alarm();return;}
   try{await this.sync();}catch{await this.ctx.storage.setAlarm(Date.now()+10000);}
  }
- private async read(owner:string,id:string){const store=await this.load(owner,id);const context=await sessionContext(this.env,this.ctx,owner,store,async()=>{throw Error('只读请求不能调用模型');});this.available(store);const row=store.get();const media=row.character_id?await this.env.DB.prepare('SELECT avatar_image_id,portrait_image_id FROM characters WHERE id=? AND owner=?').bind(row.character_id,owner).first<Pick<CharacterRow,'avatar_image_id'|'portrait_image_id'>>():null;this.available(store);return {session:{...session(row,true),avatarImageId:media?.avatar_image_id??undefined,portraitImageId:media?.portrait_image_id??undefined,state:store.state()},messages:currentMessages(store.messages()),activities:store.activities(),context:contextUsage(context)};}
+ private async resolveCharacterMedia(owner:string,row:SessionRow){
+  type MediaRow=Pick<CharacterRow,'avatar_image_id'|'portrait_image_id'>;
+  let media:MediaRow|null=null;
+  if(row.character_id){
+   media=await this.env.DB.prepare('SELECT avatar_image_id,portrait_image_id FROM characters WHERE id=? AND owner=?').bind(row.character_id,owner).first<MediaRow>();
+  }
+  if(!media){
+   media=await this.env.DB.prepare('SELECT avatar_image_id,portrait_image_id FROM characters WHERE owner=? AND card_json=? ORDER BY created_at DESC LIMIT 1').bind(owner,row.character_json).first<MediaRow>();
+  }
+  if(!media){
+   media=await this.env.DB.prepare('SELECT avatar_image_id,portrait_image_id FROM characters WHERE owner=? AND name=? ORDER BY (avatar_image_id IS NOT NULL) DESC, (portrait_image_id IS NOT NULL) DESC, created_at DESC LIMIT 1').bind(owner,row.character_name).first<MediaRow>();
+  }
+  return {avatarImageId:media?.avatar_image_id??undefined,portraitImageId:media?.portrait_image_id??undefined};
+ }
+ private async read(owner:string,id:string){const store=await this.load(owner,id);const context=await sessionContext(this.env,this.ctx,owner,store,async()=>{throw Error('只读请求不能调用模型');});this.available(store);const row=store.get();const media=await this.resolveCharacterMedia(owner,row);this.available(store);const base=session(row,true);const rawSettings=JSON.parse(row.settings_json) as Record<string,unknown>;if(!('characterBackground' in rawSettings)){const globalSettings=await userSettings(this.env,owner);this.available(store);base.settings={...base.settings,characterBackground:globalSettings.characterBackground,backgroundOpacity:globalSettings.backgroundOpacity};}return {session:{...base,...media,state:store.state()},messages:currentMessages(store.messages()),activities:store.activities(),context:contextUsage(context)};}
  private async stopRequest(owner:string,id:string,requestId:string){
   if(!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(requestId))throw new HttpError(400,'请求 ID 无效');
   const store=await this.load(owner,id);store.cancelRequest(requestId);
@@ -155,7 +171,7 @@ export class TavernSession extends DurableObject<Env> {
   store.dirty();await this.scheduleSync();
   const reserved=await this.env.DB.prepare("UPDATE sessions SET book_ids_json=? WHERE id=? AND owner=? AND deleted_at IS NULL AND (SELECT count(*) FROM worldbooks WHERE owner=? AND id IN(SELECT value FROM json_each(?)))=?").bind(JSON.stringify(union),id,owner,owner,JSON.stringify(ids),(ids as string[]).length).run();
   if(!reserved.meta.changes)throw new HttpError(409,'世界书状态已改变，请重试');
-  store.update(JSON.stringify(opts),JSON.stringify(ids),title,character);await this.scheduleSync();return session(store.get(),true);
+  store.update(JSON.stringify(opts),JSON.stringify(ids),title,character);await this.scheduleSync();const updated=store.get();const media=await this.resolveCharacterMedia(owner,updated);this.available(store);return {...session(updated,true),...media};
  }
  private async changeMessage(owner:string,id:string,data:Record<string,unknown>){
   const store=await this.load(owner,id);if(this.active)throw new HttpError(409,'请先停止生成');

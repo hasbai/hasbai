@@ -19,7 +19,7 @@
 | `minP` / `repetitionPenalty` | `0.0` / `1.0` | Min P 0–1。重复惩罚 (0, 2]。 |
 
 - **模式模板（`shared/types.ts`）**：Thinking 模板为温度 1.0、`top_p` 0.95、`top_k` 20、`min_p` 0、`presence_penalty` 0、`repetition_penalty` 1.0。Instruct 模板为温度 0.7、`top_p` 0.80、`top_k` 20、`min_p` 0、`presence_penalty` 1.5、`repetition_penalty` 1.0。摘要与角色生成固定用 Instruct 且关闭思考。切换思考开关或「恢复默认」应用对应模板并置 `frequencyPenalty=0`。旧设置缺思考字段一律补 `false`。
-- **目录与容量**：`GET /api/models` 只返回对话模型。选择器使用共享 `ModelPicker`（按 `provider` 与「厂商/模型」分组）。容量取自目录 `context_tokens`，只在遇到更小上游限制时按实际模型 ID 缓存降低 1 小时（不再探测 `/props`）。
+- **目录与容量**：`GET /api/models` 只返回对话模型。选择器使用共享 `ModelPicker`（按 `provider` 与「厂商/模型」分组）。容量取自目录 `context_tokens`；目录未提供时会话上下文默认兜底 `32,768` tokens（`default:context`），并在遇到显式上游上下文限制时按实际模型 ID 缓存 1 小时（目录有值时只降低，不再探测 `/props`）。
 - **设置页 UI**：沿用 Luma neutral 与约 760px 宽度。顶部放标题与主题开关，正文分「模型」「生成参数」「角色设定」三组。第一屏放模型、思考 Switch 与强度，桌面双列、手机单列，触控 ≥ 44px。页面不加说明横幅或推荐占位。全局设置作新会话默认，当前会话用独立快照（生成中不得修改）。
 
 ## 续聊候选内容与 UI
